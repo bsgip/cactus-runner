@@ -28,7 +28,7 @@ APP_HOST = os.getenv("APP_HOST", DEFAULT_APP_HOST)
 
 # APP_PORT is the port the cactus runner application listens on.
 DEFAULT_APP_PORT = 8080  # This is the aiohttp default
-APP_PORT = os.getenv("APP_PORT", DEFAULT_APP_PORT)
+APP_PORT = int(os.getenv("APP_PORT", DEFAULT_APP_PORT))
 
 # MOUNT_POINT is the base path for all endpoints
 MOUNT_POINT = "/"
@@ -42,7 +42,7 @@ DEV_SKIP_DB_PRECONDITIONS = os.getenv("DEV_SKIP_DB_PRECONDITIONS", "false").lowe
 logger = logging.getLogger(__name__)
 
 
-def create_application():
+def create_application() -> web.Application:
     app = web.Application()
 
     # Add routes for Test Runner
@@ -69,7 +69,7 @@ def setup_logging(logging_config_file: Path):
         atexit.register(queue_handler.listener.stop)
 
 
-def main():
+def gen_app():
     setup_logging(logging_config_file=Path("config/logging/config.json"))
     logger.info(f"Cactus Runner (version={__version__})")
     logger.info(f"{APP_HOST=} {APP_PORT=}")
@@ -80,8 +80,9 @@ def main():
     app[APPKEY_RUNNER_STATE] = RunnerState()
     app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
 
-    web.run_app(app, port=APP_PORT)
+
+app = gen_app()
 
 
 if __name__ == "__main__":
-    main()
+    web.run_app(app, port=APP_PORT)
