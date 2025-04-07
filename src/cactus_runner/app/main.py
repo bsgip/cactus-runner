@@ -42,7 +42,7 @@ DEV_SKIP_DB_PRECONDITIONS = os.getenv("DEV_SKIP_DB_PRECONDITIONS", "false").lowe
 logger = logging.getLogger(__name__)
 
 
-def create_application() -> web.Application:
+def create_app() -> web.Application:
     app = web.Application()
 
     # Add routes for Test Runner
@@ -53,6 +53,11 @@ def create_application() -> web.Application:
 
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
     app.router.add_route("*", MOUNT_POINT + "{proxyPath:.*}", handler.proxied_request_handler)
+
+    # Set up shared state
+    app[APPKEY_AGGREGATOR] = Aggregator()
+    app[APPKEY_RUNNER_STATE] = RunnerState()
+    app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
 
     return app
 
@@ -69,19 +74,18 @@ def setup_logging(logging_config_file: Path):
         atexit.register(queue_handler.listener.stop)
 
 
-def gen_app():
+def create_app_with_logging() -> web.Application:
     setup_logging(logging_config_file=Path("config/logging/config.json"))
     logger.info(f"Cactus Runner (version={__version__})")
     logger.info(f"{APP_HOST=} {APP_PORT=}")
     logger.info(f"Proxying requests to '{SERVER_URL}'")
 
-    app = create_application()
-    app[APPKEY_AGGREGATOR] = Aggregator()
-    app[APPKEY_RUNNER_STATE] = RunnerState()
-    app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
+    app = create_app()
+
+    return app
 
 
-app = gen_app()
+app = create_app_with_logging()
 
 
 if __name__ == "__main__":
