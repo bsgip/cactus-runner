@@ -17,7 +17,7 @@ from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 
 from cactus_runner import __version__
 from cactus_runner.app import auth, precondition
-from cactus_runner.app.main import (
+from cactus_runner.app.env import (
     DEV_AGGREGATOR_PREREGISTERED,
     DEV_SKIP_DB_PRECONDITIONS,
     SERVER_URL,
