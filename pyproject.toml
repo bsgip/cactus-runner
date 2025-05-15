@@ -67,7 +67,7 @@ src_paths = ["src", "tests"]
 exclude_dirs = ["tests"]
 
 [tool.mypy]
-exclude = ["dist", "tests"]
+exclude = ["dist", "tests", "build"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cactus_runner.__version__" }
