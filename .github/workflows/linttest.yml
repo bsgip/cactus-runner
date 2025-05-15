@@ -67,6 +67,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          git config --global url."https://${{ secrets.BSGIP_PAT_USER }}:${{ secrets.BSGIP_PAT }}@github.com".insteadOf https://github.com
+          git config --global url."https://${{ secrets.BSGIP_PAT_USER }}:${{ secrets.BSGIP_PAT }}@github.com".insteadOf ssh://git@github.com
           pip install .[dev]
 
       - name: Add mypy annotator
@@ -90,6 +92,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          git config --global url."https://${{ secrets.BSGIP_PAT_USER }}:${{ secrets.BSGIP_PAT }}@github.com".insteadOf https://github.com
+          git config --global url."https://${{ secrets.BSGIP_PAT_USER }}:${{ secrets.BSGIP_PAT }}@github.com".insteadOf ssh://git@github.com
           pip install .[test]
 
       - name: Run Pytest
