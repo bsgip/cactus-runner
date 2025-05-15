@@ -98,6 +98,7 @@ jobs:
 
       - name: Run Pytest
         run: |
+          export DATABASE_URL="postgresql+asyncpg://fake:fake@localhost:5432/fake"
           pytest --junit-xml=.test_report.xml
       - name: Upload Results
         uses: test-summary/action@v1
