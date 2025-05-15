@@ -77,8 +77,10 @@ class RunnerState:
     - Finally care has been taken to handle requests in their entirety before returning control back
       to the async loop. We do this by not calling await on subtasks but calling them instead
       synchronously. Examples include,
-        1. In 'start_test_procedure' the database operations ('register_aggregator' and 'apply_db_precondition') are handled via synchronous function calls.
-        2. In 'handle_all_request_types' we update the active test procedure with the synchronous functions 'apply_action' and 'handle_event'.
+        1. In 'start_test_procedure' the database operations ('register_aggregator' and 'apply_db_precondition') are
+           handled via synchronous function calls.
+        2. In 'handle_all_request_types' we update the active test procedure with the synchronous functions
+           'apply_action' and 'handle_event'.
 
     By wrapping the ActiveTestProcedure object within a RunnerState object we are
     free to mutate the `active_test_procedure` when needed and even set it to None

@@ -47,7 +47,7 @@ def _apply_enable_listeners(steps_to_enable: list[str], listeners: list[Listener
     # Warn about any unmatched steps
     if steps_to_enable:
         logger.warning(
-            f"Unable to enable the listeners for the following steps, ({steps_to_enable}). These are not recognised steps in the '{test_procedure_name} test procedure"
+            f"Unable to enable the listeners for the following steps, ({steps_to_enable}). These are not recognised steps in the '{test_procedure_name} test procedure"  # noqa: E501
         )
 
 
@@ -81,7 +81,7 @@ def _apply_remove_listeners(steps_to_disable: list[str], listeners: list[Listene
     # Warn about any unmatched steps
     if steps_to_disable:
         logger.warning(
-            f"Unable to remove the listener from the following steps, ({steps_to_disable}). These are not recognised steps in the '{test_procedure_name}' test procedure"
+            f"Unable to remove the listener from the following steps, ({steps_to_disable}). These are not recognised steps in the '{test_procedure_name}' test procedure"  # noqa: E501
         )
 
 

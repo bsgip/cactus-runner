@@ -15,7 +15,7 @@ __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProce
 logger = logging.getLogger(__name__)
 
 
-class RunnerClientException(Exception): ...
+class RunnerClientException(Exception): ...  # noqa: E701
 
 
 class RunnerClient:

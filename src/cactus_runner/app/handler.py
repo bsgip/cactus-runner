@@ -9,7 +9,6 @@ from cactus_test_definitions import (
 )
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 
-from cactus_runner import __version__
 from cactus_runner.app import auth, event, finalize, precondition, status
 from cactus_runner.app.env import (
     DEV_AGGREGATOR_PREREGISTERED,
@@ -82,7 +81,7 @@ async def init_handler(request: web.Request):
     if active_test_procedure is not None:
         return web.Response(
             status=http.HTTPStatus.CONFLICT,
-            text=f"Test Procedure ({active_test_procedure.name}) already active. Initialising another test procedure is not permitted.",
+            text=f"Test Procedure ({active_test_procedure.name}) already active. Initialising another test procedure is not permitted.",  # noqa: E501
         )
 
     # Update last client interaction
@@ -120,7 +119,7 @@ async def init_handler(request: web.Request):
     except KeyError:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST,
-            text=f"Expected valid test procedure for 'test' query parameter. Received '/start=?test={requested_test_procedure}'",
+            text=f"Expected valid test procedure for 'test' query parameter. Received '/start=?test={requested_test_procedure}'",  # noqa: E501
         )
 
     # Create listeners for all test procedure events
@@ -202,7 +201,7 @@ async def start_handler(request: web.Request):
     if active_test_procedure is None:
         return web.Response(
             status=http.HTTPStatus.CONFLICT,
-            text=f"Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
+            text="Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
         )
 
     # We cannot start another test procedure if one is already running.
@@ -211,7 +210,7 @@ async def start_handler(request: web.Request):
     if any(listener_state):
         return web.Response(
             status=http.HTTPStatus.CONFLICT,
-            text=f"Test Procedure ({active_test_procedure.name}) already in progress. Starting another test procedure is not permitted.",
+            text=f"Test Procedure ({active_test_procedure.name}) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
         )
 
     # Update last client interaction
@@ -349,7 +348,7 @@ async def proxied_request_handler(request):
     # Don't proxy requests if there is no active test procedure
     if active_test_procedure is None:
         logger.error(
-            f"Request (path={request.path}) not forwarded. An active test procedure is required before requests are proxied."
+            f"Request (path={request.path}) not forwarded. An active test procedure is required before requests are proxied."  # noqa: E501
         )
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST, text="Unable to handle request. An active test procedure is required."

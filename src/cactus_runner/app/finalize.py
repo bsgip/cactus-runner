@@ -59,7 +59,7 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
             subprocess.run(command)
         except FileNotFoundError:
             logger.error(
-                f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?"
+                f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?"  # noqa: E501
             )
 
         # Create the temporary zip file

@@ -55,9 +55,6 @@ addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
 
-[tool.flake8]
-max-line-length = 120
-max-complexity = 10
 
 [tool.black]
 line-length = 120
@@ -70,6 +67,7 @@ src_paths = ["src", "tests"]
 exclude_dirs = ["tests"]
 
 [tool.mypy]
+exclude = ["dist", "tests"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cactus_runner.__version__" }

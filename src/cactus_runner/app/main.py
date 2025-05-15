@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
 def create_app() -> web.Application:
 
     # Ensure the DB connection is up and running before starting the app.
-    initialise_database_connection(os.getenv("DATABASE_URL"))
+    postgres_dsn = os.getenv("DATABASE_URL")
+    if postgres_dsn is None:
+        raise Exception("DATABASE_URL environment variable is not specified")
+    initialise_database_connection(postgres_dsn)
 
     app = web.Application()
 
