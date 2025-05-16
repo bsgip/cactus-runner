@@ -1,7 +1,7 @@
 import logging
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
 
@@ -46,6 +46,7 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
             raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
         dump_file = str(archive_dir / "envoy_db.dump")
         exectuable_name = "pg_dump"
+        # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
         command = [
             exectuable_name,
             f"--dbname={connection_string}",
@@ -56,7 +57,7 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
             "--no-password",
         ]
         try:
-            subprocess.run(command)
+            subprocess.run(command)  # nosec B603
         except FileNotFoundError:
             logger.error(
                 f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?"  # noqa: E501

@@ -26,7 +26,12 @@ class RunnerClient:
                 url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
             ) as response:
                 json = await response.text()
-                return InitResponseBody.from_json(json)
+                init_response_body = InitResponseBody.from_json(json)
+                if isinstance(init_response_body, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return init_response_body
         except ConnectionTimeoutError as e:
             logger.debug(e)
             raise RunnerClientException("Unexpected failure while initialising test.")
@@ -36,7 +41,12 @@ class RunnerClient:
         try:
             async with session.post(url="/start") as response:
                 json = await response.text()
-                return StartResponseBody.from_json(json)
+                start_response_body = StartResponseBody.from_json(json)
+                if isinstance(start_response_body, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return start_response_body
         except ConnectionTimeoutError as e:
             logger.debug(e)
             raise RunnerClientException("Unexpected failure while starting test.")
@@ -55,7 +65,12 @@ class RunnerClient:
         try:
             async with session.get(url="/status") as response:
                 json = await response.text()
-                return RunnerStatus.from_json(json)
+                runner_status = RunnerStatus.from_json(json)
+                if isinstance(runner_status, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return runner_status
         except ConnectionTimeoutError as e:
             logger.debug(e)
             raise RunnerClientException("Unexpected failure while requesting test procedure status.")
