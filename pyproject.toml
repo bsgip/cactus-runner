@@ -24,6 +24,7 @@ dependencies = [
   "cactus-test-definitions @ git+ssh://git@github.com/bsgip/cactus-test-definitions.git@main",
   "envoy @ git+ssh://git@github.com/bsgip/envoy.git@main",
   "psycopg[binary]>=3.2.5,<4",
+  "asyncpg",
 ]
 
 [project.urls]
@@ -45,7 +46,15 @@ dev = [
   "python-dotenv[cli]",
   "coverage",
 ]
-test = ["pytest", "pytest-asyncio", "pytest-mock", "assertical"]
+test = [
+  "pytest",
+  "pytest-asyncio",
+  "pytest-mock",
+  "pytest-postgresql",
+  "assertical",
+  "freezegun",
+
+]
 cli = ["rich", "click"]
 docs = ["sphinx"]
 

@@ -1,10 +1,11 @@
 import logging
 
-from cactus_test_definitions import (
-    Action,
-    Event,
-)
+from cactus_test_definitions import Action, Event
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.app.variable_resolver import (
+    resolve_variable_expressions_from_parameters,
+)
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
@@ -85,7 +86,7 @@ def _apply_remove_listeners(steps_to_disable: list[str], listeners: list[Listene
         )
 
 
-def _apply_action(action: Action, active_test_procedure: ActiveTestProcedure):
+async def _apply_action(session: AsyncSession, action: Action, active_test_procedure: ActiveTestProcedure):
     """Applies the action to the active test procedure.
 
     Actions describe operations such as activate or disabling listeners.
@@ -97,17 +98,19 @@ def _apply_action(action: Action, active_test_procedure: ActiveTestProcedure):
     Raises:
         UnknownActionError: Raised if this function has no implementation for the provided `action.type`.
     """
+    resolved_parameters = await resolve_variable_expressions_from_parameters(session, action.parameters)
+
     match action.type:
         case "enable-listeners":
             _apply_enable_listeners(
-                steps_to_enable=action.parameters["listeners"],
+                steps_to_enable=resolved_parameters["listeners"],
                 listeners=active_test_procedure.listeners,
                 test_procedure_name=active_test_procedure.name,
             )
 
         case "remove-listeners":
             _apply_remove_listeners(
-                steps_to_disable=action.parameters["listeners"],
+                steps_to_disable=resolved_parameters["listeners"],
                 listeners=active_test_procedure.listeners,
                 test_procedure_name=active_test_procedure.name,
             )
@@ -115,7 +118,9 @@ def _apply_action(action: Action, active_test_procedure: ActiveTestProcedure):
             raise UnknownActionError(f"Unrecognised action '{action}'")
 
 
-def handle_event(event: Event, active_test_procedure: ActiveTestProcedure) -> Listener | None:
+async def handle_event(
+    session: AsyncSession, event: Event, active_test_procedure: ActiveTestProcedure
+) -> Listener | None:
     """Triggers the action associated with any enabled listeners that match then event.
 
     Logs an error if the action was able to be executed.
@@ -138,7 +143,7 @@ def handle_event(event: Event, active_test_procedure: ActiveTestProcedure) -> Li
             for action in listener.actions:
                 logger.info(f"Executing action: {action=}")
                 try:
-                    _apply_action(action=action, active_test_procedure=active_test_procedure)
+                    await _apply_action(session=session, action=action, active_test_procedure=active_test_procedure)
                 except (UnknownActionError, FailedActionError) as e:
                     logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")
 

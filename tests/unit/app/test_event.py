@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Action, Event
 
 from cactus_runner.app import event
@@ -97,25 +98,33 @@ def test__apply_remove_listeners_logs_warning_for_unmatched_steps(mocker, steps_
         (Action(type="remove-listeners", parameters={"listeners": []}), "_apply_remove_listeners"),
     ],
 )
-def test__apply_action(mocker, action: Action, apply_function_name: str):
+@pytest.mark.anyio
+async def test__apply_action(mocker, action: Action, apply_function_name: str):
     # Arrange
     active_test_procedure = MagicMock()
     mock_apply_function = mocker.patch(f"cactus_runner.app.event.{apply_function_name}")
+    mock_session = create_mock_session()
 
     # Act
-    event._apply_action(action=action, active_test_procedure=active_test_procedure)
+    await event._apply_action(session=mock_session, action=action, active_test_procedure=active_test_procedure)
 
     # Assert
     mock_apply_function.assert_called_once()
+    assert_mock_session(mock_session)
 
 
-def test__apply_action_raise_exception_for_unknown_action_type():
+@pytest.mark.anyio
+async def test__apply_action_raise_exception_for_unknown_action_type():
     active_test_procedure = MagicMock()
+    mock_session = create_mock_session()
 
     with pytest.raises(event.UnknownActionError):
-        event._apply_action(
-            action=Action(type="NOT-A-VALID-ACTION-TYPE", parameters={}), active_test_procedure=active_test_procedure
+        await event._apply_action(
+            session=mock_session,
+            action=Action(type="NOT-A-VALID-ACTION-TYPE", parameters={}),
+            active_test_procedure=active_test_procedure,
         )
+    assert_mock_session(mock_session)
 
 
 @pytest.mark.parametrize(
@@ -171,18 +180,23 @@ def test__apply_action_raise_exception_for_unknown_action_type():
         ),
     ],
 )
-def test_handle_event_with_matching_listener(
+@pytest.mark.asyncio
+async def test_handle_event_with_matching_listener(
     test_event: Event, listeners: list[Listener], matching_listener_index: int
 ):
     # Arrange
     active_test_procedure = MagicMock()
     active_test_procedure.listeners = listeners
+    mock_session = create_mock_session()
 
     # Act
-    matched_listener = event.handle_event(event=test_event, active_test_procedure=active_test_procedure)
+    matched_listener = await event.handle_event(
+        session=mock_session, event=test_event, active_test_procedure=active_test_procedure
+    )
 
     # Assert
     assert matched_listener == listeners[matching_listener_index]
+    assert_mock_session(mock_session)
 
 
 @pytest.mark.parametrize(
@@ -226,20 +240,25 @@ def test_handle_event_with_matching_listener(
         ),  # 2 actions for listener
     ],
 )
-def test_handle_event_calls__apply_action_for_each_listener_action(
+@pytest.mark.asyncio
+async def test_handle_event_calls__apply_action_for_each_listener_action(
     mocker, test_event: Event, listeners: list[Listener]
 ):
     # Arrange
     active_test_procedure = MagicMock()
     active_test_procedure.listeners = listeners
+    mock_session = create_mock_session()
 
     mock__apply_action = mocker.patch("cactus_runner.app.event._apply_action")
 
     # Act
-    matched_listener = event.handle_event(event=test_event, active_test_procedure=active_test_procedure)
+    matched_listener = await event.handle_event(
+        session=mock_session, event=test_event, active_test_procedure=active_test_procedure
+    )
 
     # Assert
     assert mock__apply_action.call_count == len(matched_listener.actions)
+    assert_mock_session(mock_session)
 
 
 @pytest.mark.parametrize(
@@ -280,13 +299,18 @@ def test_handle_event_calls__apply_action_for_each_listener_action(
         ),  # Event types match but parameters differ
     ],
 )
-def test_handle_event_with_no_matches(test_event: Event, listeners: list[Listener]):
+@pytest.mark.asyncio
+async def test_handle_event_with_no_matches(test_event: Event, listeners: list[Listener]):
     # Arrange
     active_test_procedure = MagicMock()
     active_test_procedure.listeners = listeners
+    mock_session = create_mock_session()
 
     # Act
-    listener = event.handle_event(event=test_event, active_test_procedure=active_test_procedure)
+    listener = await event.handle_event(
+        session=mock_session, event=test_event, active_test_procedure=active_test_procedure
+    )
 
     # Assert
     assert listener is None
+    assert_mock_session(mock_session)
