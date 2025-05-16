@@ -33,7 +33,6 @@ CURRENT_CONNECTION: DatabaseConnection | None = None
 def initialise_database_connection(postgres_dsn: str) -> None:
     global CURRENT_CONNECTION
 
-    postgres_dsn = postgres_dsn
     engine = create_async_engine(postgres_dsn)
     CURRENT_CONNECTION = DatabaseConnection(postgres_dsn, engine, async_sessionmaker(engine, class_=AsyncSession))
 
