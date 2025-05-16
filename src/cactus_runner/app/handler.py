@@ -10,6 +10,7 @@ from cactus_test_definitions import (
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 
 from cactus_runner.app import auth, event, finalize, precondition, status
+from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_AGGREGATOR_PREREGISTERED,
     DEV_SKIP_AUTHORIZATION_CHECK,
@@ -102,7 +103,7 @@ async def init_handler(request: web.Request):
     # Get the lfdi of the aggregator to register
     aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
     if not DEV_AGGREGATOR_PREREGISTERED:
-        precondition.register_aggregator(lfdi=aggregator_lfdi)
+        await precondition.register_aggregator(lfdi=aggregator_lfdi)
     else:
         logger.warning("Skipping aggregator registration ('DEV_AGGREGATOR_PREREGISTERED' environment variable is True)")
 
@@ -145,7 +146,7 @@ async def init_handler(request: web.Request):
                     "Skipping database preconditions ('DEV_SKIP_DB_PRECONDITIONS' environment variable is True)"
                 )
             else:
-                precondition.apply_db_precondition(precondition=precond.db)
+                await precondition.apply_db_precondition(precondition=precond.db)
 
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' started",
@@ -376,7 +377,10 @@ async def proxied_request_handler(request):
 
     # Update the progress of the test procedure
     request_event = Event(type=f"{method}-request-received", parameters={"endpoint": relative_url})
-    listener = event.handle_event(event=request_event, active_test_procedure=active_test_procedure)
+    async with begin_session() as session:
+        listener = await event.handle_event(
+            session=session, event=request_event, active_test_procedure=active_test_procedure
+        )
 
     # The assumes each step only has one event and once the action associated with the event
     # has been handled the step is "complete"

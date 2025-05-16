@@ -114,7 +114,7 @@ async def test_proxied_request_handler_performs_authorization(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_checks_listeners(mocker):
+async def test_proxied_request_handler_checks_listeners(pg_empty_config, mocker):
     # Arrange
     request_data = ""
     request_read = AsyncMock()
@@ -160,7 +160,7 @@ async def test_proxied_request_handler_checks_listeners(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler(mocker):
+async def test_proxied_request_handler(pg_empty_config, mocker):
     # Arrange
     request_data = ""
     request_read = AsyncMock()
