@@ -30,6 +30,7 @@ class ActiveTestProcedure:
     definition: TestProcedure
     listeners: list[Listener]
     step_status: dict[str, StepStatus]
+    communications_enabled: bool = False
 
 
 @dataclass

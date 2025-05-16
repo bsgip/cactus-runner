@@ -111,6 +111,10 @@ def _apply_action(action: Action, active_test_procedure: ActiveTestProcedure):
                 listeners=active_test_procedure.listeners,
                 test_procedure_name=active_test_procedure.name,
             )
+        case "simulate-communications-loss":
+            active_test_procedure.communications_enabled = False
+        case "enable-communications":
+            active_test_procedure.communications_enabled = True
         case _:
             raise UnknownActionError(f"Unrecognised action '{action}'")
 
