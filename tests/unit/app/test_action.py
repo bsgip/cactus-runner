@@ -14,7 +14,7 @@ from cactus_runner.models import ActiveTestProcedure, Listener
 
 
 def create_testing_active_test_procedure(listeners: list[Listener]) -> ActiveTestProcedure:
-    return ActiveTestProcedure("test", None, listeners, {})
+    return ActiveTestProcedure("test", None, listeners, {}, "", "")
 
 
 @pytest.mark.anyio
