@@ -7,8 +7,8 @@ from cactus_test_definitions.variable_expressions import (
     NamedVariable,
     NamedVariableType,
     OperationType,
-    UnresolvableVariableError,
 )
+from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.mapper.common import pow10_to_decimal_value
 from envoy.server.model import SiteDERSetting
 from sqlalchemy import select
