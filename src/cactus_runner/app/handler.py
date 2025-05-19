@@ -19,6 +19,7 @@ from cactus_runner.app.env import (
 )
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
+    APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_RUNNER_STATE,
     APPKEY_TEST_PROCEDURES,
 )
@@ -378,8 +379,9 @@ async def proxied_request_handler(request):
     # Update the progress of the test procedure
     request_event = Event(type=f"{method}-request-received", parameters={"endpoint": relative_url})
     async with begin_session() as session:
+        envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
         listener = await event.handle_event(
-            session=session, event=request_event, active_test_procedure=active_test_procedure
+            event=request_event, active_test_procedure=active_test_procedure, session=session, envoy_client=envoy_client
         )
 
     # The assumes each step only has one event and once the action associated with the event
