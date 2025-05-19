@@ -13,8 +13,8 @@ from cactus_test_definitions.variable_expressions import (
     NamedVariable,
     NamedVariableType,
     OperationType,
-    UnresolvableVariableError,
 )
+from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from freezegun import freeze_time
 

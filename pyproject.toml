@@ -53,6 +53,7 @@ test = [
   "pytest-postgresql",
   "assertical",
   "freezegun",
+  "pytest-env",
 
 ]
 cli = ["rich", "click"]
@@ -63,6 +64,11 @@ minversion = "6.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
+env = [
+  "D:DATABASE_URL=postgresql+asyncpg://faketestcred:faketestcred@faketestcred/faketestcred",
+  "D:ENVOY_ADMIN_BASICAUTH_USERNAME=testadmin",
+  "D:ENVOY_ADMIN_BASICAUTH_PASSWORD=testpassword",
+]
 
 
 [tool.black]
