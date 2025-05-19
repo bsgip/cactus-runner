@@ -1,8 +1,9 @@
 from typing import Any
+
 from aiohttp import web
 from cactus_test_definitions import TestProcedures
 
-from cactus_runner.app.envoy_client import EnvoyAdminClient
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import Aggregator, RunnerState
 
 # aiohttp AppKeys are used to share global state between request handlers

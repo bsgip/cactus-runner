@@ -15,19 +15,22 @@ from cactus_runner.app.database import initialise_database_connection
 from cactus_runner.app.env import (
     APP_HOST,
     APP_PORT,
+    ENVOY_ADMIN_BASICAUTH_PASSWORD,
+    ENVOY_ADMIN_BASICAUTH_USERNAME,
+    ENVOY_ADMIN_URL,
     MOUNT_POINT,
     SERVER_URL,
-    ENVOY_ADMIN_URL,
-    ENVOY_ADMIN_BASICAUTH_USERNAME,
-    ENVOY_ADMIN_BASICAUTH_PASSWORD,
 )
-from cactus_runner.app.envoy_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
+from cactus_runner.app.envoy_admin_client import (
+    EnvoyAdminClient,
+    EnvoyAdminClientAuthParams,
+)
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
-    APPKEY_RUNNER_STATE,
-    APPKEY_TEST_PROCEDURES,
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_ENVOY_ADMIN_INIT_KWARGS,
+    APPKEY_RUNNER_STATE,
+    APPKEY_TEST_PROCEDURES,
 )
 from cactus_runner.models import Aggregator, RunnerState
 

@@ -20,7 +20,7 @@ from envoy_schema.admin.schema.uri import (
     SiteControlUri,
 )
 
-from cactus_runner.app.envoy_client import (
+from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
