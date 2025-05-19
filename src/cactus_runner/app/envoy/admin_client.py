@@ -7,26 +7,29 @@ from dataclasses import dataclass
 from datetime import datetime
 from http import HTTPStatus
 
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, BasicAuth
+from aiohttp import BasicAuth, ClientSession, ClientTimeout, TCPConnector
 from aiohttp.typedefs import StrOrURL
-from envoy_schema.admin.schema.uri import (
-    SiteUri,
-    SiteControlGroupUri,
-    SiteControlUri,
-    ServerConfigRuntimeUri,
-    SiteControlDefaultConfigUri,
+from envoy_schema.admin.schema.config import (
+    ControlDefaultRequest,
+    ControlDefaultResponse,
+    RuntimeServerConfigRequest,
+    RuntimeServerConfigResponse,
 )
 from envoy_schema.admin.schema.site import SiteResponse
 from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupPageResponse,
     SiteControlGroupRequest,
     SiteControlGroupResponse,
     SiteControlRequest,
     SiteControlResponse,
 )
-from envoy_schema.admin.schema.config import (
-    RuntimeServerConfigRequest,
-    RuntimeServerConfigResponse,
-    ControlDefaultResponse,
+from envoy_schema.admin.schema.uri import (
+    ServerConfigRuntimeUri,
+    SiteControlDefaultConfigUri,
+    SiteControlGroupListUri,
+    SiteControlGroupUri,
+    SiteControlUri,
+    SiteUri,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,17 +81,38 @@ class EnvoyAdminClient:
 
     async def delete_single_site(self, site_id: int) -> HTTPStatus:
         resp = await self._session.delete(SiteUri.format(site_id=site_id))
+        resp.raise_for_status()
         return HTTPStatus(resp.status)
 
-    async def post_site_control_group(self, site_control_group: SiteControlGroupRequest) -> HTTPStatus:
+    async def post_site_control_group(self, site_control_group: SiteControlGroupRequest) -> int:
         resp = await self._session.post(SiteControlGroupUri, json=site_control_group.model_dump())
+        resp.raise_for_status()
+        href = resp.headers["Location"]
+        return int(href.split("/")[-1])
+
+    async def post_site_control_default(self, site_id: int, control_default: ControlDefaultRequest) -> HTTPStatus:
+        resp = await self._session.post(
+            SiteControlDefaultConfigUri.format(site_id=site_id), json=control_default.model_dump()
+        )
+        resp.raise_for_status()
         return HTTPStatus(resp.status)
 
-    async def get_site_control_group(self) -> SiteControlGroupResponse:
-        async with self._session.get(SiteControlGroupUri) as resp:
+    async def get_site_control_group(self, group_id: int) -> SiteControlGroupResponse:
+        async with self._session.get(SiteControlGroupUri.format(group_id=group_id)) as resp:
             resp.raise_for_status()
             json = await resp.json()
             return SiteControlGroupResponse(**json)
+
+    async def get_all_site_control_groups(
+        self, start: int = 0, limit: int = 100, after: datetime | None = None
+    ) -> SiteControlGroupPageResponse:
+        async with self._session.get(
+            SiteControlGroupListUri,
+            params={"start": start, "limit": limit} | {"after": after.isoformat()} if after else {},
+        ) as resp:
+            resp.raise_for_status()
+            json = await resp.json()
+            return SiteControlGroupPageResponse(**json)
 
     async def create_site_controls(self, group_id: int, control_list: list[SiteControlRequest]) -> HTTPStatus:
         resp = await self._session.post(

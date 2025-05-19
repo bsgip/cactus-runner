@@ -1,25 +1,43 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock
-from http import HTTPStatus
 from datetime import datetime, timezone
+from http import HTTPStatus
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from assertical.fake.generator import generate_class_instance
+from envoy_schema.admin.schema.config import (
+    RuntimeServerConfigRequest,
+    RuntimeServerConfigResponse,
+)
 from envoy_schema.admin.schema.site import SiteResponse
-from envoy_schema.admin.schema.site_control import SiteControlGroupResponse, SiteControlRequest, SiteControlGroupRequest
-from envoy_schema.admin.schema.config import RuntimeServerConfigRequest, RuntimeServerConfigResponse
-from envoy_schema.admin.schema.uri import ServerConfigRuntimeUri, SiteControlGroupUri, SiteControlUri
+from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupRequest,
+    SiteControlGroupResponse,
+    SiteControlRequest,
+)
+from envoy_schema.admin.schema.uri import (
+    ServerConfigRuntimeUri,
+    SiteControlGroupUri,
+    SiteControlUri,
+)
 
-from cactus_runner.app.envoy.admin_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
+from cactus_runner.app.envoy.admin_client import (
+    EnvoyAdminClient,
+    EnvoyAdminClientAuthParams,
+)
 
 
 @pytest.fixture
 def mock_session_with_json_response():
-    def _mock(json_data: dict = None, status: int = 200, method: str = "get"):
+    def _mock(json_data: dict = None, status: int = 200, method: str = "get", location_header: str | None = None):
         mock_response = MagicMock()
         mock_response.status = status
         mock_response.json = AsyncMock(return_value=json_data or {})
         mock_response.raise_for_status = MagicMock()
         mock_session = MagicMock()
+
+        if location_header is not None:
+            mock_response.headers = {"Location": location_header}
+
         if method == "get":
             mock_session.get.return_value.__aenter__.return_value = mock_response
         elif method == "post":
@@ -72,7 +90,7 @@ async def test_get_site_control_group(mock_session_with_json_response):
     client._session = mock_session
 
     # Act
-    group_response = await client.get_site_control_group()
+    group_response = await client.get_site_control_group(12345)
 
     # Assert
     assert isinstance(group_response, SiteControlGroupResponse)
@@ -151,7 +169,9 @@ async def test_get_runtime_config(mock_session_with_json_response):
 @pytest.mark.asyncio
 async def test_post_site_control_group(mock_session_with_json_response):
     # Arrange
-    mock_session, _ = mock_session_with_json_response(status=201, method="post")
+    mock_session, _ = mock_session_with_json_response(
+        status=201, method="post", location_header="/site_control_group/12345"
+    )
 
     client = EnvoyAdminClient("http://localhost", EnvoyAdminClientAuthParams("admin", "pw"))
     client._session = mock_session
@@ -159,10 +179,10 @@ async def test_post_site_control_group(mock_session_with_json_response):
     group = generate_class_instance(SiteControlGroupRequest, seed=123)
 
     # Act
-    status = await client.post_site_control_group(group)
+    result = await client.post_site_control_group(group)
 
     # Assert
-    assert status == HTTPStatus.CREATED
+    assert result == 12345, "This is the ID extracted from Location header"
     mock_session.post.assert_called_once_with(SiteControlGroupUri, json=group.model_dump())
 
 

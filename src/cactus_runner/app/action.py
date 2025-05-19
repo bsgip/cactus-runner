@@ -1,7 +1,20 @@
 import logging
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from cactus_test_definitions import Action
+from envoy.server.model.site import Site
+from envoy_schema.admin.schema.config import (
+    ControlDefaultRequest,
+    RuntimeServerConfigRequest,
+    UpdateDefaultValue,
+)
+from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupRequest,
+    SiteControlRequest,
+)
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy.admin_client import EnvoyAdminClient
@@ -21,6 +34,11 @@ class UnknownActionError(Exception):
 
 class FailedActionError(Exception):
     """Error raised when an action failed to execute"""
+
+
+async def get_active_site(session: AsyncSession) -> Site:
+    """We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client"""
+    return (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
 
 
 async def action_enable_listeners(
@@ -76,6 +94,120 @@ async def action_remove_listeners(
         active_test_procedure.listeners.remove(listener_to_remove)  # mutate the original listeners list
 
 
+async def action_set_default_der_control(
+    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+):
+    # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
+    active_site = await get_active_site(session)
+
+    import_limit_watts = resolved_parameters.get("opModImpLimW", None)
+    export_limit_watts = resolved_parameters.get("opModExpLimW", None)
+    gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
+    load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
+    setGradW = resolved_parameters.get("setGradW", None)
+
+    await envoy_client.post_site_control_default(
+        active_site.site_id,
+        ControlDefaultRequest(
+            import_limit_watts=UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else None,
+            export_limit_watts=UpdateDefaultValue(value=export_limit_watts) if export_limit_watts is not None else None,
+            generation_limit_watts=UpdateDefaultValue(value=gen_limit_watts) if gen_limit_watts is not None else None,
+            load_limit_watts=UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else None,
+            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else None,
+        ),
+    )
+
+
+async def action_create_der_control(
+    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+):
+    # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
+    active_site = (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
+
+    start_time: datetime = resolved_parameters["start"]
+    duration_seconds: int = resolved_parameters["duration_seconds"]
+
+    # This is handled by updating the system config - we can't set pow10 mult on individual controls
+    pow_10mult: int | None = resolved_parameters.get("pow_10_multipliers", None)
+    if pow_10mult is not None:
+        await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=pow_10mult))
+
+    # For primacy - we need to find the site_control_group with the specified primacy (creating one if required)
+    primacy: int = resolved_parameters.get("primacy", 0)
+    site_control_group_id: int | None = None
+    control_groups_response = await envoy_client.get_all_site_control_groups()
+    if control_groups_response.site_control_groups:
+        for g in control_groups_response.site_control_groups:
+            if g.primacy == primacy:
+                site_control_group_id = g.site_control_group_id
+                break
+
+    # Create our site control group if we don't have an existing one
+    if site_control_group_id is None:
+        site_control_group_id = await envoy_client.post_site_control_group(
+            SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy)
+        )
+
+    randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
+    energize: bool | None = resolved_parameters.get("opModEnergize", None)
+    connect: bool | None = resolved_parameters.get("opModConnect", None)
+    import_limit_watts: Decimal | None = resolved_parameters.get("opModImpLimW", None)
+    export_limit_watts: Decimal | None = resolved_parameters.get("opModExpLimW", None)
+    gen_limit_watts: Decimal | None = resolved_parameters.get("opModGenLimW", None)
+    load_limit_watts: Decimal | None = resolved_parameters.get("opModLoadLimW", None)
+
+    await envoy_client.create_site_controls(
+        site_control_group_id,
+        [
+            SiteControlRequest(
+                calculation_log_id=None,
+                site_id=active_site.site_id,
+                duration_seconds=duration_seconds,
+                start_time=start_time,
+                randomize_start_seconds=randomize_seconds,
+                set_energized=energize,
+                set_connect=connect,
+                import_limit_watts=import_limit_watts,
+                export_limit_watts=export_limit_watts,
+                generation_limit_watts=gen_limit_watts,
+                load_limit_watts=load_limit_watts,
+            )
+        ],
+    )
+
+
+async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
+    control_groups_response = await envoy_client.get_all_site_control_groups()
+    if control_groups_response.site_control_groups:
+        for g in control_groups_response.site_control_groups:
+            await envoy_client.delete_site_controls_in_range(
+                g.site_control_group_id,
+                datetime(2000, 1, 1, tzinfo=timezone.utc),
+                datetime(
+                    2100, 1, 1, tzinfo=timezone.utc
+                ),  # If this is still in use in 2100... I hope you guys sorted out that climate change thing.
+                # Sorry, some of us were trying. Sincerely people in 2025
+            )
+
+
+async def action_set_poll_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+    rate_seconds: int = resolved_parameters["rate_seconds"]
+    await envoy_client.update_runtime_config(
+        RuntimeServerConfigRequest(
+            dcap_pollrate_seconds=rate_seconds,
+            edevl_pollrate_seconds=rate_seconds,
+            fsal_pollrate_seconds=rate_seconds,
+            derl_pollrate_seconds=rate_seconds,
+            derpl_pollrate_seconds=rate_seconds,
+        )
+    )
+
+
+async def action_set_post_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+    rate_seconds: int = resolved_parameters["rate_seconds"]
+    await envoy_client.update_runtime_config(RuntimeServerConfigRequest(mup_postrate_seconds=rate_seconds))
+
+
 async def apply_action(
     action: Action, active_test_procedure: ActiveTestProcedure, session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
@@ -101,6 +233,21 @@ async def apply_action(
             case "remove-listeners":
                 await action_remove_listeners(active_test_procedure, resolved_parameters)
                 return
+
+            case "set-default-der-control":
+                await action_set_default_der_control(resolved_parameters, session, envoy_client)
+
+            case "create-der-control":
+                await action_create_der_control(resolved_parameters, session, envoy_client)
+
+            case "cancel-active-der-controls":
+                await action_cancel_active_controls(envoy_client)
+
+            case "set-poll-rate":
+                await action_set_poll_rate(resolved_parameters, envoy_client)
+
+            case "set-post-rate":
+                await action_set_post_rate(resolved_parameters, envoy_client)
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
