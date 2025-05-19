@@ -12,7 +12,7 @@ ENVOY_ADMIN_BASICAUTH_PASSWORD = os.environ["ENVOY_ADMIN_BASICAUTH_PASSWORD"]
 
 # APP_HOST is the IP address of cactus runner (aiohttp) application
 # See https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.run_app
-DEFAULT_APP_HOST = "0.0.0.0"  # This is the aiohttp default
+DEFAULT_APP_HOST = "127.0.0.1"  # This is the aiohttp default
 APP_HOST = os.getenv("APP_HOST", DEFAULT_APP_HOST)
 
 # APP_PORT is the port the cactus runner application listens on.
