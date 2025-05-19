@@ -17,15 +17,32 @@ from cactus_runner.app.env import (
     APP_PORT,
     MOUNT_POINT,
     SERVER_URL,
+    ENVOY_ADMIN_URL,
+    ENVOY_ADMIN_BASICAUTH_USERNAME,
+    ENVOY_ADMIN_BASICAUTH_PASSWORD,
 )
+from cactus_runner.app.envoy.admin_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
     APPKEY_RUNNER_STATE,
     APPKEY_TEST_PROCEDURES,
+    APPKEY_ENVOY_ADMIN_CLIENT,
+    APPKEY_ENVOY_ADMIN_INIT_KWARGS,
 )
 from cactus_runner.models import Aggregator, RunnerState
 
 logger = logging.getLogger(__name__)
+
+
+async def app_on_startup_handler(app: web.Application) -> None:
+    """Handler for on_startup event"""
+    init_kwargs = app[APPKEY_ENVOY_ADMIN_INIT_KWARGS]
+    app[APPKEY_ENVOY_ADMIN_CLIENT] = EnvoyAdminClient(**init_kwargs)
+
+
+async def app_on_cleanup_handler(app: web.Application) -> None:
+    """Handler for on_cleanup (i.e. after app shutdown) event"""
+    await app[APPKEY_ENVOY_ADMIN_CLIENT].close_session()
 
 
 def create_app() -> web.Application:
@@ -51,6 +68,16 @@ def create_app() -> web.Application:
     app[APPKEY_AGGREGATOR] = Aggregator()
     app[APPKEY_RUNNER_STATE] = RunnerState()
     app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
+    app[APPKEY_ENVOY_ADMIN_INIT_KWARGS] = {
+        "base_url": ENVOY_ADMIN_URL,
+        "auth_params": EnvoyAdminClientAuthParams(
+            username=ENVOY_ADMIN_BASICAUTH_USERNAME, password=ENVOY_ADMIN_BASICAUTH_PASSWORD
+        ),
+    }
+
+    # App events
+    app.on_startup.append(app_on_startup_handler)
+    app.on_cleanup.append(app_on_cleanup_handler)
 
     return app
 
@@ -80,7 +107,6 @@ def create_app_with_logging() -> web.Application:
 
 
 app = create_app_with_logging()
-
 
 if __name__ == "__main__":
     web.run_app(app, port=APP_PORT)
