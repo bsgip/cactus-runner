@@ -17,7 +17,7 @@ from envoy_schema.admin.schema.site_control import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.envoy.admin_client import EnvoyAdminClient
+from cactus_runner.app.envoy_client import EnvoyAdminClient
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )

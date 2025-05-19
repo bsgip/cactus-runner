@@ -21,7 +21,7 @@ from cactus_runner.app.env import (
     ENVOY_ADMIN_BASICAUTH_USERNAME,
     ENVOY_ADMIN_BASICAUTH_PASSWORD,
 )
-from cactus_runner.app.envoy.admin_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
+from cactus_runner.app.envoy_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
     APPKEY_RUNNER_STATE,

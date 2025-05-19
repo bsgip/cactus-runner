@@ -4,7 +4,7 @@ from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.action import FailedActionError, UnknownActionError, apply_action
-from cactus_runner.app.envoy.admin_client import EnvoyAdminClient
+from cactus_runner.app.envoy_client import EnvoyAdminClient
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
