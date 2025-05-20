@@ -273,6 +273,12 @@ async def apply_action(
 
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
+
+            case "communications-loss":
+                active_test_procedure.communications_enabled = False
+
+            case "communications-restore":
+                active_test_procedure.communications_enabled = True
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
