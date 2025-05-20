@@ -53,6 +53,9 @@ async def action_enable_listeners(
     Step names are defined by the test procedures. They are strings of the form "ALL-01-001", which is the first step
     "001" in the "ALL-01" test procedure.
 
+    In addition to enabling listeners, this function also records the start time for (newly enabled) listeners with
+    wait events.
+
     Args:
         session: DB session for accessing the envoy database
         active_test_procedure: The currently active test procedure
@@ -63,6 +66,10 @@ async def action_enable_listeners(
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-listeners: Enabling listener {listener.step}")
             listener.enabled = True
+
+            # Record the start time for listeners with wait events
+            if listener.event.type == "wait":
+                listener.event.parameters["wait_start_timestamp"] = datetime.now(tz=timezone.utc)
 
 
 async def action_remove_listeners(
@@ -249,6 +256,7 @@ async def apply_action(
     try:
         match action.type:
             case "enable-listeners":
+                logger.info("about to enable listeners")
                 await action_enable_listeners(active_test_procedure, resolved_parameters)
                 return
 
