@@ -55,6 +55,7 @@ async def periodic_task(app: web.Application):
                     active_test_procedure=active_test_procedure, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT]
                 )
         except Exception as e:
+            # Catch and log uncaught exceptions to prevent periodic task from hanging
             logger.error(f"Uncaught exception in periodic task: {repr(e)}")
 
         period = app[APPKEY_PERIOD_SEC]
