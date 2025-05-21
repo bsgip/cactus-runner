@@ -3,7 +3,7 @@ import logging
 from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.action import FailedActionError, UnknownActionError, apply_action
+from cactus_runner.app.action import apply_actions
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -35,17 +35,12 @@ async def handle_event(
             logger.info(f"Event matched: {event=}")
 
             # Perform actions associated with event
-            for action in listener.actions:
-                logger.info(f"Executing action: {action=}")
-                try:
-                    await apply_action(
-                        session=session,
-                        action=action,
-                        active_test_procedure=active_test_procedure,
-                        envoy_client=envoy_client,
-                    )
-                except (UnknownActionError, FailedActionError) as e:
-                    logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")
+            await apply_actions(
+                session=session,
+                listener=listener,
+                active_test_procedure=active_test_procedure,
+                envoy_client=envoy_client,
+            )
 
             return listener
 
