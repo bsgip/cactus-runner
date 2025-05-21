@@ -48,11 +48,15 @@ async def periodic_task(app: web.Application):
         app (web.Application): The AIOHTTP application instance.
     """
     while True:
-        active_test_procedure = app[APPKEY_RUNNER_STATE].active_test_procedure
-        if active_test_procedure:
-            await event.handle_wait_event(
-                active_test_procedure=active_test_procedure, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT]
-            )
+        try:
+            active_test_procedure = app[APPKEY_RUNNER_STATE].active_test_procedure
+            if active_test_procedure:
+                await event.handle_wait_event(
+                    active_test_procedure=active_test_procedure, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT]
+                )
+        except Exception as e:
+            logger.error(f"Uncaught exception in periodic task: {repr(e)}")
+
         period = app[APPKEY_PERIOD_SEC]
         await asyncio.sleep(period)
 
