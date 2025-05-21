@@ -79,18 +79,12 @@ async def periodic_task(app: web.Application):
                     if now - wait_start >= timedelta(seconds=wait_duration_sec):
                         # Apply actions
                         async with begin_session() as session:
-                            for current_action in listener.actions:
-                                logger.debug(f"Executing action: {action=}")
-                                try:
-                                    envoy_client = app[APPKEY_ENVOY_ADMIN_CLIENT]
-                                    await action.apply_action(
-                                        session=session,
-                                        action=current_action,
-                                        active_test_procedure=active_test_procedure,
-                                        envoy_client=envoy_client,
-                                    )
-                                except (action.UnknownActionError, action.FailedActionError) as e:
-                                    logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")
+                            await action.apply_actions(
+                                session=session,
+                                listener=listener,
+                                active_test_procedure=active_test_procedure,
+                                envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT],
+                            )
 
                         # Update step status
                         active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
