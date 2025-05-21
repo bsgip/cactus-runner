@@ -133,7 +133,7 @@ async def test_handle_event_calls_apply_actions(mocker, test_event: Event, liste
     mock_apply_actions = mocker.patch("cactus_runner.app.event.apply_actions")
 
     # Act
-    matched_listener = await event.handle_event(
+    await event.handle_event(
         session=mock_session,
         event=test_event,
         active_test_procedure=active_test_procedure,
