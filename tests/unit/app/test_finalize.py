@@ -54,6 +54,8 @@ def test_get_zip_contents(mocker):
 def test_get_zip_contents_raises_databasedumperror(mocker):
 
     mocker.patch.object(finalize.shutil, "copyfile")  # prevent logfile copying
+    mocker.patch("cactus_runner.app.database.CURRENT_CONNECTION", None)  # Need to mock this out incase previous
+    # test initialises DB.
 
     with pytest.raises(finalize.DatabaseDumpError):
         finalize.get_zip_contents(json_status_summary="", runner_logfile="", envoy_logfile="")
