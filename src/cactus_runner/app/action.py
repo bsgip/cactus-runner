@@ -215,12 +215,14 @@ async def action_register_end_device(
     # This is only really used for out of band registration tests - it just needs to work "once"
     nmi: str | None = resolved_parameters.get("nmi", None)
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
+    now = datetime.now(tz=timezone.utc)
     session.add(
         Site(
             nmi=nmi,
             aggregator_id=1,
             timezone_id="Australia/Brisbane",
-            created_time=datetime.now(tz=timezone.utc),
+            created_time=now,
+            changed_time=now,
             lfdi=active_test_procedure.client_lfdi,
             sfdi=active_test_procedure.client_sfdi,
             device_category=0,
