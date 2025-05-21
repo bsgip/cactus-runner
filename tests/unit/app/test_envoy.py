@@ -16,7 +16,7 @@ from envoy_schema.admin.schema.site_control import (
 )
 from envoy_schema.admin.schema.uri import (
     ServerConfigRuntimeUri,
-    SiteControlGroupUri,
+    SiteControlGroupListUri,
     SiteControlUri,
 )
 
@@ -183,7 +183,7 @@ async def test_post_site_control_group(mock_session_with_json_response):
 
     # Assert
     assert result == 12345, "This is the ID extracted from Location header"
-    mock_session.post.assert_called_once_with(SiteControlGroupUri, json=group.model_dump())
+    mock_session.post.assert_called_once_with(SiteControlGroupListUri, json=group.model_dump())
 
 
 @pytest.mark.asyncio
@@ -203,5 +203,7 @@ async def test_create_site_controls(mock_session_with_json_response):
     # Assert
     assert status == HTTPStatus.CREATED
     mock_session.post.assert_called_once_with(
-        SiteControlUri.format(group_id=42), json=[control_1.model_dump(), control_2.model_dump()]
+        SiteControlUri.format(group_id=42),
+        data="[" + ",".join([control_1.model_dump_json(), control_2.model_dump_json()]) + "]",
+        headers={"Content-Type": "application/json"},
     )

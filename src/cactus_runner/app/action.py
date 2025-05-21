@@ -260,21 +260,22 @@ async def apply_action(
 
             case "set-default-der-control":
                 await action_set_default_der_control(resolved_parameters, session, envoy_client)
-
+                return
             case "create-der-control":
                 await action_create_der_control(resolved_parameters, session, envoy_client)
-
+                return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)
-
+                return
             case "set-poll-rate":
                 await action_set_poll_rate(resolved_parameters, envoy_client)
-
+                return
             case "set-post-rate":
                 await action_set_post_rate(resolved_parameters, envoy_client)
-
+                return
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
+                return
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
