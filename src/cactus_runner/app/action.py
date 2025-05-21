@@ -23,6 +23,7 @@ from cactus_runner.app.variable_resolver import (
 )
 from cactus_runner.models import (
     ActiveTestProcedure,
+    Listener,
 )
 
 logger = logging.getLogger(__name__)
@@ -286,3 +287,30 @@ async def apply_action(
         raise FailedActionError(f"Failed executing action {action.type}")
 
     raise UnknownActionError(f"Unrecognised action '{action}'. This is a problem with the test definition")
+
+
+async def apply_actions(
+    session: AsyncSession,
+    listener: Listener,
+    active_test_procedure: ActiveTestProcedure,
+    envoy_client: EnvoyAdminClient,
+):
+    """Applies all actions for the given listener.
+
+    Logs an error if the action was able to be executed.
+
+    Args:
+        listener (Listener): An instance of Listener whose actions will be applied.
+        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+    """
+    for action in listener.actions:
+        logger.info(f"Executing action: {action=}")
+        try:
+            await apply_action(
+                session=session,
+                action=action,
+                active_test_procedure=active_test_procedure,
+                envoy_client=envoy_client,
+            )
+        except (UnknownActionError, FailedActionError) as e:
+            logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")
