@@ -37,6 +37,9 @@ from cactus_runner.app.shared import (
     APPKEY_RUNNER_STATE,
     APPKEY_TEST_PROCEDURES,
 )
+from cactus_runner.app.variable_resolver import (
+    resolve_variable_expressions_from_parameters,
+)
 from cactus_runner.models import Aggregator, RunnerState, StepStatus
 
 logger = logging.getLogger(__name__)
@@ -66,19 +69,22 @@ async def periodic_task(app: web.Application):
             # Loop over enabled listeners with (active) wait events
             for listener in active_test_procedure.listeners:
                 if listener.enabled and listener.event.type == "wait":
-                    try:
-                        wait_start = listener.event.parameters["wait_start_timestamp"]
-                    except KeyError:
-                        raise WaitEventError("Wait event missing start timestamp ('wait_start_timestamp')")
-                    try:
-                        wait_duration_sec = listener.event.parameters["duration_seconds"]
-                    except KeyError:
-                        raise WaitEventError("Wait event missing duration ('duration_seconds')")
+                    async with begin_session() as session:
+                        resolved_parameters = await resolve_variable_expressions_from_parameters(
+                            session, listener.event.parameters
+                        )
+                        try:
+                            wait_start = resolved_parameters["wait_start_timestamp"]
+                        except KeyError:
+                            raise WaitEventError("Wait event missing start timestamp ('wait_start_timestamp')")
+                        try:
+                            wait_duration_sec = resolved_parameters["duration_seconds"]
+                        except KeyError:
+                            raise WaitEventError("Wait event missing duration ('duration_seconds')")
 
-                    # Determine if any wait periods have expired
-                    if now - wait_start >= timedelta(seconds=wait_duration_sec):
-                        # Apply actions
-                        async with begin_session() as session:
+                        # Determine if wait period has expired
+                        if now - wait_start >= timedelta(seconds=wait_duration_sec):
+                            # Apply actions
                             await action.apply_actions(
                                 session=session,
                                 listener=listener,
@@ -86,8 +92,8 @@ async def periodic_task(app: web.Application):
                                 envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT],
                             )
 
-                        # Update step status
-                        active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
+                            # Update step status
+                            active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
 
         period = app[APPKEY_PERIOD_SEC]
         await asyncio.sleep(period)
