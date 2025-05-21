@@ -24,6 +24,7 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlResponse,
 )
 from envoy_schema.admin.schema.uri import (
+    SiteControlRangeUri,
     ServerConfigRuntimeUri,
     SiteControlDefaultConfigUri,
     SiteControlGroupListUri,
@@ -58,7 +59,13 @@ class EnvoyAdminClientAuthParams:
 
 
 class EnvoyAdminClient:
-    """To be used as singleton NOTE: ClientSession must be closed manually"""
+    """
+    Client for interacting with the Envoy Admin API.
+
+    This class is designed to be used as a dependency that gets injected at application startup.
+    It internally manages the lifecycle of an aiohttp.ClientSession and expects a call close_session() during
+    application cleanup to ensure proper session teardown.
+    """
 
     def __init__(self, base_url: StrOrURL, auth_params: EnvoyAdminClientAuthParams, timeout: int = 30):
         self._base_url = base_url
@@ -85,14 +92,16 @@ class EnvoyAdminClient:
         return HTTPStatus(resp.status)
 
     async def post_site_control_group(self, site_control_group: SiteControlGroupRequest) -> int:
-        resp = await self._session.post(SiteControlGroupUri, json=site_control_group.model_dump())
+        resp = await self._session.post(SiteControlGroupListUri, json=site_control_group.model_dump())
         resp.raise_for_status()
         href = resp.headers["Location"]
         return int(href.split("/")[-1])
 
     async def post_site_control_default(self, site_id: int, control_default: ControlDefaultRequest) -> HTTPStatus:
         resp = await self._session.post(
-            SiteControlDefaultConfigUri.format(site_id=site_id), json=control_default.model_dump()
+            SiteControlDefaultConfigUri.format(site_id=site_id),
+            data=control_default.model_dump_json(),
+            headers={"Content-Type": "application/json"},
         )
         resp.raise_for_status()
         return HTTPStatus(resp.status)
@@ -116,7 +125,9 @@ class EnvoyAdminClient:
 
     async def create_site_controls(self, group_id: int, control_list: list[SiteControlRequest]) -> HTTPStatus:
         resp = await self._session.post(
-            SiteControlUri.format(group_id=group_id), json=[site_control.model_dump() for site_control in control_list]
+            SiteControlUri.format(group_id=group_id),
+            data="[" + ",".join([site_control.model_dump_json() for site_control in control_list]) + "]",
+            headers={"Content-Type": "application/json"},
         )
         resp.raise_for_status()
         return HTTPStatus(resp.status)
@@ -140,8 +151,7 @@ class EnvoyAdminClient:
         self, group_id: int, period_start: datetime, period_end: datetime
     ) -> HTTPStatus:
         resp = await self._session.delete(
-            SiteControlUri.format(group_id=group_id),
-            params={"period_start": period_start.isoformat(), "period_end": period_end.isoformat()},
+            SiteControlRangeUri.format(group_id=group_id, period_start=period_start, period_end=period_end),
         )
         resp.raise_for_status()
         return HTTPStatus(resp.status)

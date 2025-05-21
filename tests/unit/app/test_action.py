@@ -1,16 +1,27 @@
+from datetime import datetime, timezone
 import unittest.mock as mock
 
 import pytest
+from assertical.fixtures.postgres import generate_async_session
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import Action, Event
+from envoy.server.model.site import Site
+from envoy.server.model.doe import SiteControlGroup, DynamicOperatingEnvelope
 
 from cactus_runner.app.action import (
     UnknownActionError,
+    action_cancel_active_controls,
+    action_create_der_control,
     action_enable_listeners,
+    action_register_end_device,
     action_remove_listeners,
+    action_set_default_der_control,
+    action_set_poll_rate,
+    action_set_post_rate,
     apply_action,
 )
-from cactus_runner.models import ActiveTestProcedure, Listener
+from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
 
 
 def create_testing_active_test_procedure(listeners: list[Listener]) -> ActiveTestProcedure:
@@ -113,3 +124,157 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
             active_test_procedure=active_test_procedure,
         )
     assert_mock_session(mock_session)
+
+
+@pytest.mark.anyio
+async def test_action_set_default_der_control(pg_base_config, envoy_admin_client):
+    """Success tests"""
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        await session.commit()
+    resolved_params = {
+        "opModImpLimW": 10,
+        "opModExpLimW": 10,
+        "opModGenLimW": 10,
+        "opModLoadLimW": 10,
+        "setGradW": 10,
+    }
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_set_default_der_control(
+            session=session, envoy_client=envoy_admin_client, resolved_parameters=resolved_params
+        )
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from default_site_control;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_client):
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        await session.commit()
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "randomizeStart_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_control(resolved_params, session, envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_existing_group(pg_base_config, envoy_admin_client):
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(SiteControlGroup, primacy=2))
+        await session.commit()
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "randomizeStart_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_control(resolved_params, session, envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client):
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        session.add(site)
+        site_ctrl_grp = generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=1)
+        session.add(site_ctrl_grp)
+        await session.flush()
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelope,
+                calculation_log_id=None,
+                site_control_group=site_ctrl_grp,
+                site=site,
+                start_time=datetime.now(timezone.utc),
+            )
+        )
+        await session.commit()
+
+    # Act
+    await action_cancel_active_controls(envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 0
+
+
+@pytest.mark.anyio
+async def test_action_set_poll_rate(pg_base_config, envoy_admin_client):
+    # Arrange
+    resolved_params = {"rate_seconds": 10}
+
+    # Act
+    await action_set_poll_rate(resolved_params, envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_set_post_rate(pg_base_config, envoy_admin_client):
+    # Arrange
+    resolved_params = {"rate_seconds": 10}
+
+    # Act
+    await action_set_post_rate(resolved_params, envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_register_end_device(pg_base_config):
+    # Arrange
+    atp = generate_class_instance(ActiveTestProcedure, step_status={"1": StepStatus.PENDING})
+    resolved_params = {
+        "nmi": "abc",
+        "registration_pin": 1234,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_register_end_device(atp, resolved_params, session)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from site;").fetchone()[0] == 1

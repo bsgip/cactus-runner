@@ -23,6 +23,8 @@ The cactus runner application uses the following environment variables,
 | Environment Variable | Default Value | Description |
 | --- | --- | --- |
 | DATABASE_URL | - | The database connection string of an envoy database. |
+| ENVOY_ADMIN_BASICAUTH_USERNAME | - | Username used for HTTP Basic Authentication when accessing the envoy-admin API.  |
+| ENVOY_ADMIN_BASICAUTH_PASSWORD | - | Password used for HTTP Basic Authentication when accessing the envoy-admin API. Must be used in conjunction with ENVOY_ADMIN_BASICAUTH_USERNAME. |
 | SERVER_URL | `http://localhost:8000` | The URL of an envoy server. |
 | APP_HOST | `0.0.0.0` | The host IP of the cactus runner application. |
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
