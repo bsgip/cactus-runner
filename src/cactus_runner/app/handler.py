@@ -412,8 +412,7 @@ async def proxied_request_handler(request):
             status = http.HTTPStatus(response.status)
             body = await response.read()
     else:
-        # TODO We have to return a response (returning anything else simply generates a 500 error).
-        # Temporarily return a 500 since we can't simulate no response (comms loss) at present.
+        # We simulate communication loss as a series of HTTP 500 responses
         headers = []
         status = http.HTTPStatus.INTERNAL_SERVER_ERROR
         body = "COMMS DISABLED"
