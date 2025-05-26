@@ -1,0 +1,132 @@
+# This docker compose file is made to emulate the k8s-cluster/deploy-template/app-setup/cactus-teststack.yml
+# as much as possible for testing without k8s.
+
+x-envoy-common:
+  environment: &common-env
+    DATABASE_URL: "postgresql+asyncpg://test_user:test_pwd@envoy-db/test_db"
+    CERT_HEADER: x-forwarded-client-cert
+    ENABLE_NOTIFICATIONS: "True"
+    RABBIT_MQ_BROKER_URL: "amqp://guest:guest@rabbit-mq:5672"
+    ALLOW_DEVICE_REGISTRATION: "True"
+
+services:
+  cactus_runner:
+    image: ${CACTUS_RUNNER_IMAGE}
+    ports:
+      - 127.0.0.1:8080:8080
+    networks:
+      - envoy-net
+    volumes:
+      - shared:/shared
+    environment:
+      - SERVER_URL=http://envoy:8000
+      - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@envoy-db:8003/test_db
+      - KICKOFF_FILE=/shared/.kickoff
+      - ENVOY_ENV_FILE=/shared/envoy.env
+
+  cactus-teststack-init:
+    image: ${CACTUS_TESTSTACK_INIT_IMAGE}
+    restart: "no"
+    environment:
+      - KICKOFF_FILE=/shared/.kickoff
+    volumes:
+      - shared:/shared
+
+  rabbit-mq:
+    image: rabbitmq:3-management
+    ports:
+      - 127.0.0.1:5672:5672
+      - 127.0.0.1:15672:15672
+    hostname: rabbit-mq
+    restart: unless-stopped
+    networks:
+      - envoy-net
+    healthcheck:
+      test: rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      cactus-teststack-init:
+        condition: service_completed_successfully
+
+  taskiq-worker:
+    image: ${CACTUS_ENVOY_APP_IMAGE}
+    environment:
+      <<: *common-env
+    command: taskiq worker envoy.notification.main:broker envoy.notification.task
+    restart: unless-stopped
+    networks:
+      - envoy-net
+    depends_on:
+      rabbit-mq:
+        condition: service_healthy
+      cactus-teststack-init:
+        condition: service_completed_successfully
+  envoy:
+    image: ${CACTUS_ENVOY_APP_IMAGE}
+    ports:
+      - 127.0.0.1:8000:8000
+    restart: unless-stopped
+    networks:
+      - envoy-net
+    environment:
+      <<: *common-env
+      PORT: 8000
+      APP_MODULE: envoy.server.main:app
+      ENVOY_ENV_FILE: /shared/envoy.env
+    depends_on:
+      envoy-db:
+        condition: service_started
+      rabbit-mq:
+        condition: service_healthy
+      cactus-teststack-init:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+
+  envoy-admin:
+    image: ${CACTUS_ENVOY_APP_IMAGE}
+    ports:
+      - 127.0.0.1:8001:8001
+    restart: unless-stopped
+    networks:
+      - envoy-net
+    environment:
+      <<: *common-env
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: password
+      PORT: 8001
+      APP_MODULE: envoy.admin.main:app
+    depends_on:
+      envoy-db:
+        condition: service_started
+      rabbit-mq:
+        condition: service_healthy
+      cactus-teststack-init:
+        condition: service_completed_successfully
+  # The db data is *not* persisted via a docker volume
+  envoy-db:
+    image: ${CACTUS_ENVOY_DB_IMAGE}
+    ports:
+      - 127.0.0.1:8003:5432
+    networks:
+      - envoy-net
+    environment:
+      - POSTGRES_USER=test_user
+      - POSTGRES_PASSWORD=test_pwd
+      - POSTGRES_DB=test_db
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "test_user", "-d", "test_db" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  envoy-net:
+
+
+volumes:
+  shared:
