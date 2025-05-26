@@ -23,6 +23,7 @@ from cactus_runner.app.variable_resolver import (
 )
 from cactus_runner.models import (
     ActiveTestProcedure,
+    Listener,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,9 @@ async def action_enable_listeners(
     Step names are defined by the test procedures. They are strings of the form "ALL-01-001", which is the first step
     "001" in the "ALL-01" test procedure.
 
+    In addition to enabling listeners, this function also records the start time for (newly enabled) listeners with
+    wait events.
+
     Args:
         session: DB session for accessing the envoy database
         active_test_procedure: The currently active test procedure
@@ -63,6 +67,10 @@ async def action_enable_listeners(
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-listeners: Enabling listener {listener.step}")
             listener.enabled = True
+
+            # Record the start time for listeners with wait events
+            if listener.event.type == "wait":
+                listener.event.parameters["wait_start_timestamp"] = datetime.now(tz=timezone.utc)
 
 
 async def action_remove_listeners(
@@ -251,6 +259,7 @@ async def apply_action(
     try:
         match action.type:
             case "enable-listeners":
+                logger.info("about to enable listeners")
                 await action_enable_listeners(active_test_procedure, resolved_parameters)
                 return
 
@@ -276,8 +285,41 @@ async def apply_action(
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
                 return
+
+            case "communications-loss":
+                active_test_procedure.communications_enabled = False
+
+            case "communications-restore":
+                active_test_procedure.communications_enabled = True
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
 
     raise UnknownActionError(f"Unrecognised action '{action}'. This is a problem with the test definition")
+
+
+async def apply_actions(
+    session: AsyncSession,
+    listener: Listener,
+    active_test_procedure: ActiveTestProcedure,
+    envoy_client: EnvoyAdminClient,
+):
+    """Applies all actions for the given listener.
+
+    Logs an error if the action was able to be executed.
+
+    Args:
+        listener (Listener): An instance of Listener whose actions will be applied.
+        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+    """
+    for action in listener.actions:
+        logger.info(f"Executing action: {action=}")
+        try:
+            await apply_action(
+                session=session,
+                action=action,
+                active_test_procedure=active_test_procedure,
+                envoy_client=envoy_client,
+            )
+        except (UnknownActionError, FailedActionError) as e:
+            logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")

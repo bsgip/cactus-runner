@@ -1,13 +1,13 @@
-from datetime import datetime, timezone
 import unittest.mock as mock
+from datetime import datetime, timezone
 
 import pytest
-from assertical.fixtures.postgres import generate_async_session
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fake.generator import generate_class_instance
+from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import Action, Event
+from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.site import Site
-from envoy.server.model.doe import SiteControlGroup, DynamicOperatingEnvelope
 
 from cactus_runner.app.action import (
     UnknownActionError,
@@ -20,6 +20,7 @@ from cactus_runner.app.action import (
     action_set_poll_rate,
     action_set_post_rate,
     apply_action,
+    apply_actions,
 )
 from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
 
@@ -124,6 +125,52 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
             active_test_procedure=active_test_procedure,
         )
     assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "listener",
+    [
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
+            actions=[],
+            enabled=True,
+        ),  # no actions for listener
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
+            actions=[Action(type="enable-listeners", parameters={})],
+            enabled=True,
+        ),  # 1 action for listener
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
+            actions=[
+                Action(type="enable-listeners", parameters={}),
+                Action(type="remove-listeners", parameters={}),
+            ],
+            enabled=True,
+        ),  # 2 actions for listener
+    ],
+)
+@pytest.mark.anyio
+async def test_apply_actions(mocker, listener: Listener):
+    # Arrange
+    active_test_procedure = mock.MagicMock()
+    mock_session = create_mock_session()
+    mock_apply_action = mocker.patch("cactus_runner.app.action.apply_action")
+    mock_envoy_client = mock.MagicMock()
+
+    # Act
+    await apply_actions(
+        session=mock_session,
+        listener=listener,
+        active_test_procedure=active_test_procedure,
+        envoy_client=mock_envoy_client,
+    )
+
+    # Assert
+    assert mock_apply_action.call_count == len(listener.actions)
 
 
 @pytest.mark.anyio

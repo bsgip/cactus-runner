@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
-from cactus_test_definitions import Action, Event
+from cactus_test_definitions import Event
 
 from cactus_runner.app import event
 from cactus_runner.models import Listener
@@ -97,48 +97,43 @@ async def test_handle_event_with_matching_listener(
                     enabled=True,
                 )
             ],
-        ),  # no actions for listener
+        ),
         (
             Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
             [
                 Listener(
                     step="step",
                     event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[Action(type="enable-listeners", parameters={})],
+                    actions=[],
                     enabled=True,
                 )
             ],
-        ),  # 1 action for listener
+        ),
         (
             Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
             [
                 Listener(
                     step="step",
                     event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[
-                        Action(type="enable-listeners", parameters={}),
-                        Action(type="remove-listeners", parameters={}),
-                    ],
+                    actions=[],
                     enabled=True,
                 )
             ],
-        ),  # 2 actions for listener
+        ),
     ],
 )
 @pytest.mark.asyncio
-async def test_handle_event_calls__apply_action_for_each_listener_action(
-    mocker, test_event: Event, listeners: list[Listener]
-):
+async def test_handle_event_calls_apply_actions(mocker, test_event: Event, listeners: list[Listener]):
     # Arrange
     active_test_procedure = MagicMock()
     active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
-    mock_apply_action = mocker.patch("cactus_runner.app.event.apply_action")
+    mock_apply_actions = mocker.patch("cactus_runner.app.event.apply_actions")
 
     # Act
-    matched_listener = await event.handle_event(
+    await event.handle_event(
         session=mock_session,
         event=test_event,
         active_test_procedure=active_test_procedure,
@@ -146,7 +141,7 @@ async def test_handle_event_calls__apply_action_for_each_listener_action(
     )
 
     # Assert
-    assert mock_apply_action.call_count == len(matched_listener.actions)
+    mock_apply_actions.assert_called_once()
     assert_mock_session(mock_session)
 
 

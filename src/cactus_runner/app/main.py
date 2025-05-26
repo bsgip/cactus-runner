@@ -1,4 +1,6 @@
+import asyncio
 import atexit
+import contextlib
 import json
 import logging
 import logging.config
@@ -10,7 +12,7 @@ from aiohttp import web
 from cactus_test_definitions import TestProcedureConfig
 
 from cactus_runner import __version__
-from cactus_runner.app import handler
+from cactus_runner.app import event, handler
 from cactus_runner.app.database import initialise_database_connection
 from cactus_runner.app.env import (
     APP_HOST,
@@ -29,12 +31,50 @@ from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_ENVOY_ADMIN_INIT_KWARGS,
+    APPKEY_PERIOD_SEC,
+    APPKEY_PERIODIC_TASK,
     APPKEY_RUNNER_STATE,
     APPKEY_TEST_PROCEDURES,
 )
 from cactus_runner.models import Aggregator, RunnerState
 
 logger = logging.getLogger(__name__)
+
+
+async def periodic_task(app: web.Application):
+    """Periodic task called app[APPKEY_PERIOD_SEC]
+
+    Args:
+        app (web.Application): The AIOHTTP application instance.
+    """
+    while True:
+        try:
+            active_test_procedure = app[APPKEY_RUNNER_STATE].active_test_procedure
+            if active_test_procedure:
+                await event.handle_wait_event(
+                    active_test_procedure=active_test_procedure, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT]
+                )
+        except Exception as e:
+            # Catch and log uncaught exceptions to prevent periodic task from hanging
+            logger.error(f"Uncaught exception in periodic task: {repr(e)}")
+
+        period = app[APPKEY_PERIOD_SEC]
+        await asyncio.sleep(period)
+
+
+async def setup_periodic_task(app: web.Application):
+    """Setup periodic task.
+
+    The periodic task is accessible through app[APPKEY_PERIODIC_TASKS].
+    The code for the task is defined in the function 'periodic_task'.
+    """
+    app[APPKEY_PERIODIC_TASK] = asyncio.create_task(periodic_task(app))
+
+    yield
+
+    app[APPKEY_PERIODIC_TASK].cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await app[APPKEY_PERIODIC_TASK]
 
 
 async def app_on_startup_handler(app: web.Application) -> None:
@@ -81,6 +121,12 @@ def create_app() -> web.Application:
     # App events
     app.on_startup.append(app_on_startup_handler)
     app.on_cleanup.append(app_on_cleanup_handler)
+
+    DEFAULT_PERIOD_SEC = 10  # seconds
+    app[APPKEY_PERIOD_SEC] = DEFAULT_PERIOD_SEC  # Frequency of periodic task
+
+    # Start the periodic task
+    app.cleanup_ctx.append(setup_periodic_task)
 
     return app
 

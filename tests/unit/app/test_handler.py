@@ -241,3 +241,21 @@ async def test_proxied_request_handler_logs_error_with_no_active_test_procedure(
     mock_logger_warning.assert_called_once()
     assert isinstance(response, Response)
     assert response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_proxied_request_handler_disables_communications(mocker):
+    # Arrange
+    request = MagicMock()
+    request.path = "/dcap"
+    request.path_qs = "/dcap"
+    request.method = "GET"
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure.communications_enabled = False
+    mock_client_request = mocker.patch("aiohttp.client.request")
+
+    # Act
+    response = await handler.proxied_request_handler(request=request)
+
+    # Assert
+    assert mock_client_request.call_count == 0
+    assert response.status == http.HTTPStatus.INTERNAL_SERVER_ERROR

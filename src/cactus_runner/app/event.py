@@ -1,16 +1,22 @@
 import logging
+from datetime import datetime, timedelta, timezone
 
 from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.action import FailedActionError, UnknownActionError, apply_action
+from cactus_runner.app.action import apply_actions
+from cactus_runner.app.database import begin_session
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.models import (
-    ActiveTestProcedure,
-    Listener,
+from cactus_runner.app.variable_resolver import (
+    resolve_variable_expressions_from_parameters,
 )
+from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
 
 logger = logging.getLogger(__name__)
+
+
+class WaitEventError(Exception):
+    """Custom exception for wait event errors."""
 
 
 async def handle_event(
@@ -35,18 +41,55 @@ async def handle_event(
             logger.info(f"Event matched: {event=}")
 
             # Perform actions associated with event
-            for action in listener.actions:
-                logger.info(f"Executing action: {action=}")
-                try:
-                    await apply_action(
-                        session=session,
-                        action=action,
-                        active_test_procedure=active_test_procedure,
-                        envoy_client=envoy_client,
-                    )
-                except (UnknownActionError, FailedActionError) as e:
-                    logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")
+            await apply_actions(
+                session=session,
+                listener=listener,
+                active_test_procedure=active_test_procedure,
+                envoy_client=envoy_client,
+            )
 
             return listener
 
     return None
+
+
+async def handle_wait_event(active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient):
+    """Checks for any expired wait events on enabled listeners and triggers their actions.
+
+    Args:
+        active_test_procedeure (ActiveTestProcedure): The current active test procedure.
+        envoy_client (EnvoyAdminClient): An instance of an envoy admin client.
+
+    Raises:
+        WaitEventError: If the wait event is missing a start timestamp or duration.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Loop over enabled listeners with (active) wait events
+    for listener in active_test_procedure.listeners:
+        if listener.enabled and listener.event.type == "wait":
+            async with begin_session() as session:
+                resolved_parameters = await resolve_variable_expressions_from_parameters(
+                    session, listener.event.parameters
+                )
+                try:
+                    wait_start = resolved_parameters["wait_start_timestamp"]
+                except KeyError:
+                    raise WaitEventError("Wait event missing start timestamp ('wait_start_timestamp')")
+                try:
+                    wait_duration_sec = resolved_parameters["duration_seconds"]
+                except KeyError:
+                    raise WaitEventError("Wait event missing duration ('duration_seconds')")
+
+                # Determine if wait period has expired
+                if now - wait_start >= timedelta(seconds=wait_duration_sec):
+                    # Apply actions
+                    await apply_actions(
+                        session=session,
+                        listener=listener,
+                        active_test_procedure=active_test_procedure,
+                        envoy_client=envoy_client,
+                    )
+
+                    # Update step status
+                    active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
