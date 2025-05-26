@@ -28,8 +28,6 @@ The cactus runner application uses the following environment variables,
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
 | KICKOFF_FILE | `/shared/.kickoff` | The location to create the kickoff file, which triggers kubernetes to launch the envoy service |
 | ENVOY_ENV_FILE | `/shared/envoy.env` | The location to write the test-specific envoy environment variables. |
-| DEV_AGGREGATOR_PREREGISTERED | "false" | If True ("true", "1", "t") the aggregator is not registered when a test procedure is started. Intended for testing purposes only. |
-| DEV_SKIP_DB_PRECONDITIONS | "false" | If True ("true", "1", "t") the database preconditions are not applied. Intended for dev purposes only. |
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
 
 > NOTE:

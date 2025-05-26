@@ -13,9 +13,7 @@ from envoy.server.crud.common import convert_lfdi_to_sfdi
 from cactus_runner.app import action, auth, event, finalize, precondition, status
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
-    DEV_AGGREGATOR_PREREGISTERED,
     DEV_SKIP_AUTHORIZATION_CHECK,
-    DEV_SKIP_DB_PRECONDITIONS,
     SERVER_URL,
 )
 from cactus_runner.app.shared import (
@@ -47,18 +45,13 @@ async def init_handler(request: web.Request):
 
     The following initialization steps are performed:
 
-    1. Register the aggregator (along with its certificate)
-    2. Apply database preconditions
-    3. Trigger the envoy server to start with the correction configuration.
+    1. All tables in the database are truncated
+    2. Register the aggregator (along with its certificate)
+    3. Apply database preconditions
+    4. Trigger the envoy server to start with the correction configuration.
 
-    If the aggregator is already present (along with its certificate) in the utility
-    servers database, registering the aggregator (step 1) can be bypassed by setting
-    the environment variable 'DEV_AGGREGATOR_PREREGISTERED'.
 
-    To skip the database preconditions (step 2), the environment variable
-    'DEV_SKIP_DB_PRECONDITIONS' can be set.
-
-    Triggering the startup of the envoy server (step 3) is achieved by writing a '.env' file
+    Triggering the startup of the envoy server (step 4) is achieved by writing a '.env' file
     containing the envoy server configuration parameters then writing an empty kickoff file
     which is recognised by the container management system and results in the envoy server starting.
     The full paths of these two files is set through the ENVOY_ENV_FILE and KICKSTART_FILE environment variables.
@@ -109,10 +102,7 @@ async def init_handler(request: web.Request):
 
     # Get the lfdi of the aggregator to register
     aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
-    if not DEV_AGGREGATOR_PREREGISTERED:
-        await precondition.register_aggregator(lfdi=aggregator_lfdi)
-    else:
-        logger.warning("Skipping aggregator registration ('DEV_AGGREGATOR_PREREGISTERED' environment variable is True)")
+    await precondition.register_aggregator(lfdi=aggregator_lfdi)
 
     # Save the aggregator details for later request validation
     request.app[APPKEY_AGGREGATOR].certificate = aggregator_certificate
@@ -145,17 +135,10 @@ async def init_handler(request: web.Request):
         client_sfdi=convert_lfdi_to_sfdi(aggregator_lfdi),
     )
 
-    # Apply preconditions (if present)
+    # Apply preconditions (if present) to get the database into the correct state for the test
     precond = active_test_procedure.definition.preconditions
-    if precond:
-        # Get the database into the correct state for the test procedure
-        if precond.db:
-            if DEV_SKIP_DB_PRECONDITIONS:
-                logger.warning(
-                    "Skipping database preconditions ('DEV_SKIP_DB_PRECONDITIONS' environment variable is True)"
-                )
-            else:
-                await precondition.apply_db_precondition(precondition=precond.db)
+    if precond and precond.db:
+        await precondition.apply_db_precondition(precondition=precond.db)
 
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' started",
