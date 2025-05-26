@@ -5,7 +5,7 @@ import pytest
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
-from cactus_test_definitions import Action, Event
+from cactus_test_definitions import ACTION_PARAMETER_SCHEMA, Action, Event
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.site import Site
 
@@ -23,6 +23,41 @@ from cactus_runner.app.action import (
     apply_actions,
 )
 from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
+
+# This is a list of every action type paired with the handler function. This must be kept in sync with
+# the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
+ACTION_TYPE_TO_HANDLER: dict[str, str] = {
+    "enable-listeners": "action_enable_listeners",
+    "remove-listeners": "action_remove_listeners",
+    "set-default-der-control": "action_set_default_der_control",
+    "create-der-control": "action_create_der_control",
+    "cancel-active-der-controls": "action_cancel_active_controls",
+    "set-poll-rate": "action_set_poll_rate",
+    "set-post-rate": "action_set_post_rate",
+    "register-end-device": "action_register_end_device",
+    "communications-loss": "action_communications_loss",
+    "communications-restore": "action_communications_restore",
+}
+
+
+def test_ACTION_TYPE_TO_HANDLER_in_sync():
+    """Tests that every action defined in ACTION_TYPE_TO_HANDLER has an appropriate entry in ACTION_NAMES_WITH_HANDLER
+
+    Failures in this test indicate that ACTION_NAMES_WITH_HANDLER hasn't been kept up to date"""
+
+    # Make sure that every cactus-test-definition action is found in ACTION_TYPE_TO_HANDLER
+    for action_type in ACTION_PARAMETER_SCHEMA.keys():
+        assert action_type in ACTION_TYPE_TO_HANDLER, f"The action type {action_type} doesn't have a known handler fn"
+
+    # Make sure we don't have any extra definitions not found in cactus-test-definitions
+    for action_type in ACTION_TYPE_TO_HANDLER.keys():
+        assert (
+            action_type in ACTION_PARAMETER_SCHEMA
+        ), f"The action type {action_type} isn't defined in the test definitions (has it been removed/renamed)"
+
+    assert len(set(ACTION_TYPE_TO_HANDLER.values())) == len(
+        ACTION_TYPE_TO_HANDLER
+    ), "At least 1 action type have listed the same action handler. This is likely a bug"
 
 
 def create_testing_active_test_procedure(listeners: list[Listener]) -> ActiveTestProcedure:
@@ -91,14 +126,16 @@ async def test_action_remove_listeners(steps_to_disable: list[str], listeners: l
 @pytest.mark.parametrize(
     "action, apply_function_name",
     [
-        (Action(type="enable-listeners", parameters={"listeners": []}), "action_enable_listeners"),
-        (Action(type="remove-listeners", parameters={"listeners": []}), "action_remove_listeners"),
+        (Action(type=action_type, parameters={}), handler_fn)
+        for action_type, handler_fn in ACTION_TYPE_TO_HANDLER.items()
     ],
 )
 @pytest.mark.anyio
 async def test_apply_action(mocker, action: Action, apply_function_name: str):
-    # Arrange
+    """This test is fully dynamic and pulls from ACTION_TYPE_TO_HANDLER to ensure every action type is tested
+    and mocked."""
 
+    # Arrange
     mock_apply_function = mocker.patch(f"cactus_runner.app.action.{apply_function_name}")
     mock_session = create_mock_session()
     mock_envoy_client = mock.MagicMock()
