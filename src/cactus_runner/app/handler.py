@@ -92,6 +92,11 @@ async def init_handler(request: web.Request):
         interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
     )
 
+    # Reset envoy database
+    # This must happen before the aggregator is registered or any test preconditions applied
+    logger.debug("Resetting envoy database")
+    await precondition.reset_db()
+
     # Get the name of the test procedure from the query parameter
     requested_test_procedure = request.query["test"]
     if requested_test_procedure is None:
