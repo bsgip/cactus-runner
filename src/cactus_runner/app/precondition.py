@@ -76,9 +76,6 @@ async def reset_db() -> None:
     """Truncates all tables in the 'public' schema and resets sequences for id columns."""
     # Adapted from https://stackoverflow.com/a/63227261
     reset_sql = """
-SET row_security = off;
-SET timezone = 'UTC';
-
 DO $$ DECLARE
     r RECORD;
 BEGIN
