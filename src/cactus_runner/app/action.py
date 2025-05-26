@@ -223,12 +223,14 @@ async def action_register_end_device(
     # This is only really used for out of band registration tests - it just needs to work "once"
     nmi: str | None = resolved_parameters.get("nmi", None)
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
+    now = datetime.now(tz=timezone.utc)
     session.add(
         Site(
             nmi=nmi,
             aggregator_id=1,
             timezone_id="Australia/Brisbane",
-            created_time=datetime.now(tz=timezone.utc),
+            created_time=now,
+            changed_time=now,
             lfdi=active_test_procedure.client_lfdi,
             sfdi=active_test_procedure.client_sfdi,
             device_category=0,
@@ -236,6 +238,14 @@ async def action_register_end_device(
         )
     )
     await session.commit()
+
+
+async def action_communications_loss(active_test_procedure: ActiveTestProcedure):
+    active_test_procedure.communications_enabled = False
+
+
+async def action_communications_restore(active_test_procedure: ActiveTestProcedure):
+    active_test_procedure.communications_enabled = True
 
 
 async def apply_action(
@@ -267,27 +277,31 @@ async def apply_action(
 
             case "set-default-der-control":
                 await action_set_default_der_control(resolved_parameters, session, envoy_client)
-
+                return
             case "create-der-control":
                 await action_create_der_control(resolved_parameters, session, envoy_client)
-
+                return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)
-
+                return
             case "set-poll-rate":
                 await action_set_poll_rate(resolved_parameters, envoy_client)
-
+                return
             case "set-post-rate":
                 await action_set_post_rate(resolved_parameters, envoy_client)
-
+                return
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
+                return
 
             case "communications-loss":
-                active_test_procedure.communications_enabled = False
+                await action_communications_loss(active_test_procedure)
+                return
 
             case "communications-restore":
-                active_test_procedure.communications_enabled = True
+                await action_communications_restore(active_test_procedure)
+                return
+
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
