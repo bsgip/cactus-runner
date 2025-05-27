@@ -127,6 +127,8 @@ services:
       - POSTGRES_USER=test_user
       - POSTGRES_PASSWORD=test_pwd
       - POSTGRES_DB=test_db
+    tmpfs:
+      - /var/lib/postgresql/data:rw,size=128m
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "test_user", "-d", "test_db" ]
       interval: 30s
@@ -140,4 +142,12 @@ networks:
 
 volumes:
   shared:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
   logs: 
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
