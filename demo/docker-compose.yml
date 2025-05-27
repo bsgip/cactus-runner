@@ -1,5 +1,7 @@
 # This docker compose file is made to emulate the k8s-cluster/deploy-template/app-setup/cactus-teststack.yml
-# as much as possible for testing without k8s.
+# as much as possible for testing without k8s. 
+# cactus component images versions are purposely hardcoded and expected to be updated as new stable versions 
+# are released.
 
 x-envoy-common:
   environment: &common-env
@@ -11,7 +13,7 @@ x-envoy-common:
 
 services:
   cactus_runner:
-    image: ${CACTUS_RUNNER_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-runner:1
     ports:
       - 127.0.0.1:8080:8080
     networks:
@@ -25,7 +27,7 @@ services:
       - ENVOY_ENV_FILE=/shared/envoy.env
 
   cactus-teststack-init:
-    image: ${CACTUS_TESTSTACK_INIT_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-teststack-init:1
     restart: "no"
     environment:
       - KICKOFF_FILE=/shared/.kickoff
@@ -52,7 +54,7 @@ services:
         condition: service_completed_successfully
 
   taskiq-worker:
-    image: ${CACTUS_ENVOY_APP_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-envoy:1
     environment:
       <<: *common-env
     command: taskiq worker envoy.notification.main:broker envoy.notification.task
@@ -65,7 +67,7 @@ services:
       cactus-teststack-init:
         condition: service_completed_successfully
   envoy:
-    image: ${CACTUS_ENVOY_APP_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-envoy:1
     ports:
       - 127.0.0.1:8000:8000
     restart: unless-stopped
@@ -87,7 +89,7 @@ services:
       - shared:/shared
 
   envoy-admin:
-    image: ${CACTUS_ENVOY_APP_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-envoy:1
     ports:
       - 127.0.0.1:8001:8001
     restart: unless-stopped
@@ -108,7 +110,7 @@ services:
         condition: service_completed_successfully
   # The db data is *not* persisted via a docker volume
   envoy-db:
-    image: ${CACTUS_ENVOY_DB_IMAGE}
+    image: cactusimageregistry.azurecr.io/cactus-envoy-db:1
     ports:
       - 127.0.0.1:8003:5432
     networks:
