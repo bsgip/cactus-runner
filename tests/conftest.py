@@ -1,18 +1,23 @@
 import os
 from typing import Generator
 
-
 import pytest
 from assertical.fixtures.environment import environment_snapshot
-from assertical.fixtures.postgres import generate_async_conn_str_from_connection
 from assertical.fixtures.fastapi import start_app_with_client
-from envoy.server.alembic import upgrade
-from psycopg import Connection
+from assertical.fixtures.postgres import generate_async_conn_str_from_connection
 from envoy.admin.main import generate_app as admin_gen_app
 from envoy.admin.settings import generate_settings as admin_gen_settings
+from envoy.server.alembic import upgrade
+from psycopg import Connection
 
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient, EnvoyAdminClientAuthParams
-from cactus_runner.app.database import initialise_database_connection
+from cactus_runner.app.database import (
+    initialise_database_connection,
+    remove_database_connection,
+)
+from cactus_runner.app.envoy_admin_client import (
+    EnvoyAdminClient,
+    EnvoyAdminClientAuthParams,
+)
 from tests.adapter import HttpxClientSessionAdapter
 
 
@@ -31,7 +36,9 @@ def preserved_environment():
 
 
 @pytest.fixture
-def pg_empty_config(postgresql, request: pytest.FixtureRequest) -> Generator[Connection, None, None]:
+def pg_empty_config(
+    postgresql, preserved_environment, request: pytest.FixtureRequest
+) -> Generator[Connection, None, None]:
     """Sets up the testing DB, applies alembic migrations but does NOT add any entities"""
 
     # Install the DATABASE_URL before running alembic
@@ -45,6 +52,9 @@ def pg_empty_config(postgresql, request: pytest.FixtureRequest) -> Generator[Con
     initialise_database_connection(postgres_dsn)
 
     yield postgresql
+
+    # Remove connection after tests
+    remove_database_connection()
 
 
 @pytest.fixture
