@@ -5,7 +5,7 @@
 
 x-envoy-common:
   environment: &common-env
-    DATABASE_URL: "postgresql+asyncpg://test_user:test_pwd@envoy-db/test_db"
+    DATABASE_URL: "postgresql+asyncpg://test_user:test_pwd@cactus-envoy-db/test_db"
     CERT_HEADER: x-forwarded-client-cert
     ENABLE_NOTIFICATIONS: "True"
     RABBIT_MQ_BROKER_URL: "amqp://guest:guest@rabbit-mq:5672"
@@ -17,20 +17,26 @@ services:
     ports:
       - 127.0.0.1:8080:8080
     networks:
-      - envoy-net
+      - cactus-envoy-net
     volumes:
       - shared:/shared
+      - logs:/logs
     environment:
       - SERVER_URL=http://envoy:8000
-      - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@envoy-db:8003/test_db
+      - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@cactus-envoy-db/test_db
       - KICKOFF_FILE=/shared/.kickoff
       - ENVOY_ENV_FILE=/shared/envoy.env
+      - ENVOY_ADMIN_BASICAUTH_USERNAME=admin
+      - ENVOY_ADMIN_BASICAUTH_PASSWORD=password
 
   cactus-teststack-init:
-    image: cactusimageregistry.azurecr.io/cactus-teststack-init:1
+    image: testsack:v1 #cactusimageregistry.azurecr.io/cactus-teststack-init:1
     restart: "no"
     environment:
       - KICKOFF_FILE=/shared/.kickoff
+      - ENVOY_DATABASE_URL=postgresql://test_user:test_pwd@cactus-envoy-db/test_db
+    networks:
+      - cactus-envoy-net
     volumes:
       - shared:/shared
 
@@ -42,7 +48,7 @@ services:
     hostname: rabbit-mq
     restart: unless-stopped
     networks:
-      - envoy-net
+      - cactus-envoy-net
     healthcheck:
       test: rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms
       interval: 30s
@@ -60,26 +66,26 @@ services:
     command: taskiq worker envoy.notification.main:broker envoy.notification.task
     restart: unless-stopped
     networks:
-      - envoy-net
+      - cactus-envoy-net
     depends_on:
       rabbit-mq:
         condition: service_healthy
       cactus-teststack-init:
         condition: service_completed_successfully
-  envoy:
+  cactus-envoy:
     image: cactusimageregistry.azurecr.io/cactus-envoy:1
     ports:
       - 127.0.0.1:8000:8000
     restart: unless-stopped
     networks:
-      - envoy-net
+      - cactus-envoy-net
     environment:
       <<: *common-env
       PORT: 8000
       APP_MODULE: envoy.server.main:app
       ENVOY_ENV_FILE: /shared/envoy.env
     depends_on:
-      envoy-db:
+      cactus-envoy-db:
         condition: service_started
       rabbit-mq:
         condition: service_healthy
@@ -87,34 +93,36 @@ services:
         condition: service_completed_successfully
     volumes:
       - shared:/shared
+      - logs:/app/logs
 
-  envoy-admin:
+  cactus-envoy-admin:
     image: cactusimageregistry.azurecr.io/cactus-envoy:1
     ports:
       - 127.0.0.1:8001:8001
     restart: unless-stopped
     networks:
-      - envoy-net
+      - cactus-envoy-net
     environment:
       <<: *common-env
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: password
       PORT: 8001
       APP_MODULE: envoy.admin.main:app
+      ENVOY_ENV_FILE: /shared/envoy.env
     depends_on:
-      envoy-db:
+      cactus-envoy-db:
         condition: service_started
       rabbit-mq:
         condition: service_healthy
       cactus-teststack-init:
         condition: service_completed_successfully
   # The db data is *not* persisted via a docker volume
-  envoy-db:
-    image: cactusimageregistry.azurecr.io/cactus-envoy-db:1
+  cactus-envoy-db:
+    image: postgres:16 #cactusimageregistry.azurecr.io/cactus-envoy-db:1
     ports:
       - 127.0.0.1:8003:5432
     networks:
-      - envoy-net
+      - cactus-envoy-net
     environment:
       - POSTGRES_USER=test_user
       - POSTGRES_PASSWORD=test_pwd
@@ -127,8 +135,9 @@ services:
       start_period: 20s
 
 networks:
-  envoy-net:
+  cactus-envoy-net:
 
 
 volumes:
   shared:
+  logs: 
