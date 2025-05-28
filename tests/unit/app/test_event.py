@@ -1,11 +1,14 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Event
 
 from cactus_runner.app import event
-from cactus_runner.models import Listener
+from cactus_runner.app.shared import (
+    APPKEY_RUNNER_STATE,
+)
+from cactus_runner.models import Listener, StepStatus
 
 
 @pytest.mark.parametrize(
@@ -72,7 +75,7 @@ async def test_handle_event_with_matching_listener(
     mock_envoy_client = MagicMock()
 
     # Act
-    matched_listener = await event.handle_event(
+    matched_listener, serve_request_first = await event.handle_event(
         session=mock_session,
         event=test_event,
         active_test_procedure=active_test_procedure,
@@ -81,6 +84,7 @@ async def test_handle_event_with_matching_listener(
 
     # Assert
     assert matched_listener == listeners[matching_listener_index]
+    assert not serve_request_first
     assert_mock_session(mock_session)
 
 
@@ -192,7 +196,7 @@ async def test_handle_event_with_no_matches(test_event: Event, listeners: list[L
     mock_envoy_client = MagicMock()
 
     # Act
-    listener = await event.handle_event(
+    listener, serve_request_first = await event.handle_event(
         session=mock_session,
         event=test_event,
         active_test_procedure=active_test_procedure,
@@ -201,4 +205,49 @@ async def test_handle_event_with_no_matches(test_event: Event, listeners: list[L
 
     # Assert
     assert listener is None
+    assert not serve_request_first
     assert_mock_session(mock_session)
+
+
+@pytest.mark.asyncio
+async def test_update_test_procedure_progress(pg_empty_config):
+    # Arrange
+    request_data = ""
+    request_read = AsyncMock()
+    request_read.return_value = request_data
+    request = MagicMock()
+    request.path = "/dcap"
+    request.path_qs = "/dcap"
+    request.method = "GET"
+    request.read = request_read
+
+    active_test_procedure = MagicMock()
+    #     request.app[APPKEY_RUNNER_STATE].request_history = []
+    #     request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status = {}
+    #
+    #     handler.SERVER_URL = ""  # Override the server url
+    #
+    #     handler.DEV_SKIP_AUTHORIZATION_CHECK = True
+    #
+    #     response_text = "RESPONSE-TEXT"
+    #     response_status = http.HTTPStatus.OK
+    #     response_headers = {"X-API-Key": "API-KEY"}
+    #     mock_client_request = mocker.patch("aiohttp.client.request")
+    #     mock_client_request.return_value.__aenter__.return_value.status = response_status
+    #     mock_client_request.return_value.__aenter__.return_value.read.return_value = response_text
+    #     mock_client_request.return_value.__aenter__.return_value.headers = response_headers
+    #
+    #     # spy_handle_event = mocker.spy(handler.event, "handle_event")
+    #     mock_handle_event = mocker.patch("cactus_runner.app.handler.update_test_procedure_progress")
+    #     mock_handle_event.return_value = (None, False)
+    #     matching_step_name = "STEP-NAME"
+    #     # mock_handle_event.return_value.step = matching_step_name
+    #
+    # Act
+    matching_step_name, serve_request_first = await event.update_test_procedure_progress(
+        request=request, active_test_procedure=active_test_procedure
+    )
+
+    # Assert
+
+    # assert request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status[matching_step_name] == StepStatus.RESOLVED
