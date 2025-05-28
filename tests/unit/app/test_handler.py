@@ -244,7 +244,7 @@ async def test_proxied_request_handler_logs_error_with_no_active_test_procedure(
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_disables_communications(mocker):
+async def test_proxied_request_handler_disables_communications(pg_empty_config, mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
