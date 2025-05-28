@@ -267,4 +267,4 @@ async def test_proxied_request_handler_disables_communications(pg_empty_config, 
 
 
 def test_communications_disabled_defaults_false():
-    assert ActiveTestProcedure.communications_disabled == False
+    assert ActiveTestProcedure.communications_disabled is False
