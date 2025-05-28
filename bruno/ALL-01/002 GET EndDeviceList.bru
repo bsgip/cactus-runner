@@ -1,0 +1,20 @@
+meta {
+  name: 002 GET EndDeviceList
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{HOST}}/edev?s=0&l=100
+  body: none
+  auth: none
+}
+
+params:query {
+  s: 0
+  l: 100
+}
+
+headers {
+  Accept: application/sep+xml
+}
