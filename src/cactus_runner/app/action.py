@@ -240,12 +240,12 @@ async def action_register_end_device(
     await session.commit()
 
 
-async def action_communications_loss(active_test_procedure: ActiveTestProcedure):
-    active_test_procedure.communications_enabled = False
+def action_communications_loss(active_test_procedure: ActiveTestProcedure):
+    active_test_procedure.communications_disabled = False
 
 
-async def action_communications_restore(active_test_procedure: ActiveTestProcedure):
-    active_test_procedure.communications_enabled = True
+def action_communications_restore(active_test_procedure: ActiveTestProcedure):
+    active_test_procedure.communications_disabled = True
 
 
 async def apply_action(
@@ -295,11 +295,11 @@ async def apply_action(
                 return
 
             case "communications-loss":
-                await action_communications_loss(active_test_procedure)
+                action_communications_loss(active_test_procedure)
                 return
 
             case "communications-restore":
-                await action_communications_restore(active_test_procedure)
+                action_communications_restore(active_test_procedure)
                 return
 
     except Exception as exc:
