@@ -22,11 +22,5 @@ APP_PORT = int(os.getenv("APP_PORT", DEFAULT_APP_PORT))
 # MOUNT_POINT is the base path for all endpoints
 MOUNT_POINT = "/"
 
-# If true skips registering an aggregator at beginning of test procedure
-DEV_AGGREGATOR_PREREGISTERED = os.getenv("DEV_AGGREGATOR_PREREGISTERED", "false").lower() in ["true", "1", "t"]
-
-# If true skips applying database preconditions at beginning of test procedure
-DEV_SKIP_DB_PRECONDITIONS = os.getenv("DEV_SKIP_DB_PRECONDITIONS", "false").lower() in ["true", "1", "t"]
-
 # If true skips verifying the forwarded certificate in requests
 DEV_SKIP_AUTHORIZATION_CHECK = os.getenv("DEV_SKIP_AUTHORIZATION_CHECK", "false").lower() in ["true", "1", "t"]

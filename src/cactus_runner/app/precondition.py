@@ -70,3 +70,21 @@ async def register_aggregator(lfdi: str) -> None:
 
         session.add(certificate_assignment)
         await session.commit()
+
+
+async def reset_db() -> None:
+    """Truncates all tables in the 'public' schema and resets sequences for id columns."""
+    # Adapted from https://stackoverflow.com/a/63227261
+    reset_sql = """
+DO $$ DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
+    END LOOP;
+END $$;
+"""
+    async with open_connection() as connection:
+        async with connection.begin() as txn:
+            await connection.execute(text(reset_sql))
+            await txn.commit()

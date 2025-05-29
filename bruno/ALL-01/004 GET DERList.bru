@@ -1,0 +1,15 @@
+meta {
+  name: 004 GET DERList
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{HOST}}/edev/{{EDEV_ID}}/der
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  EDEV_ID: 1
+}

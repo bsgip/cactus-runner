@@ -32,7 +32,7 @@ class ActiveTestProcedure:
     step_status: dict[str, StepStatus]
     client_lfdi: str  # The LFDI of the client certificate expected for the test
     client_sfdi: int  # The SFDI of the client certificate expected for the test
-    communications_enabled: bool = False
+    communications_disabled: bool = False
 
 
 @dataclass

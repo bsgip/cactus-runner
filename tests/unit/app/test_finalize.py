@@ -55,11 +55,6 @@ def test_get_zip_contents(mocker):
 def test_get_zip_contents_raises_databasedumperror(mocker):
 
     mocker.patch.object(finalize.shutil, "copyfile")  # prevent logfile copying
-    mock_get_postgres_dsn = mocker.patch(
-        "cactus_runner.app.finalize.get_postgres_dsn"
-    )  # Need to mock this out incase previous
-    mock_get_postgres_dsn.side_effect = DatabaseNotInitialisedError()
-    # test initialises DB.
 
     with pytest.raises(finalize.DatabaseDumpError):
         finalize.get_zip_contents(json_status_summary="", runner_logfile="", envoy_logfile="")

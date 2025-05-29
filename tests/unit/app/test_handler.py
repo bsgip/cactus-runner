@@ -4,10 +4,12 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import pytest
 from aiohttp.web import Response
 from assertical.asserts.time import assert_nowish
+from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import event, handler
 from cactus_runner.app.shared import APPKEY_RUNNER_STATE
 from cactus_runner.models import (
+    ActiveTestProcedure,
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,
@@ -124,6 +126,9 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     request.method = "GET"
     request.read = request_read
     request.app[APPKEY_RUNNER_STATE].request_history = []
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, communications_disabled=False, step_status={"1": StepStatus.PENDING}
+    )
 
     handler.SERVER_URL = ""  # Override the server url
 
@@ -203,13 +208,13 @@ async def test_proxied_request_handler_logs_error_with_no_active_test_procedure(
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_disables_communications(mocker):
+async def test_proxied_request_handler_disables_communications(pg_empty_config, mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
     request.path_qs = "/dcap"
     request.method = "GET"
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure.communications_enabled = False
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure.communications_disabled = True
     mock_client_request = mocker.patch("aiohttp.client.request")
 
     # Act
@@ -218,3 +223,7 @@ async def test_proxied_request_handler_disables_communications(mocker):
     # Assert
     assert mock_client_request.call_count == 0
     assert response.status == http.HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+def test_communications_disabled_defaults_false():
+    assert ActiveTestProcedure.communications_disabled is False

@@ -37,6 +37,12 @@ def initialise_database_connection(postgres_dsn: str) -> None:
     CURRENT_CONNECTION = DatabaseConnection(postgres_dsn, engine, async_sessionmaker(engine, class_=AsyncSession))
 
 
+def remove_database_connection() -> None:
+    """Removes any active database connection (unwinding any prior call to initialise_database_connection)"""
+    global CURRENT_CONNECTION
+    CURRENT_CONNECTION = None
+
+
 def begin_session() -> AsyncSession:
     """Creates a new session for interacting with the database - this should be used with a context manager eg:
 
