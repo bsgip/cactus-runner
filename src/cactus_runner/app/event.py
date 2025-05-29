@@ -42,8 +42,7 @@ async def handle_event(
         active_test_procedure (ActiveTestProcedure): The currently active test procedure.
 
     Returns:
-        Listener: If successful return the listener that matched the event.
-        None: If no listener matched.
+        Listener: If successful return the listener that matched the event, else None if no listener matched.
         bool: True if the handling of the event was deferred because the request should
         be served beforehand.
     """
