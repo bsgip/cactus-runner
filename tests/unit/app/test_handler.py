@@ -14,6 +14,7 @@ from cactus_runner.models import (
     ClientInteractionType,
     RequestEntry,
     RunnerStatus,
+    StepStatus,
 )
 
 
