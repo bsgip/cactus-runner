@@ -3,11 +3,11 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from aiohttp import client, web
+from aiohttp import web
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
-from cactus_runner.app import action, auth, event, finalize, precondition, status
+from cactus_runner.app import action, auth, event, finalize, precondition, proxy, status
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
@@ -315,27 +315,6 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
-async def proxy_request(
-    request: web.Request, remote_url: str, active_test_procedure: ActiveTestProcedure
-) -> web.Response:
-
-    # Forward the request to the reference server
-    if active_test_procedure.communications_disabled:
-        # We simulate communication loss as a series of HTTP 500 responses
-        headers = []
-        status = http.HTTPStatus.INTERNAL_SERVER_ERROR
-        body = "COMMS DISABLED"
-    else:
-        async with client.request(
-            request.method, remote_url, headers=request.headers.copy(), allow_redirects=False, data=await request.read()
-        ) as response:
-            headers = response.headers.copy()
-            status = http.HTTPStatus(response.status)
-            body = await response.read()
-
-    return web.Response(headers=headers, status=status, body=body)
-
-
 async def proxied_request_handler(request):
     """Handler for requests that should be forwarded to the utility server.
 
@@ -394,7 +373,7 @@ async def proxied_request_handler(request):
         request=request, active_test_procedure=active_test_procedure, request_served=False
     )
 
-    handler_response = await proxy_request(
+    handler_response = await proxy.proxy_request(
         request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
     )
 
