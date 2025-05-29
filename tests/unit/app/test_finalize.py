@@ -8,7 +8,6 @@ import pytest
 from aiohttp.web import Response
 
 from cactus_runner.app import finalize
-from cactus_runner.app.database import DatabaseNotInitialisedError
 
 
 def test_get_zip_contents(mocker):

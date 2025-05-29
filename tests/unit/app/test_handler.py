@@ -1,5 +1,5 @@
 import http
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from aiohttp.web import Response

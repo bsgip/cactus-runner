@@ -5,7 +5,6 @@ import pytest
 from aiohttp.web import Response
 
 from cactus_runner.app import proxy
-from cactus_runner.app.shared import APPKEY_RUNNER_STATE
 from cactus_runner.models import ActiveTestProcedure
 
 
