@@ -37,7 +37,11 @@ Navigate to the `demo/` directory and bring up the teststack using Docker Compos
 **NOTE:** This will partially bring up the teststack components, specifically `cactus-runner`, `cactus-envoy-db` and `cactus-teststack-init`. The remaining components will be launched during after a test case is initialised.
 
 ### (2) Open Bruno and Load the Request Collection
-Launch Bruno then open the example collection provided in the repository under the `bruno` directory. This collection contains the predefined HTTP requests needed to both facilitate and run test cases against the teststack. This should require no configuration.
+
+* Launch Bruno 
+* "Open a new Collection", you will be asked to add a folder, select the `bruno/` directory.
+  * This collection contains the predefined HTTP requests needed to both facilitate and run test cases against the teststack. This should require no configuration.
+
 
 ### (3) Running a Test Case
 Follow this typical flow for starting and then running against test case:
@@ -46,7 +50,7 @@ Follow this typical flow for starting and then running against test case:
 
     - Use the Init request in Bruno to register and initialise a test case. This is the *precondition* phase of the test where the cactus-runner expects the client to populate the utility server with the required metadata as defined in the test cases themselves. 
 
-    - **NOTE:** This step will trigger the remaining teststack components (`cactus-envoy` + notification components) to be spun up, which may take a few seconds. Please wait until output logs halt before proceeding to the next step.
+    - **NOTE:** This step will trigger the remaining teststack components (`cactus-envoy` + notification components) to be spun up, which may take a few seconds. Please wait until output logs halt before proceeding to the next step. Future releases will be removing this "delay" requirement.
 
 2. **Start the Case**
 

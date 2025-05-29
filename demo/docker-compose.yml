@@ -13,7 +13,7 @@ x-envoy-common:
 
 services:
   cactus-runner:
-    image: cactusimageregistry.azurecr.io/cactus-runner:2
+    image: cactusimageregistry.azurecr.io/cactus-runner:5
     ports:
       - 127.0.0.1:8080:8080
     networks:
@@ -24,17 +24,15 @@ services:
     environment:
       - SERVER_URL=http://cactus-envoy:8000
       - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@cactus-envoy-db/test_db
-      - KICKOFF_FILE=/shared/.kickoff
       - ENVOY_ENV_FILE=/shared/envoy.env
       - ENVOY_ADMIN_BASICAUTH_USERNAME=admin
       - ENVOY_ADMIN_BASICAUTH_PASSWORD=password
       - ENVOY_ADMIN_URL=http://cactus-envoy-admin:8001
 
   cactus-teststack-init:
-    image: cactusimageregistry.azurecr.io/cactus-teststack-init:2
+    image: cactusimageregistry.azurecr.io/cactus-teststack-init:5
     restart: "no"
     environment:
-      - KICKOFF_FILE=/shared/.kickoff
       - ENVOY_DATABASE_URL=postgresql://test_user:test_pwd@cactus-envoy-db/test_db
     networks:
       - cactus-envoy-net
@@ -61,7 +59,7 @@ services:
         condition: service_completed_successfully
 
   taskiq-worker:
-    image: cactusimageregistry.azurecr.io/cactus-envoy:2
+    image: cactusimageregistry.azurecr.io/cactus-envoy:5
     environment:
       <<: *common-env
     command: taskiq worker envoy.notification.main:broker envoy.notification.task
@@ -74,7 +72,7 @@ services:
       cactus-teststack-init:
         condition: service_completed_successfully
   cactus-envoy:
-    image: cactusimageregistry.azurecr.io/cactus-envoy:2
+    image: cactusimageregistry.azurecr.io/cactus-envoy:5
     ports:
       - 127.0.0.1:8000:8000
     restart: unless-stopped
@@ -97,7 +95,7 @@ services:
       - logs:/app/logs
 
   cactus-envoy-admin:
-    image: cactusimageregistry.azurecr.io/cactus-envoy:2
+    image: cactusimageregistry.azurecr.io/cactus-envoy:5
     ports:
       - 127.0.0.1:8001:8001
     restart: unless-stopped

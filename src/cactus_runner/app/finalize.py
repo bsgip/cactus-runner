@@ -41,7 +41,7 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
 
         # Create db dump
         try:
-            connection_string = get_postgres_dsn()
+            connection_string = get_postgres_dsn().replace("+psycopg", "")
         except DatabaseNotInitialisedError:
             raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
         dump_file = str(archive_dir / "envoy_db.dump")

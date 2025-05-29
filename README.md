@@ -28,7 +28,6 @@ The cactus runner application uses the following environment variables,
 | SERVER_URL | `http://localhost:8000` | The URL of an envoy server. |
 | APP_HOST | `0.0.0.0` | The host IP of the cactus runner application. |
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
-| KICKOFF_FILE | `/shared/.kickoff` | The location to create the kickoff file, which triggers kubernetes to launch the envoy service |
 | ENVOY_ENV_FILE | `/shared/envoy.env` | The location to write the test-specific envoy environment variables. |
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
 

@@ -42,19 +42,19 @@ async def get_active_site(session: AsyncSession) -> Site:
     return (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
 
 
-async def action_enable_listeners(
+async def action_enable_steps(
     active_test_procedure: ActiveTestProcedure,
     resolved_parameters: dict[str, Any],
 ):
-    """Applies the enable-listeners action to the active test procedures.
+    """Applies the enable-steps action to the active test procedures.
 
     Each listener has a single test procedure step associated with it. A list of step names to enable is therefore
-    sufficient to identify the corresponding listeners which are the actual objects that get disabled.
+    sufficient to identify the corresponding steps which are the actual objects that get disabled.
 
     Step names are defined by the test procedures. They are strings of the form "ALL-01-001", which is the first step
     "001" in the "ALL-01" test procedure.
 
-    In addition to enabling listeners, this function also records the start time for (newly enabled) listeners with
+    In addition to enabling steps, this function also records the start time for (newly enabled) steps with
     wait events.
 
     Args:
@@ -62,25 +62,25 @@ async def action_enable_listeners(
         active_test_procedure: The currently active test procedure
         resolved_parameters: The fully resolved (expressions replaced with their values) set of action parameters
     """
-    steps_to_enable: list[str] = resolved_parameters["listeners"]
+    steps_to_enable: list[str] = resolved_parameters["steps"]
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_enable:
-            logger.info(f"ACTION enable-listeners: Enabling listener {listener.step}")
+            logger.info(f"ACTION enable-steps: Enabling step {listener.step}")
             listener.enabled = True
 
-            # Record the start time for listeners with wait events
+            # Record the start time for steps with wait events
             if listener.event.type == "wait":
                 listener.event.parameters["wait_start_timestamp"] = datetime.now(tz=timezone.utc)
 
 
-async def action_remove_listeners(
+async def action_remove_steps(
     active_test_procedure: ActiveTestProcedure,
     resolved_parameters: dict[str, Any],
 ):
-    """Applies the remove-listeners action to the active test procedure.
+    """Applies the remove-steps action to the active test procedure.
 
     Each listener has a single test procedure step associated with it. A list of step names to disable is therefore
-    sufficient to identify the corresponding listeners which are the actual objects that get disabled.
+    sufficient to identify the corresponding steps which are the actual objects that get disabled.
 
     Step names are defined by the test procedures. They are strings of the form "ALL-01-001", which is the first step
     "001" in the "ALL-01" test procedure.
@@ -90,16 +90,16 @@ async def action_remove_listeners(
         active_test_procedure: The currently active test procedure
         resolved_parameters: The fully resolved (expressions replaced with their values) set of action parameters
     """
-    steps_to_remove: list[str] = resolved_parameters["listeners"]
+    steps_to_remove: list[str] = resolved_parameters["steps"]
 
     listeners_to_remove = []
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_remove:
             listeners_to_remove.append(listener)
 
-    for listener_to_remove in listeners_to_remove:
-        logger.info(f"ACTION remove-listeners: Removing listener: {listener_to_remove}")
-        active_test_procedure.listeners.remove(listener_to_remove)  # mutate the original listeners list
+    for listener in listeners_to_remove:
+        logger.info(f"ACTION remove-steps: Removing listener: {listener}")
+        active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
 
 
 async def action_set_default_der_control(
@@ -253,7 +253,7 @@ async def apply_action(
 ):
     """Applies the action to the active test procedure.
 
-    Actions describe operations such as activate or disabling listeners.
+    Actions describe operations such as activate or disabling steps.
 
     Args:
         action (Action): The Action to apply to the active test procedure.
@@ -266,13 +266,12 @@ async def apply_action(
 
     try:
         match action.type:
-            case "enable-listeners":
-                logger.info("about to enable listeners")
-                await action_enable_listeners(active_test_procedure, resolved_parameters)
+            case "enable-steps":
+                await action_enable_steps(active_test_procedure, resolved_parameters)
                 return
 
-            case "remove-listeners":
-                await action_remove_listeners(active_test_procedure, resolved_parameters)
+            case "remove-steps":
+                await action_remove_steps(active_test_procedure, resolved_parameters)
                 return
 
             case "set-default-der-control":
