@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timedelta
-from importlib import resources
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -25,28 +24,6 @@ async def execute_sql_file_for_connection(connection: AsyncConnection, path_to_s
     async with connection.begin() as txn:
         await connection.execute(text(sql))
         await txn.commit()
-
-
-async def apply_db_precondition(precondition: str) -> None:
-
-    # Open connection to database
-    async with open_connection() as connection:
-        # The precondition is either a path to a .sql file
-        # or a resource made available through the cactus_test_defintions package
-        path = Path(precondition)
-        if path.exists():
-            await execute_sql_file_for_connection(connection=connection, path_to_sql_file=path)
-            logger.info(f"Precondition '{precondition}' applied to database.")
-        else:
-            # Try access the precondition as a resource
-            resource = resources.files("cactus_test_definitions") / precondition
-            with resources.as_file(resource) as path:
-                # Verify that the file exists
-                if not path.exists():
-                    raise UnableToApplyDatabasePrecondition(f"'{precondition}' file does not exist")
-
-                await execute_sql_file_for_connection(connection=connection, path_to_sql_file=path)
-                logger.info(f"Precondition '{precondition}' applied to database.")
 
 
 async def register_aggregator(lfdi: str) -> None:

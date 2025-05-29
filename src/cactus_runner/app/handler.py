@@ -135,11 +135,6 @@ async def init_handler(request: web.Request):
         client_sfdi=convert_lfdi_to_sfdi(aggregator_lfdi),
     )
 
-    # Apply preconditions (if present) to get the database into the correct state for the test
-    precond = active_test_procedure.definition.preconditions
-    if precond and precond.db:
-        await precondition.apply_db_precondition(precondition=precond.db)
-
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' started",
         extra={"test_procedure": active_test_procedure.name},
@@ -147,21 +142,10 @@ async def init_handler(request: web.Request):
 
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
 
-    # Trigger the envoy server to be started
-    DEFAULT_ENVOY_ENV_FILE = "/shared/envoy.env"
-    ENVOY_ENV_FILE = os.getenv("ENVOY_ENV_FILE", DEFAULT_ENVOY_ENV_FILE)
-
-    with open(ENVOY_ENV_FILE, "w") as fp:
-        env_vars = active_test_procedure.definition.envoy_environment_variables
-        if env_vars:
-            for env_var_name, env_var_value in env_vars.items():
-                fp.write(f'{env_var_name}="{env_var_value}"')
-    logger.debug(f"Wrote envoy environment variables to '{ENVOY_ENV_FILE}'")
-
     # Write an empty file to signal to cactus orchestrator that we are ready for envoy to be started
     DEFAULT_KICKOFF_FILE = "/shared/.kickoff"
     KICKOFF_FILE = os.getenv("KICKOFF_FILE", DEFAULT_KICKOFF_FILE)
-    with open(KICKOFF_FILE, "w") as fp:
+    with open(KICKOFF_FILE, "w"):
         pass
     logger.debug(f"Wrote kickoff file to '{KICKOFF_FILE}'")
 

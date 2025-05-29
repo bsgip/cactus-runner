@@ -13,9 +13,9 @@ from cactus_runner.app.action import (
     UnknownActionError,
     action_cancel_active_controls,
     action_create_der_control,
-    action_enable_listeners,
+    action_enable_steps,
     action_register_end_device,
-    action_remove_listeners,
+    action_remove_steps,
     action_set_default_der_control,
     action_set_poll_rate,
     action_set_post_rate,
@@ -27,8 +27,8 @@ from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
 # This is a list of every action type paired with the handler function. This must be kept in sync with
 # the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
 ACTION_TYPE_TO_HANDLER: dict[str, str] = {
-    "enable-listeners": "action_enable_listeners",
-    "remove-listeners": "action_remove_listeners",
+    "enable-steps": "action_enable_steps",
+    "remove-steps": "action_remove_steps",
     "set-default-der-control": "action_set_default_der_control",
     "create-der-control": "action_create_der_control",
     "cancel-active-der-controls": "action_cancel_active_controls",
@@ -65,7 +65,7 @@ def create_testing_active_test_procedure(listeners: list[Listener]) -> ActiveTes
 
 
 @pytest.mark.anyio
-async def test_action_enable_listeners():
+async def test_action_enable_steps():
     # Arrange
     step_name = "step"
     steps_to_enable = [step_name]
@@ -74,10 +74,10 @@ async def test_action_enable_listeners():
         Listener(step=step_name, event=Event(type="", parameters={}), actions=[])
     ]  # listener defaults to disabled but should be enabled during this test
     active_test_procedure = create_testing_active_test_procedure(listeners)
-    resolved_parameters = {"listeners": steps_to_enable}
+    resolved_parameters = {"steps": steps_to_enable}
 
     # Act
-    await action_enable_listeners(active_test_procedure, resolved_parameters)
+    await action_enable_steps(active_test_procedure, resolved_parameters)
 
     # Assert
     assert listeners[0].enabled
@@ -109,17 +109,17 @@ async def test_action_enable_listeners():
     ],
 )
 @pytest.mark.anyio
-async def test_action_remove_listeners(steps_to_disable: list[str], listeners: list[Listener]):
+async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[Listener]):
     # Arrange
     original_steps_to_disable = steps_to_disable.copy()
     active_test_procedure = create_testing_active_test_procedure(listeners)
-    resolved_parameters = {"listeners": steps_to_disable}
+    resolved_parameters = {"steps": steps_to_disable}
 
     # Act
-    await action_remove_listeners(active_test_procedure, resolved_parameters)
+    await action_remove_steps(active_test_procedure, resolved_parameters)
 
     # Assert
-    assert len(listeners) == 0  # all listeners removed from list of listeners
+    assert len(listeners) == 0  # all steps removed from list of listeners
     assert steps_to_disable == original_steps_to_disable  # check we are mutating 'steps_to_diable'
 
 
@@ -176,15 +176,15 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
         Listener(
             step="step",
             event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            actions=[Action(type="enable-listeners", parameters={})],
+            actions=[Action(type="enable-steps", parameters={})],
             enabled=True,
         ),  # 1 action for listener
         Listener(
             step="step",
             event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
             actions=[
-                Action(type="enable-listeners", parameters={}),
-                Action(type="remove-listeners", parameters={}),
+                Action(type="enable-steps", parameters={}),
+                Action(type="remove-steps", parameters={}),
             ],
             enabled=True,
         ),  # 2 actions for listener
