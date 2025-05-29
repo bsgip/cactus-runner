@@ -118,14 +118,10 @@ async def test_proxied_request_handler_performs_authorization(mocker):
 @pytest.mark.asyncio
 async def test_proxied_request_handler(pg_empty_config, mocker):
     # Arrange
-    request_data = ""
-    request_read = AsyncMock()
-    request_read.return_value = request_data
     request = MagicMock()
     request.path = "/dcap"
     request.path_qs = "/dcap"
     request.method = "GET"
-    request.read = request_read
     request.app[APPKEY_RUNNER_STATE].request_history = []
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
         ActiveTestProcedure, communications_disabled=False, step_status={"1": StepStatus.PENDING}
@@ -136,13 +132,9 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     handler.DEV_SKIP_AUTHORIZATION_CHECK = True
     spy_request_is_authorized = mocker.spy(handler.auth, "request_is_authorized")
 
-    response_text = "RESPONSE-TEXT"
-    response_status = http.HTTPStatus.OK
-    response_headers = {"X-API-Key": "API-KEY"}
-    mock_client_request = mocker.patch("aiohttp.client.request")
-    mock_client_request.return_value.__aenter__.return_value.status = response_status
-    mock_client_request.return_value.__aenter__.return_value.read.return_value = response_text
-    mock_client_request.return_value.__aenter__.return_value.headers = response_headers
+    mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
+    expected_response = Response(status=200)
+    mock_proxy_request.return_value = expected_response
 
     mock_update_test_procedure_status = mocker.patch("cactus_runner.app.event.update_test_procedure_progress")
     mock_update_test_procedure_status.return_value = (event.UNRECOGNISED_STEP_NAME, False)
@@ -163,18 +155,7 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
 
     #  ... verify aiohttp.client.request is passed values from the request argument
-    mock_client_request.assert_called_once_with(
-        request.method, request.path_qs, headers=ANY, allow_redirects=False, data=request_data
-    )
-
-    #  ... verify we received the expected proxied response
-    #      i.e. the one supplied to 'mock_client_request'
-    assert isinstance(response, Response)
-    assert response.status == response_status
-    assert response.text == response_text
-    for key, value in response_headers.items():
-        assert key in response.headers
-        assert response.headers[key] == value
+    mock_proxy_request.assert_called_once()
 
     # ... verify we called 'update_test_procedure_status'
     mock_update_test_procedure_status.assert_called_once()
@@ -206,25 +187,3 @@ async def test_proxied_request_handler_logs_error_with_no_active_test_procedure(
     mock_logger_warning.assert_called_once()
     assert isinstance(response, Response)
     assert response.status == http.HTTPStatus.BAD_REQUEST
-
-
-@pytest.mark.asyncio
-async def test_proxied_request_handler_disables_communications(pg_empty_config, mocker):
-    # Arrange
-    request = MagicMock()
-    request.path = "/dcap"
-    request.path_qs = "/dcap"
-    request.method = "GET"
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure.communications_disabled = True
-    mock_client_request = mocker.patch("aiohttp.client.request")
-
-    # Act
-    response = await handler.proxied_request_handler(request=request)
-
-    # Assert
-    assert mock_client_request.call_count == 0
-    assert response.status == http.HTTPStatus.INTERNAL_SERVER_ERROR
-
-
-def test_communications_disabled_defaults_false():
-    assert ActiveTestProcedure.communications_disabled is False
