@@ -12,15 +12,10 @@ async def proxy_request(
     # Forward the request to the reference server
     if active_test_procedure.communications_disabled:
         # We simulate communication loss as a series of HTTP 500 responses
-        headers = []
-        status = http.HTTPStatus.INTERNAL_SERVER_ERROR
-        body = "COMMS DISABLED"
+        return web.Response(status=http.HTTPStatus.INTERNAL_SERVER_ERROR, body="COMMS DISABLED")
     else:
         async with client.request(
             request.method, remote_url, headers=request.headers.copy(), allow_redirects=False, data=await request.read()
         ) as response:
             headers = response.headers.copy()
-            status = http.HTTPStatus(response.status)
-            body = await response.read()
-
-    return web.Response(headers=headers, status=status, body=body)
+            return web.Response(headers=headers, status=http.HTTPStatus(response.status), body=await response.read())
