@@ -315,7 +315,7 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
-async def forward_request(
+async def proxy_request(
     request: web.Request, remote_url: str, active_test_procedure: ActiveTestProcedure
 ) -> web.Response:
 
@@ -394,7 +394,7 @@ async def proxied_request_handler(request):
         request=request, active_test_procedure=active_test_procedure, request_served=False
     )
 
-    handler_response = await forward_request(
+    handler_response = await proxy_request(
         request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
     )
 
