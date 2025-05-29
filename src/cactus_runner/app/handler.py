@@ -391,7 +391,7 @@ async def proxied_request_handler(request):
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
     step_name, serve_request_first = await event.update_test_procedure_progress(
-        request=request, active_test_procedure=active_test_procedure
+        request=request, active_test_procedure=active_test_procedure, request_served=False
     )
 
     handler_response = await forward_request(
