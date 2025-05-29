@@ -210,7 +210,7 @@ async def test_handle_event_with_no_matches(test_event: Event, listeners: list[L
 
 
 @pytest.mark.asyncio
-async def test_update_test_procedure_progress(pg_empty_config):
+async def test_update_test_procedure_progress(pg_empty_config, mocker):
     # Arrange
     request_data = ""
     request_read = AsyncMock()
@@ -222,32 +222,23 @@ async def test_update_test_procedure_progress(pg_empty_config):
     request.read = request_read
 
     active_test_procedure = MagicMock()
-    #     request.app[APPKEY_RUNNER_STATE].request_history = []
-    #     request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status = {}
-    #
-    #     handler.SERVER_URL = ""  # Override the server url
-    #
-    #     handler.DEV_SKIP_AUTHORIZATION_CHECK = True
-    #
-    #     response_text = "RESPONSE-TEXT"
-    #     response_status = http.HTTPStatus.OK
-    #     response_headers = {"X-API-Key": "API-KEY"}
-    #     mock_client_request = mocker.patch("aiohttp.client.request")
-    #     mock_client_request.return_value.__aenter__.return_value.status = response_status
-    #     mock_client_request.return_value.__aenter__.return_value.read.return_value = response_text
-    #     mock_client_request.return_value.__aenter__.return_value.headers = response_headers
-    #
-    #     # spy_handle_event = mocker.spy(handler.event, "handle_event")
-    #     mock_handle_event = mocker.patch("cactus_runner.app.handler.update_test_procedure_progress")
-    #     mock_handle_event.return_value = (None, False)
-    #     matching_step_name = "STEP-NAME"
-    #     # mock_handle_event.return_value.step = matching_step_name
-    #
+    active_test_procedure.step_status = {}
+
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
+
+    listener = MagicMock()
+    step_name = "STEP-NAME"
+    listener.step = step_name
+    mock_handle_event = mocker.patch("cactus_runner.app.event.handle_event")
+    mock_handle_event.return_value = (listener, False)
+
     # Act
     matching_step_name, serve_request_first = await event.update_test_procedure_progress(
         request=request, active_test_procedure=active_test_procedure
     )
 
     # Assert
-
-    # assert request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status[matching_step_name] == StepStatus.RESOLVED
+    mock_handle_event.assert_called_once()
+    assert matching_step_name == step_name
+    assert serve_request_first == False
+    assert request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status[step_name] == StepStatus.RESOLVED
