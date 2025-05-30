@@ -24,7 +24,8 @@ dependencies = [
   "cactus-test-definitions @ git+ssh://git@github.com/bsgip/cactus-test-definitions.git@main",
   "envoy @ git+ssh://git@github.com/bsgip/envoy.git@main",
   "psycopg[binary]>=3.2.5,<4",
-  "asyncpg",
+  "asyncpg>=0.30.0,<1",
+  "reportlab>=4.4.1,<5",
 ]
 
 [project.urls]
