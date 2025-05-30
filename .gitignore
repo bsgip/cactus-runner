@@ -1,5 +1,8 @@
 # Taken from GitHub Python .gitignore https://github.com/github/gitignore/blob/main/Python.gitignore
 
+# VS Code settings
+.vscode
+
 # Don't commit the github personal access token
 docker/github-pat.txt
 
