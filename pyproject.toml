@@ -51,7 +51,7 @@ test = [
   "pytest-asyncio",
   "pytest-mock",
   "pytest-postgresql",
-  "assertical",
+  "assertical>=0.3.0", # Has support for py310+ typing optionals
   "freezegun",
   "pytest-env",
   "asgi_lifespan",

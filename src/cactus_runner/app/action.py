@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )
@@ -35,11 +36,6 @@ class UnknownActionError(Exception):
 
 class FailedActionError(Exception):
     """Error raised when an action failed to execute"""
-
-
-async def get_active_site(session: AsyncSession) -> Site:
-    """We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client"""
-    return (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
 
 
 async def action_enable_steps(
@@ -107,6 +103,8 @@ async def action_set_default_der_control(
 ):
     # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
     active_site = await get_active_site(session)
+    if active_site is None:
+        raise FailedActionError("Unable to identify an active testing EndDevice / site.")
 
     import_limit_watts = resolved_parameters.get("opModImpLimW", None)
     export_limit_watts = resolved_parameters.get("opModExpLimW", None)
