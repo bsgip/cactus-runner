@@ -19,7 +19,9 @@ from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 
 from cactus_runner.app.check import (
     CheckResult,
+    FailedCheckError,
     UnknownCheckError,
+    all_checks_passing,
     check_all_steps_complete,
     check_connectionpoint_contents,
     check_der_capability_contents,
@@ -594,6 +596,50 @@ async def test_run_check_check_dne():
     # Act
     with pytest.raises(UnknownCheckError):
         await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+
+    # Assert
+    assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "checks, run_check_results, expected",
+    [
+        (None, [], True),
+        ([Check("1", {}), Check("2", {})], [True, True], True),
+        ([Check("1", {}), Check("2", {})], [True, False], False),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, True, False], False),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, FailedCheckError, True], FailedCheckError),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, UnknownCheckError, True], UnknownCheckError),
+    ],
+)
+@mock.patch("cactus_runner.app.check.run_check")
+@pytest.mark.anyio
+async def test_all_checks_passing(
+    mock_run_check: mock.MagicMock,
+    checks: list[Check] | None,
+    run_check_results: list[bool | type[Exception]],
+    expected: bool | type[Exception],
+):
+    """Tries to trip up all_checks_passing under various combinations of pass/fail/exception"""
+
+    # Arrange
+    mock_session = create_mock_session()
+    side_effects = []
+    for r in run_check_results:
+        if isinstance(r, type):
+            side_effects.append(r)
+        else:
+            side_effects.append(CheckResult(r, None))
+    mock_run_check.side_effect = side_effects
+
+    # Act
+    if isinstance(expected, type):
+        with pytest.raises(expected):
+            await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+    else:
+        result = await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+        assert isinstance(result, bool)
+        assert result == expected
 
     # Assert
     assert_mock_session(mock_session)

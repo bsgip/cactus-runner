@@ -279,11 +279,12 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
     Checks describe boolean (readonly) checks like "has the client sent a valid value".
 
     Args:
-        check (Action): The Check to evaluate against the active test procedure.
+        check: The Check to evaluate against the active test procedure.
         active_test_procedure (ActiveTestProcedure): The currently active test procedure.
 
     Raises:
-        UnknownActionError: Raised if this function has no implementation for the provided `action.type`.
+        UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
+        FailedCheckError: Raised if this function encounters an exception while running the check.
     """
     resolved_parameters = await resolve_variable_expressions_from_parameters(session, check.parameters)
     check_result: CheckResult | None = None
@@ -332,3 +333,28 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
     logger.info(f"run_check: {check.type} {resolved_parameters} returned {check_result}")
     return check_result
+
+
+async def all_checks_passing(
+    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+) -> bool:
+    """Returns True if every specified check is passing. An empty/unspecified list will return True.
+
+
+
+    Raises:
+      UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
+      FailedCheckError: Raised if this function encounters an exception while running the check."""
+
+    if not checks:
+        logger.debug("all_checks_passing: No checks specified. Returning True.")
+        return True
+
+    for check in checks:
+        result = await run_check(check, active_test_procedure, session)
+        if not result.passed:
+            logger.info(f"all_checks_passing: {check} is not passed. Returning False")
+            return False
+
+    logger.debug(f"all_checks_passing: Evaluated {len(checks)} and all passed.")
+    return True
