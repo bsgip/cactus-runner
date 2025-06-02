@@ -6,6 +6,7 @@ from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.action import apply_actions
+from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.shared import (
@@ -57,6 +58,10 @@ async def handle_event(
                 if not request_served:
                     return listener, True
 
+            if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
+                logger.info(f"Event on Step {listener.step} is NOT being fired as one or more checks are failing.")
+                continue
+
             # Perform actions associated with event
             await apply_actions(
                 session=session,
@@ -100,6 +105,10 @@ async def handle_wait_event(active_test_procedure: ActiveTestProcedure, envoy_cl
 
                 # Determine if wait period has expired
                 if now - wait_start >= timedelta(seconds=wait_duration_sec):
+                    if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
+                        logger.info(f"Step {listener.step} is NOT being fired as one or more checks are failing.")
+                        continue
+
                     # Apply actions
                     await apply_actions(
                         session=session,
