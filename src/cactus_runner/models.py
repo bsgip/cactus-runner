@@ -120,9 +120,17 @@ class StartResponseBody(JSONWizard):
 
 
 @dataclass
+class CriteriaEntry(JSONWizard):
+    success: bool
+    type: str
+    details: str
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     status_summary: str
     last_client_interaction: ClientInteraction
+    criteria: list[CriteriaEntry] = field(default_factory=list)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)

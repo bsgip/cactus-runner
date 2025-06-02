@@ -231,11 +231,15 @@ async def finalize_handler(request):
 
     if active_test_procedure is not None:
         finalized_test_procedure_name = active_test_procedure.name
-        json_status_summary = status.get_active_runner_status(
-            active_test_procedure=active_test_procedure,
-            request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-            last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-        ).to_json()
+        async with begin_session() as session:
+            json_status_summary = (
+                await status.get_active_runner_status(
+                    session=session,
+                    active_test_procedure=active_test_procedure,
+                    request_history=request.app[APPKEY_RUNNER_STATE].request_history,
+                    last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+                )
+            ).to_json()
 
         # Clear the active test procedure and request history
         request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
@@ -272,11 +276,13 @@ async def status_handler(request):
     logger.info("Test procedure status requested.")
 
     if active_test_procedure is not None:
-        runner_status = status.get_active_runner_status(
-            active_test_procedure=active_test_procedure,
-            request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-            last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-        )
+        async with begin_session() as session:
+            runner_status = await status.get_active_runner_status(
+                session=session,
+                active_test_procedure=active_test_procedure,
+                request_history=request.app[APPKEY_RUNNER_STATE].request_history,
+                last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+            )
         logger.info(
             f"Status of test procedure '{runner_status.test_procedure_name}': {runner_status.step_status}",
             extra={"test_procedure": runner_status.test_procedure_name},

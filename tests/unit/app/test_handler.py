@@ -28,6 +28,7 @@ async def test_finalize_handler(mocker):
     get_active_runner_status_spy = mocker.spy(handler.status, "get_active_runner_status")
     create_response_spy = mocker.spy(handler.finalize, "create_response")
     mocker.patch("cactus_runner.app.finalize.get_zip_contents")
+    mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
 
@@ -41,6 +42,8 @@ async def test_finalize_handler_resets_runner_state(mocker):
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].request_history = [None]  # a non-empty list stand-in
     mocker.patch("cactus_runner.app.finalize.create_response")
+    mocker.patch("cactus_runner.app.handler.begin_session")
+    mocker.patch("cactus_runner.app.handler.status.get_active_runner_status").return_value = RunnerStatus("", None)
 
     _ = await handler.finalize_handler(request=request)
 
@@ -67,6 +70,7 @@ async def test_status_handler(mocker):
     """
     request = MagicMock()
     get_active_runner_status_spy = mocker.spy(handler.status, "get_active_runner_status")
+    mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.status_handler(request=request)
     assert isinstance(response, Response)
