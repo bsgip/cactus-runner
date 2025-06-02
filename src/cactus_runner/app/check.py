@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from cactus_test_definitions.checks import Check
 from envoy.server.model.site import (
     SiteDER,
     SiteDERRating,
@@ -18,9 +19,20 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_csip_aus_site_reading_types,
 )
+from cactus_runner.app.variable_resolver import (
+    resolve_variable_expressions_from_parameters,
+)
 from cactus_runner.models import ActiveTestProcedure
 
 logger = logging.getLogger(__name__)
+
+
+class UnknownCheckError(Exception):
+    """Unknown Cactus Runner Check"""
+
+
+class FailedCheckError(Exception):
+    """Check failed to run (raised an exception)"""
 
 
 @dataclass
@@ -144,32 +156,179 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
     return CheckResult(True, None)
 
 
-async def check_readings_site_active_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
-    average_reading_types = await get_csip_aus_site_reading_types(
-        session, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE
-    )
+async def do_check_readings_for_types(
+    session: AsyncSession, srt_ids: list[int], minimum_count: Optional[int]
+) -> CheckResult:
+    """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
+    are met.
 
-    if not average_reading_types:
-        return CheckResult(False, "No site level AVERAGE/REAL_POWER_WATT MirrorUsagePoint for the active EndDevice")
+    session: DB session to query
+    srt_ids: list of SiteReadingType.site_reading_type values
+    minimum_count: If not None - ensure that every SiteReadingType has at least this many SiteReadings
 
-    minimum_count = resolved_parameters.get("minimum_count", None)
+    """
     if minimum_count is not None:
-        srt_ids = [srt.site_reading_type_id for srt in average_reading_types]
         results = await session.execute(
             select(SiteReading.site_reading_type_id, func.count(SiteReading.site_reading_id))
             .where(SiteReading.site_reading_type_id.in_(srt_ids))
             .group_by(SiteReading.site_reading_type_id)
         )
-        for srt_id, count in results.scalars().all():
+        count_by_srt_id: dict[int, int] = {srt_id: count for srt_id, count in results.all()}
+
+        for srt_id in srt_ids:
+            count = count_by_srt_id.get(srt_id, 0)  # If there is nothing in the DB, we won't get a count back.
             if count < minimum_count:
                 return CheckResult(False, f"/mup/{srt_id} has {count} Readings. Expected at least {minimum_count}.")
 
     return CheckResult(True, None)
 
 
-#     "readings-site-active-power": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
-#     "readings-site-reactive-power": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
-#     "readings-site-voltage": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
-#     "readings-der-active-power": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
-#     "readings-der-reactive-power": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
-#     "readings-der-voltage": {"minimum_count": ParameterSchema(True, ParameterType.Integer)},
+async def do_check_site_readings_and_params(
+    session,
+    resolved_parameters: dict[str, Any],
+    uom: UomType,
+    reading_location: ReadingLocation,
+    data_qualifier: DataQualifierType,
+) -> CheckResult:
+    average_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, data_qualifier)
+    if not average_reading_types:
+        return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice")
+
+    srt_ids = [srt.site_reading_type_id for srt in average_reading_types]
+    minimum_count: int | None = resolved_parameters.get("minimum_count", None)
+    return await do_check_readings_for_types(session, srt_ids, minimum_count)
+
+
+async def check_readings_site_active_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-site-active-power check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session, resolved_parameters, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE
+    )
+
+
+async def check_readings_site_reactive_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-site-reactive-power check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.REACTIVE_POWER_VAR,
+        ReadingLocation.SITE_READING,
+        DataQualifierType.AVERAGE,
+    )
+
+
+async def check_readings_site_voltage(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-site-voltage check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.VOLTAGE,
+        ReadingLocation.SITE_READING,
+        DataQualifierType.AVERAGE,
+    )
+
+
+async def check_readings_der_active_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-der-active-power check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.REAL_POWER_WATT,
+        ReadingLocation.DEVICE_READING,
+        DataQualifierType.AVERAGE,
+    )
+
+
+async def check_readings_der_reactive_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-der-reactive-power check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.REACTIVE_POWER_VAR,
+        ReadingLocation.DEVICE_READING,
+        DataQualifierType.AVERAGE,
+    )
+
+
+async def check_readings_der_voltage(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-der-voltage check.
+
+    Will only consider the mandatory "Average" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.VOLTAGE,
+        ReadingLocation.DEVICE_READING,
+        DataQualifierType.AVERAGE,
+    )
+
+
+async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
+    """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
+
+    Checks describe boolean (readonly) checks like "has the client sent a valid value".
+
+    Args:
+        check (Action): The Check to evaluate against the active test procedure.
+        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+
+    Raises:
+        UnknownActionError: Raised if this function has no implementation for the provided `action.type`.
+    """
+    resolved_parameters = await resolve_variable_expressions_from_parameters(session, check.parameters)
+    check_result: CheckResult | None = None
+    try:
+        match check.type:
+
+            case "all-steps-complete":
+                check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
+
+            case "connectionpoint-contents":
+                check_result = await check_connectionpoint_contents(session)
+
+            case "der-settings-contents":
+                check_result = await check_der_settings_contents(session)
+
+            case "der-capability-contents":
+                check_result = await check_der_capability_contents(session)
+
+            case "der-status-contents":
+                check_result = await check_der_status_contents(session, resolved_parameters)
+
+            case "readings-site-active-power":
+                check_result = await check_readings_site_active_power(session, resolved_parameters)
+
+            case "readings-site-reactive-power":
+                check_result = await check_readings_site_reactive_power(session, resolved_parameters)
+
+            case "readings-site-voltage":
+                check_result = await check_readings_site_voltage(session, resolved_parameters)
+
+            case "readings-der-active-power":
+                check_result = await check_readings_der_active_power(session, resolved_parameters)
+
+            case "readings-der-reactive-power":
+                check_result = await check_readings_der_reactive_power(session, resolved_parameters)
+
+            case "readings-der-voltage":
+                check_result = await check_readings_der_voltage(session, resolved_parameters)
+
+    except Exception as exc:
+        logger.error(f"Failed performing check {check}", exc_info=exc)
+        raise FailedCheckError(f"Failed performing check {check}. {exc}")
+
+    if check_result is None:
+        raise UnknownCheckError(f"Unrecognised check '{check.type}'. This is a problem with the test definition")
+
+    logger.info(f"run_check: {check.type} {resolved_parameters} returned {check_result}")
+    return check_result

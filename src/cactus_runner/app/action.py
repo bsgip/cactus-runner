@@ -303,7 +303,7 @@ async def apply_action(
         logger.error(f"Failed executing action {action}", exc_info=exc)
         raise FailedActionError(f"Failed executing action {action.type}")
 
-    raise UnknownActionError(f"Unrecognised action '{action}'. This is a problem with the test definition")
+    raise UnknownActionError(f"Unrecognised action '{action.type}'. This is a problem with the test definition")
 
 
 async def apply_actions(
