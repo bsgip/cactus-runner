@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session

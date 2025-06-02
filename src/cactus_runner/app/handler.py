@@ -7,6 +7,7 @@ from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
 from cactus_runner.app import action, auth, event, finalize, precondition, proxy, status
+from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
@@ -168,6 +169,17 @@ async def start_handler(request: web.Request):
             text="Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
         )
 
+    # We cannot start a test procedure if any of the precondition checks are failing:
+    if active_test_procedure.definition.preconditions:
+        async with begin_session() as session:
+            if not await all_checks_passing(
+                active_test_procedure.definition.preconditions.checks, active_test_procedure, session
+            ):
+                return web.Response(
+                    status=http.HTTPStatus.PRECONDITION_FAILED,
+                    text="Unable to start test procedure. One or more preconditions have NOT been met.",
+                )
+
     # We cannot start another test procedure if one is already running.
     # If there are active listeners then the test procedure must have already been started.
     listener_state = [listener.enabled for listener in active_test_procedure.listeners]
@@ -188,6 +200,8 @@ async def start_handler(request: web.Request):
             envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
             for a in active_test_procedure.definition.preconditions.actions:
                 await action.apply_action(a, active_test_procedure, session, envoy_client)
+
+            await session.commit()  # Actions can write updates to the DB directly
 
     # Active the first listener
     if active_test_procedure.listeners:
