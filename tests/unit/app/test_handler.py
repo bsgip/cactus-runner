@@ -13,6 +13,7 @@ from cactus_runner.models import (
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,
+    RunnerState,
     RunnerStatus,
     StepStatus,
 )
@@ -122,10 +123,11 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     request.path = "/dcap"
     request.path_qs = "/dcap"
     request.method = "GET"
-    request.app[APPKEY_RUNNER_STATE].request_history = []
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
+    mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure, communications_disabled=False, step_status={"1": StepStatus.PENDING}
     )
+    request.app = {}
+    request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
 
     handler.SERVER_URL = ""  # Override the server url
 
@@ -139,6 +141,8 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     mock_update_test_procedure_status = mocker.patch("cactus_runner.app.event.update_test_procedure_progress")
     mock_update_test_procedure_status.return_value = (event.UNRECOGNISED_STEP_NAME, False)
 
+    num_client_interactions_before = len(request.app[APPKEY_RUNNER_STATE].client_interactions)
+
     # Act
     response = await handler.proxied_request_handler(request=request)
 
@@ -147,6 +151,7 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     assert spy_request_is_authorized.call_count == 0
 
     #  ... verify we update the last client interaction
+    assert len(request.app[APPKEY_RUNNER_STATE].client_interactions) == num_client_interactions_before + 1
     assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
     assert (
         request.app[APPKEY_RUNNER_STATE].last_client_interaction.interaction_type

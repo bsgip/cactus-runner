@@ -92,11 +92,15 @@ class RunnerState:
 
     active_test_procedure: ActiveTestProcedure | None = None
     request_history: list[RequestEntry] = field(default_factory=list)
-    last_client_interaction: ClientInteraction = field(
-        default_factory=lambda: ClientInteraction(
-            interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc)
-        )
+    client_interactions: list[ClientInteraction] = field(
+        default_factory=lambda: [
+            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
+        ]
     )
+
+    @property
+    def last_client_interaction(self) -> ClientInteraction:
+        return self.client_interactions[-1]
 
 
 @dataclass

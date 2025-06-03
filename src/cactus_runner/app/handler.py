@@ -1,12 +1,22 @@
 import http
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from aiohttp import web
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
-from cactus_runner.app import action, auth, event, finalize, precondition, proxy, status
+from cactus_runner.app import (
+    action,
+    auth,
+    event,
+    finalize,
+    precondition,
+    proxy,
+    reporting,
+    status,
+)
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
@@ -75,8 +85,10 @@ async def init_handler(request: web.Request):
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].last_client_interaction = ClientInteraction(
-        interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
+    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
+        ClientInteraction(
+            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
+        )
     )
 
     # Reset envoy database
@@ -178,8 +190,10 @@ async def start_handler(request: web.Request):
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].last_client_interaction = ClientInteraction(
-        interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=datetime.now(timezone.utc)
+    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
+        ClientInteraction(
+            interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=datetime.now(timezone.utc)
+        )
     )
 
     # Fire any precondition actions
@@ -335,8 +349,8 @@ async def proxied_request_handler(request):
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].last_client_interaction = ClientInteraction(
-        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp
+    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
+        ClientInteraction(interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp)
     )
 
     # Determine paths, url and HTTP method
