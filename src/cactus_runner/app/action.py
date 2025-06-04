@@ -27,6 +27,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
     RunnerState,
+    StepStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ async def action_remove_steps(
     """
     steps_to_remove: list[str] = resolved_parameters["steps"]
 
-    listeners_to_remove = []
+    listeners_to_remove: list[Listener] = []
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_remove:
             listeners_to_remove.append(listener)
@@ -94,6 +95,7 @@ async def action_remove_steps(
     for listener in listeners_to_remove:
         logger.info(f"ACTION remove-steps: Removing listener: {listener}")
         active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
+        active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
 
 
 async def action_finish_test(runner_state: RunnerState, session: AsyncSession):

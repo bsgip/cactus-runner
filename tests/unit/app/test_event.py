@@ -3,7 +3,6 @@ from http import HTTPMethod
 from unittest.mock import MagicMock, patch
 
 import pytest
-from aiohttp import web
 from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
@@ -11,10 +10,7 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Event
 
 from cactus_runner.app import event
-from cactus_runner.app.shared import (
-    APPKEY_RUNNER_STATE,
-)
-from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState, StepStatus
+from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 
 
 def test_generate_time_trigger():
@@ -413,7 +409,7 @@ async def test_handle_event_trigger_normal_operation(
         assert session is mock_session
         assert active_test_procedure is input_runner_state.active_test_procedure
 
-        idx = find_index(checks, [l.event.checks for l in listeners])
+        idx = find_index(checks, [listener.event.checks for listener in listeners])
         assert idx is not None, "Couldn't find checks. This is a test setup issue."
 
         return idx in check_indexes

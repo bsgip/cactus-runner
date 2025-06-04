@@ -5,21 +5,15 @@ from enum import IntEnum, auto
 from http import HTTPMethod
 
 from aiohttp import web
-from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
-from cactus_runner.app.database import begin_session
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.shared import (
-    APPKEY_ENVOY_ADMIN_CLIENT,
-    APPKEY_RUNNER_STATE,
-)
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import Listener, RunnerState, StepStatus
+from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
 
@@ -185,35 +179,3 @@ def generate_client_request_trigger(request: web.Request, before_serving: bool) 
         single_listener=True,
         client_request=ClientRequestDetails(HTTPMethod(request.method), request.path),
     )
-
-
-async def update_test_procedure_progress(request: web.Request, request_served: bool = False) -> tuple[str, bool]:
-    """Calls handle_event and updates progress test procedure"""
-
-    runner_state = request.app[APPKEY_RUNNER_STATE]
-
-    # Update the progress of the test procedure
-    request_event = Event(type=f"{request.method}-request-received", parameters={"endpoint": request.path})
-    async with begin_session() as session:
-        envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-        listener, serve_request_first = await handle_event(
-            event=request_event,
-            runner_state=runner_state,
-            session=session,
-            envoy_client=envoy_client,
-            request_served=request_served,
-        )
-        await session.commit()
-
-    # Update step_status when action associated with event is handled.
-    # If we have a listener but serve_request_first is True, event handling has been
-    # deferred till after the request has been served.
-    if runner_state.active_test_procedure and listener and not serve_request_first:
-        runner_state.active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
-
-    # Determine which step of the test procedure was handled by this event.
-    # UNRECOGNISED_STEP_NAME indicates that no listener event was recognised by the
-    # test procedure and didn't progress it any further.
-    step_name = UNRECOGNISED_STEP_NAME if listener is None else listener.step
-
-    return step_name, serve_request_first
