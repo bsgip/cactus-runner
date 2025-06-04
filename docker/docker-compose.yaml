@@ -125,6 +125,8 @@ services:
     environment:
       - SERVER_URL=envoy:8000
       - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@envoy-db/test_db
+      - ENVOY_ADMIN_BASICAUTH_USERNAME=admin
+      - ENVOY_ADMIN_BASICAUTH_PASSWORD=password
     ports:
       # We publish port 8000 to the host (8000 was the port the envoy service normally publishes on)
       - 127.0.0.1:8000:8080

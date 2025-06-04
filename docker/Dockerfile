@@ -5,16 +5,17 @@ RUN apt-get update; apt-get install -y git
 # Copy app + dependencies
 COPY ./src /app/src
 COPY ./config /app/config
-COPY ./logs /app/logs
 COPY ./pyproject.toml /app/pyproject.toml
-COPY ./setup.py /app/setup.py
+COPY ./setup.cfg /app/setup.cfg
 
 # Configure environment
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Create logs dir
+RUN mkdir /app/logs
 
 # Use a personal access token to access private repo
-
 RUN --mount=type=secret,id=github_pat,uid=50000 git config --global url."https://ssh:$(cat /run/secrets/github_pat)@github.com/".insteadOf "ssh://git@github.com/"
 
 # Install app / dependencies
