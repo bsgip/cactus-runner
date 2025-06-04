@@ -76,40 +76,33 @@ def test_procedure_overview(
     return elements
 
 
-def requests_timeline() -> Image:
+def requests_timeline(request_timestamps: list[datetime]) -> Image:
 
-    def random_requests_timeline(width: int, height: int):
-        np.random.seed(1)
-        N = 100
-        seconds_ago = np.random.rand(N) * 3600
-        now = datetime.now(tz=timezone.utc)
-        timestamps = [now - timedelta(seconds=offset) for offset in seconds_ago]
-        df = pd.DataFrame({"timestamp": timestamps})
-        fig = px.histogram(df, x="timestamp", labels={"timestamp": "Time (UTC)"})
-        fig.update_layout(bargap=0.2)
-        fig.update_layout(title_text="Requests over time", title_x=0.5)
-        fig.update_layout(
-            autosize=False,
-            width=width,
-            height=height,
-            margin=dict(l=30, r=30, b=50, t=50, pad=4),
-        )
-        return fig
+    WIDTH = 500
+    HEIGHT = 250
+    df = pd.DataFrame({"timestamp": request_timestamps})
+    fig = px.histogram(df, x="timestamp", labels={"timestamp": "Time (UTC)"})
+    fig.update_layout(bargap=0.2)
+    fig.update_layout(title_text="Requests over time", title_x=0.5)
+    fig.update_layout(
+        autosize=False,
+        width=WIDTH,
+        height=HEIGHT,
+        margin=dict(l=30, r=30, b=50, t=50, pad=4),
+    )
 
-    width = 500
-    height = 250
-    fig = random_requests_timeline(width=width, height=height)
     img_bytes = fig.to_image(format="png")
     buffer = io.BytesIO(img_bytes)
     return Image(buffer)
 
 
 def test_procedure_communications(
+    request_timestamps: list[datetime],
     style: ParagraphStyle,
 ) -> list:
     elements = []
     elements.append(Paragraph("Communications", style))
-    elements.append(requests_timeline())
+    elements.append(requests_timeline(request_timestamps=request_timestamps))
     elements.append(DEFAULT_SPACER)
     return elements
 
@@ -162,7 +155,8 @@ def generate_page_elements(runner_state: RunnerState, styles: StyleSheet1) -> li
         # the appropriate client interactions SHOULD be defined in the runner state.
         logger.error(f"Unable to add 'test procedure summary' to PDF report. Reason={repr(e)}")
 
-    page_elements.extend(test_procedure_communications(style=styles["Heading1"]))
+    request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
+    page_elements.extend(test_procedure_communications(request_timestamps=request_timestamps, style=styles["Heading1"]))
 
     return page_elements
 
