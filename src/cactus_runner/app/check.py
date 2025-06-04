@@ -335,6 +335,19 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
     return check_result
 
 
+async def determine_check_results(
+    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+) -> dict[Check, CheckResult]:
+    check_results = {}
+    if checks is None:
+        return check_results
+
+    for check in checks:
+        result = await run_check(check, active_test_procedure, session)
+        check_results[check] = result
+    return check_results
+
+
 async def all_checks_passing(
     checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
 ) -> bool:
