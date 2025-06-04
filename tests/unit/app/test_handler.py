@@ -25,16 +25,16 @@ async def test_finalize_handler(mocker):
     """
 
     request = MagicMock()
-    get_active_runner_status_spy = mocker.spy(handler.status, "get_active_runner_status")
-    create_response_spy = mocker.spy(handler.finalize, "create_response")
-    mocker.patch("cactus_runner.app.finalize.get_zip_contents")
+    zip_data = bytes([99, 55])
+    mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
+    mock_finish_active_test.return_value = zip_data
     mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
 
     assert isinstance(response, Response)
-    create_response_spy.assert_called_once()
-    get_active_runner_status_spy.assert_called_once()
+    assert response.body == zip_data
+    mock_finish_active_test.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -102,6 +102,7 @@ async def test_status_handler_handles_no_active_test_procedure(example_client_in
 async def test_proxied_request_handler_performs_authorization(mocker):
     # Arrange
     request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure.is_finished.return_value = False
     handler.DEV_SKIP_AUTHORIZATION_CHECK = False
 
     spy_request_is_authorized = mocker.spy(handler.auth, "request_is_authorized")
@@ -128,7 +129,10 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     request.method = "GET"
     request.app[APPKEY_RUNNER_STATE].request_history = []
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
-        ActiveTestProcedure, communications_disabled=False, step_status={"1": StepStatus.PENDING}
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=None,
+        step_status={"1": StepStatus.PENDING},
     )
 
     handler.SERVER_URL = ""  # Override the server url
@@ -191,3 +195,24 @@ async def test_proxied_request_handler_logs_error_with_no_active_test_procedure(
     mock_logger_warning.assert_called_once()
     assert isinstance(response, Response)
     assert response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_proxied_request_handler_logs_error_with_finished_test(mocker):
+    # Arrange
+    request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=bytes([0, 1]),
+        step_status={"1": StepStatus.PENDING},
+    )
+    mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")
+
+    # Act
+    response = await handler.proxied_request_handler(request=request)
+
+    # Assert
+    mock_logger_warning.assert_called_once()
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.GONE

@@ -71,8 +71,8 @@ async def test_handle_event_with_matching_listener(
     # Arrange
     mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
     mock_all_checks_passing.return_value = True
-    active_test_procedure = MagicMock()
-    active_test_procedure.listeners = listeners
+    runner_state = MagicMock()
+    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
@@ -80,7 +80,7 @@ async def test_handle_event_with_matching_listener(
     matched_listener, serve_request_first = await event.handle_event(
         session=mock_session,
         event=test_event,
-        active_test_procedure=active_test_procedure,
+        runner_state=runner_state,
         envoy_client=mock_envoy_client,
     )
 
@@ -106,8 +106,8 @@ async def test_handle_event_with_checks_failing(mocker):
     # Arrange
     mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
     mock_all_checks_passing.return_value = False
-    active_test_procedure = MagicMock()
-    active_test_procedure.listeners = listeners
+    runner_state = MagicMock()
+    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
@@ -115,7 +115,7 @@ async def test_handle_event_with_checks_failing(mocker):
     matched_listener, serve_request_first = await event.handle_event(
         session=mock_session,
         event=test_event,
-        active_test_procedure=active_test_procedure,
+        runner_state=runner_state,
         envoy_client=mock_envoy_client,
     )
 
@@ -167,8 +167,8 @@ async def test_handle_event_with_checks_failing(mocker):
 @pytest.mark.asyncio
 async def test_handle_event_calls_apply_actions(mocker, test_event: Event, listeners: list[Listener]):
     # Arrange
-    active_test_procedure = MagicMock()
-    active_test_procedure.listeners = listeners
+    runner_state = MagicMock()
+    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
@@ -180,7 +180,7 @@ async def test_handle_event_calls_apply_actions(mocker, test_event: Event, liste
     await event.handle_event(
         session=mock_session,
         event=test_event,
-        active_test_procedure=active_test_procedure,
+        runner_state=runner_state,
         envoy_client=mock_envoy_client,
     )
 
@@ -233,8 +233,10 @@ async def test_handle_event_with_no_matches(mocker, test_event: Event, listeners
     # Arrange
     mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
     mock_all_checks_passing.return_value = True
-    active_test_procedure = MagicMock()
-    active_test_procedure.listeners = listeners
+
+    runner_state = MagicMock()
+    runner_state.active_test_procedure.listeners = listeners
+
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
@@ -242,7 +244,7 @@ async def test_handle_event_with_no_matches(mocker, test_event: Event, listeners
     listener, serve_request_first = await event.handle_event(
         session=mock_session,
         event=test_event,
-        active_test_procedure=active_test_procedure,
+        runner_state=runner_state,
         envoy_client=mock_envoy_client,
     )
 
@@ -273,15 +275,13 @@ async def test_update_test_procedure_progress(pg_empty_config, mocker):
     mock_handle_event.return_value = (listener, serve_request_first)
 
     # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(
-        request=request, active_test_procedure=active_test_procedure
-    )
+    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
 
     # Assert
     mock_handle_event.assert_called_once()
     assert matching_step_name == step_name
     assert serve_request_first == serve_request_first
-    assert request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status[step_name] == StepStatus.RESOLVED
+    assert active_test_procedure.step_status[step_name] == StepStatus.RESOLVED
 
 
 @pytest.mark.asyncio
@@ -306,9 +306,7 @@ async def test_update_test_procedure_progress_respects_serve_request_first(pg_em
     mock_handle_event.return_value = (listener, serve_request_first)
 
     # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(
-        request=request, active_test_procedure=active_test_procedure
-    )
+    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
 
     # Assert
     mock_handle_event.assert_called_once()

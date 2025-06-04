@@ -49,11 +49,10 @@ async def periodic_task(app: web.Application):
     """
     while True:
         try:
-            active_test_procedure = app[APPKEY_RUNNER_STATE].active_test_procedure
-            if active_test_procedure:
-                await event.handle_wait_event(
-                    active_test_procedure=active_test_procedure, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT]
-                )
+            runner_state = app[APPKEY_RUNNER_STATE]
+            active_test_procedure = runner_state.active_test_procedure
+            if active_test_procedure and not active_test_procedure.is_finished():
+                await event.handle_wait_event(runner_state=runner_state, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT])
         except Exception as e:
             # Catch and log uncaught exceptions to prevent periodic task from hanging
             logger.error(f"Uncaught exception in periodic task: {repr(e)}")

@@ -11,11 +11,12 @@ from cactus_runner.app.database import begin_session
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
+    APPKEY_RUNNER_STATE,
 )
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
+from cactus_runner.models import Listener, RunnerState, StepStatus
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ class WaitEventError(Exception):
 
 async def handle_event(
     event: Event,
-    active_test_procedure: ActiveTestProcedure,
+    runner_state: RunnerState,
     session: AsyncSession,
     envoy_client: EnvoyAdminClient,
     request_served: bool = False,
@@ -40,13 +41,18 @@ async def handle_event(
 
     Args:
         event (Event): An Event to be matched against the test procedures enabled listeners.
-        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+        runner_state (RunnerState): The current state of the runner (including an active test procedure).
 
     Returns:
         Listener: If successful return the listener that matched the event, else None if no listener matched.
         bool: True if the handling of the event was deferred because the request should
         be served beforehand.
     """
+
+    active_test_procedure = runner_state.active_test_procedure
+    if not active_test_procedure:
+        return None, False
+
     # Check all listeners
     for listener in active_test_procedure.listeners:
         # Did any of the current listeners match?
@@ -66,7 +72,7 @@ async def handle_event(
             await apply_actions(
                 session=session,
                 listener=listener,
-                active_test_procedure=active_test_procedure,
+                runner_state=runner_state,
                 envoy_client=envoy_client,
             )
 
@@ -75,16 +81,20 @@ async def handle_event(
     return None, False
 
 
-async def handle_wait_event(active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient):
+async def handle_wait_event(runner_state: RunnerState, envoy_client: EnvoyAdminClient):
     """Checks for any expired wait events on enabled listeners and triggers their actions.
 
     Args:
-        active_test_procedeure (ActiveTestProcedure): The current active test procedure.
+        runner_state (RunnerState): The current state of the runner (including an active test procedure).
         envoy_client (EnvoyAdminClient): An instance of an envoy admin client.
 
     Raises:
         WaitEventError: If the wait event is missing a start timestamp or duration.
     """
+    active_test_procedure = runner_state.active_test_procedure
+    if not active_test_procedure:
+        return
+
     now = datetime.now(timezone.utc)
 
     # Loop over enabled listeners with (active) wait events
@@ -113,35 +123,39 @@ async def handle_wait_event(active_test_procedure: ActiveTestProcedure, envoy_cl
                     await apply_actions(
                         session=session,
                         listener=listener,
-                        active_test_procedure=active_test_procedure,
+                        runner_state=runner_state,
                         envoy_client=envoy_client,
                     )
 
                     # Update step status
                     active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
 
+                await session.commit()
 
-async def update_test_procedure_progress(
-    request: web.Request, active_test_procedure: ActiveTestProcedure, request_served: bool = False
-) -> tuple[str, bool]:
+
+async def update_test_procedure_progress(request: web.Request, request_served: bool = False) -> tuple[str, bool]:
     """Calls handle_event and updates progress test procedure"""
+
+    runner_state = request.app[APPKEY_RUNNER_STATE]
+
     # Update the progress of the test procedure
     request_event = Event(type=f"{request.method}-request-received", parameters={"endpoint": request.path})
     async with begin_session() as session:
         envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
         listener, serve_request_first = await handle_event(
             event=request_event,
-            active_test_procedure=active_test_procedure,
+            runner_state=runner_state,
             session=session,
             envoy_client=envoy_client,
             request_served=request_served,
         )
+        await session.commit()
 
     # Update step_status when action associated with event is handled.
     # If we have a listener but serve_request_first is True, event handling has been
     # deferred till after the request has been served.
-    if listener and not serve_request_first:
-        active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
+    if runner_state.active_test_procedure and listener and not serve_request_first:
+        runner_state.active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
 
     # Determine which step of the test procedure was handled by this event.
     # UNRECOGNISED_STEP_NAME indicates that no listener event was recognised by the

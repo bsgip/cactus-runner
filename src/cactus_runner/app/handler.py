@@ -26,6 +26,7 @@ from cactus_runner.models import (
     InitResponseBody,
     Listener,
     RequestEntry,
+    RunnerState,
     StartResponseBody,
     StepStatus,
 )
@@ -160,7 +161,8 @@ async def start_handler(request: web.Request):
         409 (Conflict) if there is no initialised test procedure or
         409 (Conflict) if the test procedure already has enabled listeners (and has presumably already been started)
     """
-    active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    runner_state = request.app[APPKEY_RUNNER_STATE]
+    active_test_procedure = runner_state.active_test_procedure
 
     # We cannot start a test procedure if one hasn't been initialized
     if active_test_procedure is None:
@@ -190,7 +192,7 @@ async def start_handler(request: web.Request):
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].last_client_interaction = ClientInteraction(
+    runner_state.last_client_interaction = ClientInteraction(
         interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=datetime.now(timezone.utc)
     )
 
@@ -198,8 +200,9 @@ async def start_handler(request: web.Request):
     if active_test_procedure.definition.preconditions and active_test_procedure.definition.preconditions.actions:
         async with begin_session() as session:
             envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+
             for a in active_test_procedure.definition.preconditions.actions:
-                await action.apply_action(a, active_test_procedure, session, envoy_client)
+                await action.apply_action(a, runner_state, session, envoy_client)
 
             await session.commit()  # Actions can write updates to the DB directly
 
@@ -212,7 +215,7 @@ async def start_handler(request: web.Request):
         extra={"test_procedure": active_test_procedure.name},
     )
 
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
+    runner_state.active_test_procedure = active_test_procedure
 
     body = StartResponseBody(
         status="Test procedure started.",
@@ -241,33 +244,30 @@ async def finalize_handler(request):
         aiohttp.web.Response: The body contains the zipped artifacts from the test procedure run or
         a 400 (Bad Request) if there is no test procedure in progress.
     """
-    active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    runner_state: RunnerState = request.app[APPKEY_RUNNER_STATE]
 
-    if active_test_procedure is not None:
-        finalized_test_procedure_name = active_test_procedure.name
+    if runner_state.active_test_procedure is not None:
+        finalized_test_procedure_name = runner_state.active_test_procedure.name
         async with begin_session() as session:
-            json_status_summary = (
-                await status.get_active_runner_status(
-                    session=session,
-                    active_test_procedure=active_test_procedure,
-                    request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-                    last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-                )
-            ).to_json()
+            # This will either force the active test procedure to finish
+            # (or it will return the results of an earlier finish)
+            zip_contents = await finalize.finish_active_test(runner_state, session)
 
         # Clear the active test procedure and request history
-        request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
-        request.app[APPKEY_RUNNER_STATE].request_history.clear()
+        runner_state.active_test_procedure = None
+        runner_state.request_history.clear()
 
         logger.info(
             f"Test Procedure '{finalized_test_procedure_name}' finalized",
             extra={"test_procedure": finalized_test_procedure_name},
         )
 
-        return finalize.create_response(
-            json_status_summary=json_status_summary,
-            runner_logfile="logs/cactus_runner.jsonl",
-            envoy_logfile="logs/envoy.jsonl",
+        return web.Response(
+            body=zip_contents,
+            headers={
+                "Content-Type": "application/zip",
+                "Content-Disposition": "attachment; filename=finalize.zip",
+            },
         )
     else:
         return web.Response(
@@ -320,7 +320,7 @@ async def proxied_request_handler(request):
 
     Requests are not forwarded if there is no active test procedure. Without an active test
     procedure there is no where to record the history of requests which could complicate
-    inpterpreting test artifacts.
+    interpreting test artifacts.
 
     Before forwarding any request to the utility server, the handler performs an authorization check,
     comparing the forwarded certificate (request object) and the aggregator registered with
@@ -334,7 +334,8 @@ async def proxied_request_handler(request):
         aiohttp.web.Response: The forwarded response from the utility server or
         a 403 (forbidden) if the handler's authorization check fails.
     """
-    active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    runner_state: RunnerState = request.app[APPKEY_RUNNER_STATE]
+    active_test_procedure = runner_state.active_test_procedure
 
     # Don't proxy requests if there is no active test procedure
     if active_test_procedure is None:
@@ -343,6 +344,15 @@ async def proxied_request_handler(request):
         )
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST, text="Unable to handle request. An active test procedure is required."
+        )
+
+    if active_test_procedure.is_finished():
+        logger.error(
+            f"Request (path={request.path}) not forwarded. {active_test_procedure.name} has been marked as finished."
+        )
+        return web.Response(
+            status=http.HTTPStatus.GONE,
+            text=f"{active_test_procedure.name} has been marked as finished. This request will not be logged.",
         )
 
     # Store timestamp of when the request was received
@@ -365,18 +375,14 @@ async def proxied_request_handler(request):
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
-    step_name, serve_request_first = await event.update_test_procedure_progress(
-        request=request, active_test_procedure=active_test_procedure, request_served=False
-    )
+    step_name, serve_request_first = await event.update_test_procedure_progress(request=request, request_served=False)
 
     handler_response = await proxy.proxy_request(
         request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
     )
 
     if serve_request_first:
-        step_name, _ = await event.update_test_procedure_progress(
-            request=request, active_test_procedure=active_test_procedure, request_served=True
-        )
+        step_name, _ = await event.update_test_procedure_progress(request=request, request_served=True)
 
     # Record in request history
     request_entry = RequestEntry(
@@ -387,6 +393,6 @@ async def proxied_request_handler(request):
         timestamp=request_timestamp,
         step_name=step_name,
     )
-    request.app[APPKEY_RUNNER_STATE].request_history.append(request_entry)
+    runner_state.request_history.append(request_entry)
 
     return handler_response

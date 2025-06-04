@@ -19,12 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
+from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
+    RunnerState,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,10 @@ async def action_remove_steps(
     for listener in listeners_to_remove:
         logger.info(f"ACTION remove-steps: Removing listener: {listener}")
         active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
+
+
+async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
+    await finish_active_test(runner_state, session)
 
 
 async def action_set_default_der_control(
@@ -238,16 +244,20 @@ async def action_register_end_device(
     await session.commit()
 
 
-def action_communications_loss(active_test_procedure: ActiveTestProcedure):
-    active_test_procedure.communications_disabled = False
+def action_communications_status(active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any]):
+    comms_enabled: bool = resolved_parameters["enabled"]
+    active_test_procedure.communications_disabled = not comms_enabled
 
 
-def action_communications_restore(active_test_procedure: ActiveTestProcedure):
-    active_test_procedure.communications_disabled = True
+async def action_edev_registration_links(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+    """Implements edev-registration-links action"""
+    links_enabled: bool = resolved_parameters["enabled"]
+
+    await envoy_client.update_runtime_config(RuntimeServerConfigRequest(disable_edev_registration=not links_enabled))
 
 
 async def apply_action(
-    action: Action, active_test_procedure: ActiveTestProcedure, session: AsyncSession, envoy_client: EnvoyAdminClient
+    action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
     """Applies the action to the active test procedure.
 
@@ -260,18 +270,24 @@ async def apply_action(
     Raises:
         UnknownActionError: Raised if this function has no implementation for the provided `action.type`.
     """
+    active_test_procedure = runner_state.active_test_procedure
+    if not active_test_procedure:
+        return
+
     resolved_parameters = await resolve_variable_expressions_from_parameters(session, action.parameters)
 
+    logger.info(f"Executing action {action} with parameters {resolved_parameters}")
     try:
         match action.type:
             case "enable-steps":
                 await action_enable_steps(active_test_procedure, resolved_parameters)
                 return
-
             case "remove-steps":
                 await action_remove_steps(active_test_procedure, resolved_parameters)
                 return
-
+            case "finish-test":
+                await action_finish_test(runner_state, session)
+                return
             case "set-default-der-control":
                 await action_set_default_der_control(resolved_parameters, session, envoy_client)
                 return
@@ -290,13 +306,11 @@ async def apply_action(
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
                 return
-
-            case "communications-loss":
-                action_communications_loss(active_test_procedure)
+            case "communications-status":
+                action_communications_status(active_test_procedure, resolved_parameters)
                 return
-
-            case "communications-restore":
-                action_communications_restore(active_test_procedure)
+            case "edev-registration-links":
+                await action_edev_registration_links(resolved_parameters, envoy_client)
                 return
 
     except Exception as exc:
@@ -309,7 +323,7 @@ async def apply_action(
 async def apply_actions(
     session: AsyncSession,
     listener: Listener,
-    active_test_procedure: ActiveTestProcedure,
+    runner_state: RunnerState,
     envoy_client: EnvoyAdminClient,
 ):
     """Applies all actions for the given listener.
@@ -321,13 +335,7 @@ async def apply_actions(
         active_test_procedure (ActiveTestProcedure): The currently active test procedure.
     """
     for action in listener.actions:
-        logger.info(f"Executing action: {action=}")
         try:
-            await apply_action(
-                session=session,
-                action=action,
-                active_test_procedure=active_test_procedure,
-                envoy_client=envoy_client,
-            )
+            await apply_action(session=session, action=action, runner_state=runner_state, envoy_client=envoy_client)
         except (UnknownActionError, FailedActionError) as e:
             logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")

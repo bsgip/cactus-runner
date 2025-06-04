@@ -79,7 +79,9 @@ def generate_active_test_procedure_steps(active_steps: list[str], all_steps: lis
     steps = dict([(s, Step(Event("wait", {}, None), [])) for s in all_steps])
     test_procedure = generate_class_instance(TestProcedure, steps=steps)
 
-    return generate_class_instance(ActiveTestProcedure, step_status={}, definition=test_procedure, listeners=listeners)
+    return generate_class_instance(
+        ActiveTestProcedure, step_status={}, definition=test_procedure, listeners=listeners, finished_zip_data=None
+    )
 
 
 def assert_check_result(cr: CheckResult, expected: bool):

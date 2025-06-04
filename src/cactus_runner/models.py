@@ -33,6 +33,14 @@ class ActiveTestProcedure:
     client_lfdi: str  # The LFDI of the client certificate expected for the test
     client_sfdi: int  # The SFDI of the client certificate expected for the test
     communications_disabled: bool = False
+    finished_zip_data: bytes | None = (
+        None  # Finalised ZIP file. If not None - this test is "done" and shouldn't update any events/state
+    )
+
+    def is_finished(self) -> bool:
+        """True if the active test procedure has been marked as finished. That is, there is no more test data to
+        accumulate and any client events should be ignored"""
+        return self.finished_zip_data is not None
 
 
 @dataclass
