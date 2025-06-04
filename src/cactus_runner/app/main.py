@@ -13,7 +13,7 @@ from cactus_test_definitions import TestProcedureConfig
 
 from cactus_runner import __version__
 from cactus_runner.app import event, handler
-from cactus_runner.app.database import initialise_database_connection
+from cactus_runner.app.database import begin_session, initialise_database_connection
 from cactus_runner.app.env import (
     APP_HOST,
     APP_PORT,
@@ -49,10 +49,14 @@ async def periodic_task(app: web.Application):
     """
     while True:
         try:
-            runner_state = app[APPKEY_RUNNER_STATE]
-            active_test_procedure = runner_state.active_test_procedure
-            if active_test_procedure and not active_test_procedure.is_finished():
-                await event.handle_wait_event(runner_state=runner_state, envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT])
+            async with begin_session() as session:
+                await event.handle_event_trigger(
+                    trigger=event.generate_time_trigger(),
+                    runner_state=app[APPKEY_RUNNER_STATE],
+                    session=session,
+                    envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT],
+                )
+
         except Exception as e:
             # Catch and log uncaught exceptions to prevent periodic task from hanging
             logger.error(f"Uncaught exception in periodic task: {repr(e)}")

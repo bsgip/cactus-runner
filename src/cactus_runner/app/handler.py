@@ -311,7 +311,7 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
-async def proxied_request_handler(request):
+async def proxied_request_handler(request: web.Request):
     """Handler for requests that should be forwarded to the utility server.
 
     The handler also logs all requests to `request.app[APPKEY_RUNNER_STATE].request_history`, tagging

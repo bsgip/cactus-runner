@@ -16,7 +16,7 @@ class Listener:
     step: str
     event: Event
     actions: list[Any]
-    enabled: bool = False
+    enabled_time: datetime | None = None  # Set to the TZ aware datetime when this Listener was enabled. None = disabled
 
 
 class StepStatus(Enum):

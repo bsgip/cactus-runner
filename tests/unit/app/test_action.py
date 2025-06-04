@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
+from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
@@ -84,7 +85,8 @@ async def test_action_enable_steps():
     await action_enable_steps(runner_state.active_test_procedure, resolved_parameters)
 
     # Assert
-    assert listeners[0].enabled
+    assert_nowish(listeners[0].enabled_time)
+    assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
 
 

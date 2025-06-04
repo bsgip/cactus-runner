@@ -64,11 +64,7 @@ async def action_enable_steps(
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-steps: Enabling step {listener.step}")
-            listener.enabled = True
-
-            # Record the start time for steps with wait events
-            if listener.event.type == "wait":
-                listener.event.parameters["wait_start_timestamp"] = datetime.now(tz=timezone.utc)
+            listener.enabled_time = datetime.now(tz=timezone.utc)
 
 
 async def action_remove_steps(
