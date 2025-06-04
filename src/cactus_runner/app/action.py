@@ -265,7 +265,7 @@ async def apply_action(
 
     Args:
         action (Action): The Action to apply to the active test procedure.
-        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+        runner_state (RunnerState): The current state of the runner. If not active_test_procedure then this exits early.
 
     Raises:
         UnknownActionError: Raised if this function has no implementation for the provided `action.type`.

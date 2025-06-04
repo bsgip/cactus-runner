@@ -65,8 +65,7 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
 
 
 def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
-    atp = ActiveTestProcedure("test", None, listeners, {}, "", "")
-    return RunnerState(atp, [], None)
+    return RunnerState(ActiveTestProcedure("test", None, listeners, {}, "", ""), [], None)
 
 
 @pytest.mark.anyio
@@ -355,7 +354,9 @@ async def test_action_set_post_rate(pg_base_config, envoy_admin_client):
 @pytest.mark.anyio
 async def test_action_register_end_device(pg_base_config):
     # Arrange
-    atp = generate_class_instance(ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None)
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None
+    )
     resolved_params = {
         "nmi": "abc",
         "registration_pin": 1234,
@@ -363,7 +364,7 @@ async def test_action_register_end_device(pg_base_config):
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_register_end_device(atp, resolved_params, session)
+        await action_register_end_device(active_test_procedure, resolved_params, session)
 
     # Assert
     assert pg_base_config.execute("select count(*) from site;").fetchone()[0] == 1
@@ -382,16 +383,16 @@ async def test_action_register_end_device(pg_base_config):
 def test_action_communications_status(resolved_params: dict[str, Any], expected: bool | type[Exception]):
     """NOTE: The expected value is the expected value for comms DISABLED"""
     for initial_comms_disabled_value in [True, False]:
-        atp = create_testing_runner_state([])
-        atp.communications_disabled = initial_comms_disabled_value
+        active_test_procedure = create_testing_runner_state([])
+        active_test_procedure.communications_disabled = initial_comms_disabled_value
 
         if isinstance(expected, type):
             with pytest.raises(expected):
-                action_communications_status(atp, resolved_params)
-            assert atp.communications_disabled == initial_comms_disabled_value, "No change on error"
+                action_communications_status(active_test_procedure, resolved_params)
+            assert active_test_procedure.communications_disabled == initial_comms_disabled_value, "No change on error"
         else:
-            action_communications_status(atp, resolved_params)
-            assert atp.communications_disabled == expected
+            action_communications_status(active_test_procedure, resolved_params)
+            assert active_test_procedure.communications_disabled == expected
 
 
 @pytest.mark.parametrize(
