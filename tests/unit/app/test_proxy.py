@@ -59,6 +59,7 @@ async def test_proxy_request_disables_communications(pg_empty_config, mocker):
     mock_client_request = mocker.patch("aiohttp.client.request")
     active_test_procedure = MagicMock()
     active_test_procedure.communications_disabled = True
+    active_test_procedure.is_finished.return_value = False
     remote_url = ""
 
     # Act

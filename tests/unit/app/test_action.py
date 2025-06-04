@@ -1,5 +1,6 @@
 import unittest.mock as mock
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -12,7 +13,9 @@ from envoy.server.model.site import Site
 from cactus_runner.app.action import (
     UnknownActionError,
     action_cancel_active_controls,
+    action_communications_status,
     action_create_der_control,
+    action_edev_registration_links,
     action_enable_steps,
     action_register_end_device,
     action_remove_steps,
@@ -22,21 +25,22 @@ from cactus_runner.app.action import (
     apply_action,
     apply_actions,
 )
-from cactus_runner.models import ActiveTestProcedure, Listener, StepStatus
+from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState, StepStatus
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
 # the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
 ACTION_TYPE_TO_HANDLER: dict[str, str] = {
     "enable-steps": "action_enable_steps",
     "remove-steps": "action_remove_steps",
+    "finish-test": "action_finish_test",
     "set-default-der-control": "action_set_default_der_control",
     "create-der-control": "action_create_der_control",
     "cancel-active-der-controls": "action_cancel_active_controls",
     "set-poll-rate": "action_set_poll_rate",
     "set-post-rate": "action_set_post_rate",
     "register-end-device": "action_register_end_device",
-    "communications-loss": "action_communications_loss",
-    "communications-restore": "action_communications_restore",
+    "communications-status": "action_communications_status",
+    "edev-registration-links": "action_edev_registration_links",
 }
 
 
@@ -60,8 +64,8 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
     ), "At least 1 action type have listed the same action handler. This is likely a bug"
 
 
-def create_testing_active_test_procedure(listeners: list[Listener]) -> ActiveTestProcedure:
-    return ActiveTestProcedure("test", None, listeners, {}, "", "")
+def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
+    return RunnerState(ActiveTestProcedure("test", None, listeners, {}, "", ""), [], None)
 
 
 @pytest.mark.anyio
@@ -73,11 +77,11 @@ async def test_action_enable_steps():
     listeners = [
         Listener(step=step_name, event=Event(type="", parameters={}), actions=[])
     ]  # listener defaults to disabled but should be enabled during this test
-    active_test_procedure = create_testing_active_test_procedure(listeners)
+    runner_state = create_testing_runner_state(listeners)
     resolved_parameters = {"steps": steps_to_enable}
 
     # Act
-    await action_enable_steps(active_test_procedure, resolved_parameters)
+    await action_enable_steps(runner_state.active_test_procedure, resolved_parameters)
 
     # Assert
     assert listeners[0].enabled
@@ -112,11 +116,11 @@ async def test_action_enable_steps():
 async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[Listener]):
     # Arrange
     original_steps_to_disable = steps_to_disable.copy()
-    active_test_procedure = create_testing_active_test_procedure(listeners)
+    runner_state = create_testing_runner_state(listeners)
     resolved_parameters = {"steps": steps_to_disable}
 
     # Act
-    await action_remove_steps(active_test_procedure, resolved_parameters)
+    await action_remove_steps(runner_state.active_test_procedure, resolved_parameters)
 
     # Assert
     assert len(listeners) == 0  # all steps removed from list of listeners
@@ -141,7 +145,7 @@ async def test_apply_action(mocker, action: Action, apply_function_name: str):
     mock_envoy_client = mock.MagicMock()
 
     # Act
-    await apply_action(action, create_testing_active_test_procedure([]), mock_session, mock_envoy_client)
+    await apply_action(action, create_testing_runner_state([]), mock_session, mock_envoy_client)
 
     # Assert
     mock_apply_function.assert_called_once()
@@ -150,7 +154,7 @@ async def test_apply_action(mocker, action: Action, apply_function_name: str):
 
 @pytest.mark.anyio
 async def test__apply_action_raise_exception_for_unknown_action_type():
-    active_test_procedure = mock.MagicMock()
+    runner_state = mock.MagicMock()
     mock_session = create_mock_session()
     mock_envoy_client = mock.MagicMock()
 
@@ -159,7 +163,7 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
             envoy_client=mock_envoy_client,
             session=mock_session,
             action=Action(type="NOT-A-VALID-ACTION-TYPE", parameters={}),
-            active_test_procedure=active_test_procedure,
+            runner_state=runner_state,
         )
     assert_mock_session(mock_session)
 
@@ -193,7 +197,7 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
 @pytest.mark.anyio
 async def test_apply_actions(mocker, listener: Listener):
     # Arrange
-    active_test_procedure = mock.MagicMock()
+    runner_state = mock.MagicMock()
     mock_session = create_mock_session()
     mock_apply_action = mocker.patch("cactus_runner.app.action.apply_action")
     mock_envoy_client = mock.MagicMock()
@@ -202,7 +206,7 @@ async def test_apply_actions(mocker, listener: Listener):
     await apply_actions(
         session=mock_session,
         listener=listener,
-        active_test_procedure=active_test_procedure,
+        runner_state=runner_state,
         envoy_client=mock_envoy_client,
     )
 
@@ -350,7 +354,9 @@ async def test_action_set_post_rate(pg_base_config, envoy_admin_client):
 @pytest.mark.anyio
 async def test_action_register_end_device(pg_base_config):
     # Arrange
-    atp = generate_class_instance(ActiveTestProcedure, step_status={"1": StepStatus.PENDING})
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None
+    )
     resolved_params = {
         "nmi": "abc",
         "registration_pin": 1234,
@@ -358,7 +364,57 @@ async def test_action_register_end_device(pg_base_config):
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_register_end_device(atp, resolved_params, session)
+        await action_register_end_device(active_test_procedure, resolved_params, session)
 
     # Assert
     assert pg_base_config.execute("select count(*) from site;").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "resolved_params, expected",
+    [
+        ({}, KeyError),
+        ({"blah": 123}, KeyError),
+        ({"enabled": True}, False),
+        ({"enabled": False}, True),
+        ({"other": False, "enabled": True}, False),
+    ],
+)
+def test_action_communications_status(resolved_params: dict[str, Any], expected: bool | type[Exception]):
+    """NOTE: The expected value is the expected value for comms DISABLED"""
+    for initial_comms_disabled_value in [True, False]:
+        active_test_procedure = create_testing_runner_state([])
+        active_test_procedure.communications_disabled = initial_comms_disabled_value
+
+        if isinstance(expected, type):
+            with pytest.raises(expected):
+                action_communications_status(active_test_procedure, resolved_params)
+            assert active_test_procedure.communications_disabled == initial_comms_disabled_value, "No change on error"
+        else:
+            action_communications_status(active_test_procedure, resolved_params)
+            assert active_test_procedure.communications_disabled == expected
+
+
+@pytest.mark.parametrize(
+    "resolved_params, expected_db_value",
+    [
+        ({}, KeyError),
+        ({"enabled": True}, False),
+        ({"enabled": False}, True),
+    ],
+)
+@pytest.mark.anyio
+async def test_action_edev_registration_links(
+    pg_base_config, envoy_admin_client, resolved_params: dict[str, Any], expected_db_value: bool | type[Exception]
+):
+    """NOTE: The expected value is the expected value for DISABLE edev registrations"""
+    if isinstance(expected_db_value, type):
+        with pytest.raises(expected_db_value):
+            await action_edev_registration_links(resolved_params, envoy_admin_client)
+        assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 0, "No DB update"
+    else:
+        await action_edev_registration_links(resolved_params, envoy_admin_client)
+        assert (
+            pg_base_config.execute("select disable_edev_registration from runtime_server_config;").fetchone()[0]
+            == expected_db_value
+        )

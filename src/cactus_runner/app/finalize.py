@@ -4,15 +4,23 @@ import shutil
 import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
+from typing import cast
 
 from aiohttp import web
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.database import DatabaseNotInitialisedError, get_postgres_dsn
+from cactus_runner.app.status import get_active_runner_status
+from cactus_runner.models import RunnerState
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseDumpError(Exception):
+    pass
+
+
+class NoActiveTestProcedure(Exception):
     pass
 
 
@@ -89,3 +97,40 @@ def create_response(json_status_summary: str, runner_logfile: str, envoy_logfile
             "Content-Disposition": f"attachment; filename={SUGGESTED_FILENAME}",
         },
     )
+
+
+async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
+    """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
+    contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState
+
+    If the active test is already finished - this will have no effect and will return the cached finished_zip_data
+
+    Populates and then returns the finished_zip_data for the active test procedure"""
+
+    active_test_procedure = runner_state.active_test_procedure
+    if not active_test_procedure:
+        raise NoActiveTestProcedure()
+
+    if active_test_procedure.is_finished():
+        logger.info(
+            f"finish_active_test_procedure: active test procedure {active_test_procedure.name} is already finished"
+        )
+        return cast(bytes, active_test_procedure.finished_zip_data)  # The is_finished() check guarantees it's not None
+
+    logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
+
+    json_status_summary = (
+        await get_active_runner_status(
+            session=session,
+            active_test_procedure=active_test_procedure,
+            request_history=runner_state.request_history,
+            last_client_interaction=runner_state.last_client_interaction,
+        )
+    ).to_json()
+
+    active_test_procedure.finished_zip_data = get_zip_contents(
+        json_status_summary=json_status_summary,
+        runner_logfile="logs/cactus_runner.jsonl",
+        envoy_logfile="logs/envoy.jsonl",
+    )
+    return active_test_procedure.finished_zip_data
