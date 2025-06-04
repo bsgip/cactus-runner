@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from aiohttp import web
 from assertical.asserts.time import assert_nowish
+from assertical.asserts.type import assert_list_type
+from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Event
 
@@ -12,7 +14,7 @@ from cactus_runner.app import event
 from cactus_runner.app.shared import (
     APPKEY_RUNNER_STATE,
 )
-from cactus_runner.models import Listener, StepStatus
+from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState, StepStatus
 
 
 def test_generate_time_trigger():
@@ -307,308 +309,122 @@ async def test_is_listener_triggerable(
     assert isinstance(result, bool)
     assert result == expected
     assert_mock_session(mock_session)
-    assert all([ca[0] is mock_session for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
+    assert all([ca.args[0] is mock_session for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
 
 
 @pytest.mark.parametrize(
-    "test_event,listeners,matching_listener_index",
+    "runner_state",
     [
+        (RunnerState(None, [], None)),  # This is when we have no active test procedure
         (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-            0,
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/edev"}),
-                    actions=[],
-                    enabled=True,
-                ),
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                ),
-            ],
-            1,
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                ),
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                ),
-            ],
-            1,
-        ),
+            RunnerState(
+                ActiveTestProcedure("", None, [], {}, "", 0, finished_zip_data=bytes([0, 1])),
+                [generate_class_instance(Listener, actions=[])],
+                None,
+            )
+        ),  # This is a finished test
     ],
 )
-@pytest.mark.asyncio
-async def test_handle_event_with_matching_listener(
-    mocker, test_event: Event, listeners: list[Listener], matching_listener_index: int
+@patch("cactus_runner.app.event.is_listener_triggerable")
+@pytest.mark.anyio
+async def test_handle_event_trigger_shortcircuit_conditions(
+    mock_is_listener_triggerable: MagicMock, runner_state: RunnerState
 ):
-    # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
     # Act
-    matched_listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
+    result = await event.handle_event_trigger(
+        generate_class_instance(event.EventTrigger), runner_state, mock_session, mock_envoy_client
     )
 
-    # Assert
-    assert matched_listener == listeners[matching_listener_index]
-    assert not serve_request_first
-    mock_all_checks_passing.assert_called_once()
+    # Assertgenerate_class_instance(event.EventTrigger)
+    assert result == []
     assert_mock_session(mock_session)
+    mock_is_listener_triggerable.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_handle_event_with_checks_failing(mocker):
-    test_event = Event(type="GET-request-received", parameters={"endpoint": "/dcap"})
-    listeners = [
-        Listener(
-            step="step",
-            event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            actions=[],
-            enabled=True,
-        )
-    ]
-
-    # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = False
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
-    mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
-
-    # Act
-    matched_listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
-    )
-
-    # Assert
-    assert matched_listener is None
-    assert not serve_request_first
-    mock_all_checks_passing.assert_called_once()
-    assert_mock_session(mock_session)
+def gen_listener(
+    seed,
+) -> Listener:
+    return generate_class_instance(Listener, seed=seed, actions=[])
 
 
 @pytest.mark.parametrize(
-    "test_event,listeners",
+    "single_listener, listeners, trigger_indexes, check_indexes, expected_indexes",
     [
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
+        (False, [], [], [], []),
+        (False, [gen_listener(0)], [], [], []),
+        (False, [gen_listener(0)], [0], [], []),
+        (False, [gen_listener(0)], [0], [0], [0]),
+        (False, [gen_listener(0), gen_listener(1)], [0, 1], [0, 1], [0, 1]),
+        (True, [gen_listener(0), gen_listener(1)], [0, 1], [0, 1], [0]),
+        (False, [gen_listener(0), gen_listener(1), gen_listener(2)], [0, 2], [1, 2], [2]),
+        (False, [gen_listener(0), gen_listener(1), gen_listener(2)], [2], [0, 1, 2], [2]),
+        (True, [gen_listener(0), gen_listener(1), gen_listener(2)], [0, 1, 2], [1, 2], [1]),
     ],
 )
-@pytest.mark.asyncio
-async def test_handle_event_calls_apply_actions(mocker, test_event: Event, listeners: list[Listener]):
+@patch("cactus_runner.app.event.is_listener_triggerable")
+@patch("cactus_runner.app.event.all_checks_passing")
+@pytest.mark.anyio
+async def test_handle_event_trigger_normal_operation(
+    mock_all_checks_passing: MagicMock,
+    mock_is_listener_triggerable: MagicMock,
+    single_listener: bool,
+    listeners: list[Listener],
+    trigger_indexes: list[int],
+    check_indexes: list[int],
+    expected_indexes: list[int],
+):
+    """Runs various scenarios for testing listeners and validating they pass checks"""
     # Arrange
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
-
-    mock_apply_actions = mocker.patch("cactus_runner.app.event.apply_actions")
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-
-    # Act
-    await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
+    input_trigger = generate_class_instance(event.EventTrigger, single_listener=single_listener)
+    input_runner_state = RunnerState(
+        ActiveTestProcedure("", None, listeners, {}, "", 0, finished_zip_data=None),
+        [],
+        None,
     )
 
+    # we want a unique "checks" reference for each event listener so we can look it up later
+    for idx, l in enumerate(listeners):
+        l.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
+
+    def find_index(to_find, items) -> int | None:
+        for idx, i in enumerate(items):
+            if i is to_find:
+                return idx
+        return None
+
+    # Mock is_listener_triggerable to return True if the listener is in trigger_indexes
+    def do_mock_is_listener_triggerable(listener, trigger, session):
+        assert session is mock_session
+        assert trigger is input_trigger
+
+        idx = find_index(listener, listeners)
+        assert idx is not None, f"Couldn't find listener {listener}. This is a test setup issue."
+        return idx in trigger_indexes
+
+    mock_is_listener_triggerable.side_effect = do_mock_is_listener_triggerable
+
+    # Mock all_checks_passing to return True if the checks is in check_indexes
+    def do_mock_all_checks_passing(checks, active_test_procedure, session):
+        assert session is mock_session
+        assert active_test_procedure is input_runner_state.active_test_procedure
+
+        idx = find_index(checks, [l.event.checks for l in listeners])
+        assert idx is not None, "Couldn't find checks. This is a test setup issue."
+
+        return idx in check_indexes
+
+    mock_all_checks_passing.side_effect = do_mock_all_checks_passing
+
+    # Act
+    result = await event.handle_event_trigger(input_trigger, input_runner_state, mock_session, mock_envoy_client)
+
     # Assert
-    mock_apply_actions.assert_called_once()
-    mock_all_checks_passing.assert_called_once()
+    assert_list_type(Listener, result, len(expected_indexes))
+    for listener in result:
+        assert find_index(listener, listeners) in expected_indexes
     assert_mock_session(mock_session)
-
-
-@pytest.mark.parametrize(
-    "test_event,listeners",
-    [
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=False,
-                )
-            ],
-        ),  # Events match but the listener is disabled
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),  # Parameters match but event types differ
-        (
-            Event(type="POST-request-received", parameters={"endpoint": "/mup"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/edev"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),  # Event types match but parameters differ
-    ],
-)
-@pytest.mark.asyncio
-async def test_handle_event_with_no_matches(mocker, test_event: Event, listeners: list[Listener]):
-    # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
-
-    mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
-
-    # Act
-    listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
-    )
-
-    # Assert
-    assert listener is None
-    assert not serve_request_first
-    assert_mock_session(mock_session)
-
-
-@pytest.mark.asyncio
-async def test_update_test_procedure_progress(pg_empty_config, mocker):
-    # Arrange
-    request = MagicMock()
-    request.path = "/dcap"
-    request.path_qs = "/dcap"
-    request.method = "GET"
-
-    active_test_procedure = MagicMock()
-    active_test_procedure.step_status = {}
-
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
-
-    step_name = "STEP-NAME"
-    serve_request_first = False
-    listener = MagicMock()
-    listener.step = step_name
-    mock_handle_event = mocker.patch("cactus_runner.app.event.handle_event")
-    mock_handle_event.return_value = (listener, serve_request_first)
-
-    # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
-
-    # Assert
-    mock_handle_event.assert_called_once()
-    assert matching_step_name == step_name
-    assert serve_request_first == serve_request_first
-    assert active_test_procedure.step_status[step_name] == StepStatus.RESOLVED
-
-
-@pytest.mark.asyncio
-async def test_update_test_procedure_progress_respects_serve_request_first(pg_empty_config, mocker):
-    # Arrange
-    request = MagicMock()
-    request.path = "/dcap"
-    request.path_qs = "/dcap"
-    request.method = "GET"
-
-    active_test_procedure = MagicMock()
-    active_test_procedure.step_status = {}
-
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
-
-    step_name = "STEP-NAME"
-    serve_request_first = True
-    listener = MagicMock()
-    listener.step = step_name
-    listener.parameters = {"serve_request_first": True}
-    mock_handle_event = mocker.patch("cactus_runner.app.event.handle_event")
-    mock_handle_event.return_value = (listener, serve_request_first)
-
-    # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
-
-    # Assert
-    mock_handle_event.assert_called_once()
-    assert matching_step_name == step_name
-    assert serve_request_first == serve_request_first
-    assert not request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status
