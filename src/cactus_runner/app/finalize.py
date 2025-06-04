@@ -9,6 +9,7 @@ from typing import cast
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.app import reporting
 from cactus_runner.app.database import DatabaseNotInitialisedError, get_postgres_dsn
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
@@ -127,6 +128,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             last_client_interaction=runner_state.last_client_interaction,
         )
     ).to_json()
+
+    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state)
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
