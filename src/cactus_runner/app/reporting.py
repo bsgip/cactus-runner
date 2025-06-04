@@ -171,23 +171,17 @@ def generate_page_elements_no_active_procedure(styles: StyleSheet1):
     return page_elements
 
 
-def pdf_report_as_bytes(page_elements: list) -> bytes:
-    with io.BytesIO() as buffer:
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        doc.build(page_elements)
-        pdf_data = buffer.getvalue()
-
-    return pdf_data
-
-
-def generate_pdf_report(file_path: Path, runner_state: RunnerState):
+def pdf_report_as_bytes(runner_state: RunnerState) -> bytes:
     styles = getSampleStyleSheet()
 
     if runner_state.active_test_procedure is not None:
         page_elements = generate_page_elements(runner_state=runner_state, styles=styles)
     else:
         page_elements = generate_page_elements_no_active_procedure(styles=styles)
-    pdf_data = pdf_report_as_bytes(page_elements=page_elements)
 
-    with open(file_path, "wb") as f:
-        f.write(pdf_data)
+    with io.BytesIO() as buffer:
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        doc.build(page_elements)
+        pdf_data = buffer.getvalue()
+
+    return pdf_data
