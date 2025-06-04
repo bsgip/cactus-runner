@@ -1,9 +1,12 @@
 import io
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from _pytest import runner
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -11,7 +14,14 @@ from reportlab.lib.styles import (
     StyleSheet1,
     getSampleStyleSheet,
 )
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    Image,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
 
@@ -66,11 +76,40 @@ def test_procedure_overview(
     return elements
 
 
+def requests_timeline() -> Image:
+
+    def random_requests_timeline(width: int, height: int):
+        np.random.seed(1)
+        N = 100
+        seconds_ago = np.random.rand(N) * 3600
+        now = datetime.now(tz=timezone.utc)
+        timestamps = [now - timedelta(seconds=offset) for offset in seconds_ago]
+        df = pd.DataFrame({"timestamp": timestamps})
+        fig = px.histogram(df, x="timestamp", labels={"timestamp": "Time (UTC)"})
+        fig.update_layout(bargap=0.2)
+        fig.update_layout(title_text="Requests over time", title_x=0.5)
+        fig.update_layout(
+            autosize=False,
+            width=width,
+            height=height,
+            margin=dict(l=30, r=30, b=50, t=50, pad=4),
+        )
+        return fig
+
+    width = 500
+    height = 250
+    fig = random_requests_timeline(width=width, height=height)
+    img_bytes = fig.to_image(format="png")
+    buffer = io.BytesIO(img_bytes)
+    return Image(buffer)
+
+
 def test_procedure_communications(
     style: ParagraphStyle,
 ) -> list:
     elements = []
     elements.append(Paragraph("Communications", style))
+    elements.append(requests_timeline())
     elements.append(DEFAULT_SPACER)
     return elements
 
