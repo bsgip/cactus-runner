@@ -1,5 +1,5 @@
 import http
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 from aiohttp.web import Response
@@ -12,6 +12,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
     ClientInteractionType,
+    Listener,
     RequestEntry,
     RunnerStatus,
     StepStatus,
@@ -121,7 +122,7 @@ async def test_proxied_request_handler_performs_authorization(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler(pg_empty_config, mocker):
+async def test_proxied_request_handler_before_request_trigger(pg_empty_config, mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
@@ -134,18 +135,26 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
         finished_zip_data=None,
         step_status={"1": StepStatus.PENDING},
     )
+    handling_listener = generate_class_instance(Listener, actions=[])
 
     handler.SERVER_URL = ""  # Override the server url
 
     handler.DEV_SKIP_AUTHORIZATION_CHECK = True
     spy_request_is_authorized = mocker.spy(handler.auth, "request_is_authorized")
 
+    # This trigger is handled by this listener
+    mock_handle_event_trigger = mocker.patch("cactus_runner.app.handler.event.handle_event_trigger")
+    mock_handle_event_trigger.return_value = [handling_listener]
+
+    mock_generate_client_request_trigger = mocker.patch(
+        "cactus_runner.app.handler.event.generate_client_request_trigger"
+    )
+    mock_trigger = MagicMock()
+    mock_generate_client_request_trigger.return_value = mock_trigger
+
     mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
     expected_response = Response(status=200)
     mock_proxy_request.return_value = expected_response
-
-    mock_update_test_procedure_status = mocker.patch("cactus_runner.app.event.update_test_procedure_progress")
-    mock_update_test_procedure_status.return_value = (event.UNRECOGNISED_STEP_NAME, False)
 
     # Act
     response = await handler.proxied_request_handler(request=request)
@@ -165,8 +174,9 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     #  ... verify aiohttp.client.request is passed values from the request argument
     mock_proxy_request.assert_called_once()
 
-    # ... verify we called 'update_test_procedure_status'
-    mock_update_test_procedure_status.assert_called_once()
+    # ... verify we triggered the "before" handler, but not the after handler
+    mock_generate_client_request_trigger.assert_called_once_with(request, before_serving=True)
+    mock_handle_event_trigger.assert_called_once()
 
     #  ... verify we updated the request history
     request_entries = request.app[APPKEY_RUNNER_STATE].request_history
@@ -178,7 +188,80 @@ async def test_proxied_request_handler(pg_empty_config, mocker):
     assert request_entry.method == request.method
     assert_nowish(request_entry.timestamp)
     assert request_entry.status == response.status
-    assert request_entry.step_name == event.UNRECOGNISED_STEP_NAME
+    assert request_entry.step_name == handling_listener.step
+
+
+@pytest.mark.asyncio
+async def test_proxied_request_handler_after_request_trigger(pg_empty_config, mocker):
+    # Arrange
+    request = MagicMock()
+    request.path = "/dcap"
+    request.path_qs = "/dcap"
+    request.method = "GET"
+    request.app[APPKEY_RUNNER_STATE].request_history = []
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=None,
+        step_status={"1": StepStatus.PENDING},
+    )
+    handling_listener = generate_class_instance(Listener, actions=[])
+
+    handler.SERVER_URL = ""  # Override the server url
+
+    handler.DEV_SKIP_AUTHORIZATION_CHECK = True
+    spy_request_is_authorized = mocker.spy(handler.auth, "request_is_authorized")
+
+    # This trigger is handled by this listener
+    mock_handle_event_trigger: MagicMock = mocker.patch("cactus_runner.app.handler.event.handle_event_trigger")
+    mock_handle_event_trigger.side_effect = [[], [handling_listener]]
+
+    mock_generate_client_request_trigger: MagicMock = mocker.patch(
+        "cactus_runner.app.handler.event.generate_client_request_trigger"
+    )
+    mock_before_trigger = MagicMock()
+    mock_after_trigger = MagicMock()
+    mock_generate_client_request_trigger.side_effect = [mock_before_trigger, mock_after_trigger]
+
+    mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
+    expected_response = Response(status=200)
+    mock_proxy_request.return_value = expected_response
+
+    # Act
+    response = await handler.proxied_request_handler(request=request)
+
+    # Assert
+    #  ... verify we skip authorization
+    assert spy_request_is_authorized.call_count == 0
+
+    #  ... verify we update the last client interaction
+    assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
+    assert (
+        request.app[APPKEY_RUNNER_STATE].last_client_interaction.interaction_type
+        == ClientInteractionType.PROXIED_REQUEST
+    )
+    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
+
+    #  ... verify aiohttp.client.request is passed values from the request argument
+    mock_proxy_request.assert_called_once()
+
+    # ... verify we triggered the "before" handler, but not the after handler
+    mock_generate_client_request_trigger.assert_has_calls(
+        [call(request, before_serving=True), call(request, before_serving=False)]
+    )
+    mock_handle_event_trigger.call_count == 2
+
+    #  ... verify we updated the request history
+    request_entries = request.app[APPKEY_RUNNER_STATE].request_history
+    assert len(request_entries) == 1
+    request_entry = request_entries[0]
+    assert isinstance(request_entry, RequestEntry)
+    assert request_entry.url == request.path_qs
+    assert request_entry.path == request.path
+    assert request_entry.method == request.method
+    assert_nowish(request_entry.timestamp)
+    assert request_entry.status == response.status
+    assert request_entry.step_name == handling_listener.step
 
 
 @pytest.mark.asyncio

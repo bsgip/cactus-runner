@@ -395,7 +395,7 @@ async def proxied_request_handler(request: web.Request):
     # Fire "after request" event trigger (only if an event didn't handle the before event)
     if not handling_listeners:
         async with begin_session() as session:
-            await event.handle_event_trigger(
+            handling_listeners = await event.handle_event_trigger(
                 trigger=event.generate_client_request_trigger(request, before_serving=False),
                 runner_state=runner_state,
                 session=session,
