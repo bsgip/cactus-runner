@@ -9,8 +9,12 @@ from typing import cast
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import reporting
-from cactus_runner.app.database import DatabaseNotInitialisedError, get_postgres_dsn
+from cactus_runner.app import check, reporting
+from cactus_runner.app.database import (
+    DatabaseNotInitialisedError,
+    begin_session,
+    get_postgres_dsn,
+)
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -25,7 +29,7 @@ class NoActiveTestProcedure(Exception):
     pass
 
 
-def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfile: str) -> bytes:
+def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfile: str, pdf_data: bytes) -> bytes:
     """Returns the contents of the zipped test procedures artifacts in bytes"""
     # Work in a temporary directory
     with tempfile.TemporaryDirectory() as tempdirname:
@@ -47,6 +51,11 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
         # Copy Envoy log file into archive
         destination = archive_dir / "envoy.jsonl"
         shutil.copyfile(envoy_logfile, destination)
+
+        # Write pdf report
+        file_path = archive_dir / "test_procedure_report.pdf"
+        with open(file_path, "wb") as f:
+            f.write(pdf_data)
 
         # Create db dump
         try:
@@ -129,11 +138,17 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         )
     ).to_json()
 
-    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state)
+    if active_test_procedure.definition.criteria:
+        async with begin_session() as session:
+            check_results = await check.determine_check_results(
+                active_test_procedure.definition.criteria.checks, active_test_procedure, session
+            )
+    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state, check_results=check_results)
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
         runner_logfile="logs/cactus_runner.jsonl",
         envoy_logfile="logs/envoy.jsonl",
+        pdf_data=pdf_data,
     )
     return active_test_procedure.finished_zip_data
