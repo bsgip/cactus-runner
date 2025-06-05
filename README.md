@@ -106,7 +106,7 @@ This brings up all the services that are required to run, for example, the utili
 dotenv run -- python src/cactus_runner/app/main.py
 ```
 
-The `dotenv` command makes the environment variables in a .env file available to the cactus runner. See the [Setup section](#setup) for what to include in the .env file. 
+The `dotenv` command makes the environment variables in a .env file available to the cactus runner. See the [Setup](#setup) section for what to include in the .env file. 
 
 3. Use Bruno to interact with the cactus runner. See ["Running a Test Case"](demo/README.md) section from the demo README on how to do this.
 
