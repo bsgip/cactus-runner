@@ -6,7 +6,7 @@ from aiohttp.web import Response
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 
-from cactus_runner.app import event, handler
+from cactus_runner.app import handler
 from cactus_runner.app.shared import APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
