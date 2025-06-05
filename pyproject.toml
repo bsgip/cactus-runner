@@ -56,7 +56,6 @@ test = [
   "pytest-env",
   "asgi_lifespan",
 ]
-cli = ["rich", "click"]
 docs = ["sphinx"]
 
 [tool.pytest.ini_options]
