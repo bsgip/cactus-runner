@@ -134,7 +134,8 @@ async def handle_event_trigger(
 
     # Check all listeners against this trigger
     triggered_listeners: list[Listener] = []
-    for listener in active_test_procedure.listeners:
+    listeners_to_eval = active_test_procedure.listeners.copy()  # We copy this as the underlying list might mutate
+    for listener in listeners_to_eval:
 
         if await is_listener_triggerable(listener, trigger, session):
             logger.info(f"handle_event_trigger: Matched Step {listener.step} for {trigger}")

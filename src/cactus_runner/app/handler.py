@@ -379,7 +379,7 @@ async def proxied_request_handler(request: web.Request):
     # Fire "before request" event trigger
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
     async with begin_session() as session:
-        handling_listeners = await event.handle_event_trigger(
+        trigger_handled = await event.handle_event_trigger(
             trigger=event.generate_client_request_trigger(request, before_serving=True),
             runner_state=runner_state,
             session=session,
@@ -393,9 +393,9 @@ async def proxied_request_handler(request: web.Request):
     )
 
     # Fire "after request" event trigger (only if an event didn't handle the before event)
-    if not handling_listeners:
+    if not trigger_handled:
         async with begin_session() as session:
-            handling_listeners = await event.handle_event_trigger(
+            trigger_handled = await event.handle_event_trigger(
                 trigger=event.generate_client_request_trigger(request, before_serving=False),
                 runner_state=runner_state,
                 session=session,
@@ -406,8 +406,9 @@ async def proxied_request_handler(request: web.Request):
     # There will only ever be a maximum of 1 entry in this list
     # The request events will only trigger a max of one listener
     step_name: str = event.UNRECOGNISED_STEP_NAME
-    if handling_listeners:
-        step_name = handling_listeners[0].step
+    if trigger_handled:
+        handling_listener = trigger_handled[0]
+        step_name = handling_listener.step
 
     # Record in request history
     request_entry = RequestEntry(

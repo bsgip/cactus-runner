@@ -56,6 +56,7 @@ async def periodic_task(app: web.Application):
                     session=session,
                     envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT],
                 )
+                await session.commit()
 
         except Exception as e:
             # Catch and log uncaught exceptions to prevent periodic task from hanging
