@@ -1,12 +1,9 @@
 import io
 import logging
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timedelta
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -23,6 +20,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from cactus_runner.app.check import CheckResult
 from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -76,6 +74,23 @@ def test_procedure_overview(
     return elements
 
 
+def test_procedure_criteria(
+    check_results: dict[str, CheckResult], style: ParagraphStyle, table_style: TableStyle
+) -> list:
+    elements = []
+    elements.append(Paragraph("Criteria", style))
+    criteria_data = [
+        [check_name, "PASS" if check_result.passed else "FAIL", check_result.description]
+        for check_name, check_result in check_results.items()
+    ]
+    criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Description"])
+    table = Table(criteria_data, colWidths=[140, 80, 200])
+    table.setStyle(table_style)
+    elements.append(table)
+    elements.append(DEFAULT_SPACER)
+    return elements
+
+
 def requests_timeline(request_timestamps: list[datetime]) -> Image:
 
     WIDTH = 500
@@ -116,7 +131,9 @@ def first_client_interaction_of_type(
     raise ValueError(f"No client interactions found with type={interaction_type}")
 
 
-def generate_page_elements(runner_state: RunnerState, styles: StyleSheet1) -> list:
+def generate_page_elements(
+    runner_state: RunnerState, check_results: dict[str, CheckResult], styles: StyleSheet1
+) -> list:
     active_test_procedure = runner_state.active_test_procedure
     if active_test_procedure is None:
         raise ValueError("'active_test_procedure' attribute of 'runner_state' cannot be None")
@@ -125,8 +142,10 @@ def generate_page_elements(runner_state: RunnerState, styles: StyleSheet1) -> li
 
     test_procedure_name = active_test_procedure.name
 
+    # Document Title
     page_elements.extend(title(test_procedure_name, style=styles["Title"]))
 
+    # Overview Section
     try:
         init_timestamp = first_client_interaction_of_type(
             client_interactions=runner_state.client_interactions,
@@ -153,8 +172,14 @@ def generate_page_elements(runner_state: RunnerState, styles: StyleSheet1) -> li
         # ValueError is raised by 'first_client_interaction_of_type' if it can find the required
         # client interations. This is a guard-rail. If we have an active test procedure then
         # the appropriate client interactions SHOULD be defined in the runner state.
-        logger.error(f"Unable to add 'test procedure summary' to PDF report. Reason={repr(e)}")
+        logger.error(f"Unable to add 'test procedure overview' to PDF report. Reason={repr(e)}")
 
+    # Criteria Section
+    page_elements.extend(
+        test_procedure_criteria(check_results=check_results, style=styles["Heading1"], table_style=table_style())
+    )
+
+    # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
     page_elements.extend(test_procedure_communications(request_timestamps=request_timestamps, style=styles["Heading1"]))
 
@@ -171,11 +196,11 @@ def generate_page_elements_no_active_procedure(styles: StyleSheet1):
     return page_elements
 
 
-def pdf_report_as_bytes(runner_state: RunnerState) -> bytes:
+def pdf_report_as_bytes(runner_state: RunnerState, check_results: dict[str, CheckResult]) -> bytes:
     styles = getSampleStyleSheet()
 
     if runner_state.active_test_procedure is not None:
-        page_elements = generate_page_elements(runner_state=runner_state, styles=styles)
+        page_elements = generate_page_elements(runner_state=runner_state, check_results=check_results, styles=styles)
     else:
         page_elements = generate_page_elements_no_active_procedure(styles=styles)
 
