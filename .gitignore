@@ -15,6 +15,9 @@ logs
 # The default directory to store envoy trigger (only used for local testing)
 shared
 
+# VSCode config files
+.vscode
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
