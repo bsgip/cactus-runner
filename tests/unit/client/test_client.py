@@ -14,8 +14,9 @@ from cactus_runner.models import (
 )
 
 
+@pytest.mark.parametrize("subscription_domain", [None, "my.fq.dn"])
 @pytest.mark.asyncio
-async def test_init():
+async def test_init(subscription_domain: str | None):
     # Arrange
     expected_start_result = InitResponseBody(
         status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
@@ -28,13 +29,26 @@ async def test_init():
 
     # Act
     start_result = await RunnerClient.init(
-        session=mock_session, test_id=test_id, aggregator_certificate=aggregator_certificate
+        session=mock_session,
+        test_id=test_id,
+        aggregator_certificate=aggregator_certificate,
+        subscription_domain=subscription_domain,
     )
 
     # Assert
-    mock_session.post_assert_called_once_with(
-        url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
-    )
+    if subscription_domain is None:
+        mock_session.post_assert_called_once_with(
+            url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
+        )
+    else:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "certificate": aggregator_certificate,
+                "subscription_domain": subscription_domain,
+            },
+        )
     assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
     assert isinstance(start_result, InitResponseBody)
     assert start_result == expected_start_result

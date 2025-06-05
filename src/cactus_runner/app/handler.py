@@ -57,7 +57,8 @@ async def init_handler(request: web.Request):
         request: An aiohttp.web.Request instance. The requests must include the following
         query parameters:
         'test' - the name of the test procedure to initialize
-        'certificate' - the certificate to register as belonging to the aggregator
+        'certificate' - the PEM encoded certificate to register as belonging to the aggregator
+        'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
 
     Returns:
         aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
@@ -97,9 +98,15 @@ async def init_handler(request: web.Request):
     if aggregator_certificate is None:
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'certificate' query parameter.")
 
+    subscription_domain = request.query["subscription_domain"]
+    if subscription_domain is None:
+        logger.info("Subscriptions will NOT be creatable - no valid domain (subscription_domain not set)")
+    else:
+        logger.info(f"Subscriptions will restricted to the FQDN '{subscription_domain}'")
+
     # Get the lfdi of the aggregator to register
     aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
-    await precondition.register_aggregator(lfdi=aggregator_lfdi)
+    await precondition.register_aggregator(lfdi=aggregator_lfdi, subscription_domain=subscription_domain)
 
     # Save the aggregator details for later request validation
     request.app[APPKEY_AGGREGATOR].certificate = aggregator_certificate
