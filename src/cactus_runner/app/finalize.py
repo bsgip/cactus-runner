@@ -41,11 +41,17 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
 
         # Copy Cactus Runner log file into archive
         destination = archive_dir / "cactus_runner.jsonl"
-        shutil.copyfile(runner_logfile, destination)
+        try:
+            shutil.copyfile(runner_logfile, destination)
+        except Exception as exc:
+            logger.error(f"Unable to copy {runner_logfile} to {destination}", exc_info=exc)
 
         # Copy Envoy log file into archive
         destination = archive_dir / "envoy.jsonl"
-        shutil.copyfile(envoy_logfile, destination)
+        try:
+            shutil.copyfile(envoy_logfile, destination)
+        except Exception as exc:
+            logger.error(f"Unable to copy {envoy_logfile} to {destination}", exc_info=exc)
 
         # Create db dump
         try:

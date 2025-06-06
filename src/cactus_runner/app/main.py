@@ -151,7 +151,10 @@ def setup_logging(logging_config_file: Path):
 
 
 def create_app_with_logging() -> web.Application:
-    setup_logging(logging_config_file=Path("config/logging/config.json"))
+    try:
+        setup_logging(logging_config_file=Path("config/logging/config.json"))
+    except Exception as exc:
+        logger.error("Error configuring logging", exc_info=exc)
     logger.info(f"Cactus Runner (version={__version__})")
     logger.info(f"{APP_HOST=} {APP_PORT=}")
     logger.info(f"Proxying requests to '{SERVER_URL}'")

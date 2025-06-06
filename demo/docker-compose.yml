@@ -24,7 +24,6 @@ services:
     environment:
       - SERVER_URL=http://cactus-envoy:8000
       - DATABASE_URL=postgresql+psycopg://test_user:test_pwd@cactus-envoy-db/test_db
-      - ENVOY_ENV_FILE=/shared/envoy.env
       - ENVOY_ADMIN_BASICAUTH_USERNAME=admin
       - ENVOY_ADMIN_BASICAUTH_PASSWORD=password
       - ENVOY_ADMIN_URL=http://cactus-envoy-admin:8001
@@ -82,7 +81,6 @@ services:
       <<: *common-env
       PORT: 8000
       APP_MODULE: envoy.server.main:app
-      ENVOY_ENV_FILE: /shared/envoy.env
     depends_on:
       cactus-envoy-db:
         condition: service_started
@@ -107,7 +105,6 @@ services:
       ADMIN_PASSWORD: password
       PORT: 8001
       APP_MODULE: envoy.admin.main:app
-      ENVOY_ENV_FILE: /shared/envoy.env
     depends_on:
       cactus-envoy-db:
         condition: service_started

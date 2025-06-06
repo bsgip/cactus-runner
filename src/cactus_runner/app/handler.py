@@ -38,34 +38,28 @@ logger = logging.getLogger(__name__)
 async def init_handler(request: web.Request):
     """Handler for init requests.
 
-    Sent by the client to initialise a test procedure.
+        Sent by the client to initialise a test procedure.
 
-    The following initialization steps are performed:
+        The following initialization steps are performed:
 
-    1. All tables in the database are truncated
-    2. Register the aggregator (along with its certificate)
-    3. Apply database preconditions
-    4. Trigger the envoy server to start with the correction configuration.
+        1. All tables in the database are truncated
+        2. Register the aggregator (along with its certificate)
+        3. Apply database preconditions
+        4. Trigger the envoy server to start with the correction configuration.
+    .
+        Args:
+            request: An aiohttp.web.Request instance. The requests must include the following
+            query parameters:
+            'test' - the name of the test procedure to initialize
+            'certificate' - the PEM encoded certificate to register as belonging to the aggregator
+            'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
 
-
-    Triggering the startup of the envoy server (step 4) is achieved by writing a '.env' file
-    containing the envoy server configuration parameters then writing an empty kickoff file
-    which is recognised by the container management system and results in the envoy server starting.
-    The full paths of these two files is set through the ENVOY_ENV_FILE and KICKSTART_FILE environment variables.
-
-    Args:
-        request: An aiohttp.web.Request instance. The requests must include the following
-        query parameters:
-        'test' - the name of the test procedure to initialize
-        'certificate' - the PEM encoded certificate to register as belonging to the aggregator
-        'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
-
-    Returns:
-        aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
-        409 (Conflict) if there is already a test procedure initialised or
-        400 (Bad Request) if either of query parameters ('test' or 'certificate') are missing or
-        400 (Bad Request) if no test procedure definition could be found for the requested test
-        procedure
+        Returns:
+            aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
+            409 (Conflict) if there is already a test procedure initialised or
+            400 (Bad Request) if either of query parameters ('test' or 'certificate') are missing or
+            400 (Bad Request) if no test procedure definition could be found for the requested test
+            procedure
 
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
@@ -98,7 +92,7 @@ async def init_handler(request: web.Request):
     if aggregator_certificate is None:
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'certificate' query parameter.")
 
-    subscription_domain = request.query["subscription_domain"]
+    subscription_domain = request.query.get("subscription_domain", None)
     if subscription_domain is None:
         logger.info("Subscriptions will NOT be creatable - no valid domain (subscription_domain not set)")
     else:

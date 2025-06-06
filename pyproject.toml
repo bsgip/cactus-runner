@@ -51,6 +51,7 @@ test = [
   "pytest-asyncio",
   "pytest-mock",
   "pytest-postgresql",
+  "pytest-aiohttp",
   "assertical>=0.3.0", # Has support for py310+ typing optionals
   "freezegun",
   "pytest-env",
@@ -63,12 +64,18 @@ minversion = "6.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
+markers = [
+  "slow: Metadata to say this is a test that takes a (relatively) long time to execute",
+]
+
 env = [
   "D:DATABASE_URL=postgresql+asyncpg://faketestcred:faketestcred@faketestcred/faketestcred",
   "D:ENVOY_ADMIN_BASICAUTH_USERNAME=testadmin",
   "D:ENVOY_ADMIN_BASICAUTH_PASSWORD=testpassword",
   "D:ADMIN_USERNAME=testadmin",
   "D:ADMIN_PASSWORD=testpassword",
+  "D:ENVOY_ADMIN_URL=http://localhost:1234/",
+  "D:SERVER_URL=http://localhost:1235",
 ]
 
 

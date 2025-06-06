@@ -32,7 +32,6 @@ The cactus runner application uses the following environment variables,
 | SERVER_URL | `http://localhost:8000` | The URL of an envoy server. |
 | APP_HOST | `0.0.0.0` | The host IP of the cactus runner application. |
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
-| ENVOY_ENV_FILE | `/shared/envoy.env` | The location to write the test-specific envoy environment variables. |
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
 
 > NOTE:
@@ -80,7 +79,6 @@ Next we need to define the [environment variables](#environment-variables). The 
 ```sh
 SERVER_URL=http://cactus-envoy:8000
 DATABASE_URL=postgresql+psycopg://test_user:test_pwd@cactus-envoy-db/test_db
-ENVOY_ENV_FILE=/shared/envoy.env
 ENVOY_ADMIN_BASICAUTH_USERNAME=admin
 ENVOY_ADMIN_BASICAUTH_PASSWORD=password
 ENVOY_ADMIN_URL=http://cactus-envoy-admin:8001
