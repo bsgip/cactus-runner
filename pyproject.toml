@@ -26,6 +26,9 @@ dependencies = [
   "psycopg[binary]>=3.2.5,<4",
   "asyncpg>=0.30.0,<1",
   "reportlab>=4.4.1,<5",
+  "plotly>=6.1.2,<7",
+  "kaleido>=0.2.1,<1",
+  "pandas>=2.2.3,<3",
 ]
 
 [project.urls]
