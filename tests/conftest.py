@@ -1,4 +1,3 @@
-import asyncio
 import os
 import unittest.mock as mock
 from http import HTTPStatus
