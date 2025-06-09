@@ -25,6 +25,7 @@ dependencies = [
   "envoy @ git+https://github.com/bsgip/envoy.git@main",
   "psycopg[binary]>=3.2.5,<4",
   "asyncpg",
+  "pydantic_xml[lxml]",
 ]
 
 [project.urls]
@@ -45,6 +46,7 @@ dev = [
   "tox",
   "python-dotenv[cli]",
   "coverage",
+  "lxml-stubs",
 ]
 test = [
   "pytest",
@@ -95,3 +97,6 @@ exclude = ["dist", "tests", "build"]
 [tool.setuptools.dynamic]
 version = { attr = "cactus_runner.__version__" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
+
+[tool.setuptools.package-data]
+"cactus_runner" = ["py.typed", "*.xsd"]
