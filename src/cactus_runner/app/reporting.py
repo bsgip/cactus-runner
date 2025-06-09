@@ -25,7 +25,7 @@ from cactus_runner.models import ClientInteraction, ClientInteractionType, Runne
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SPACER = Spacer(1, 10)
+DEFAULT_SPACER = Spacer(1, 20)
 
 
 def table_style() -> TableStyle:
