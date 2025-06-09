@@ -15,6 +15,7 @@ from envoy.admin.settings import generate_settings as admin_gen_settings
 from envoy.server.alembic import upgrade
 from envoy.server.main import generate_app as envoy_gen_app
 from envoy.server.settings import generate_settings as envoy_gen_settings
+from multidict import CIMultiDict
 from psycopg import Connection
 
 from cactus_runner.app.database import (
@@ -119,7 +120,7 @@ async def envoy_server_client(pg_empty_config: Connection):
     app = envoy_gen_app(settings)
     async with start_app_with_client(app) as envoy_client:
 
-        async def envoy_proxy(request: web.Request, remote_url: str):
+        async def envoy_proxy(method: str, headers: CIMultiDict[str], remote_url: str, request_body: bytes):
             # This will come in as fully qualified URI - we want to proxy only the path / query params
             parsed_url = urlparse(remote_url)
             if parsed_url.query:
@@ -127,10 +128,9 @@ async def envoy_server_client(pg_empty_config: Connection):
             else:
                 proxy_url = parsed_url.path
 
-            headers = {k: v for k, v in request.headers.items()}
-            body = await request.read()
+            headers = {k: v for k, v in headers.items()}
 
-            response = await envoy_client.request(request.method, proxy_url, headers=headers, data=body)
+            response = await envoy_client.request(method, proxy_url, headers=headers, data=request_body)
             response_headers = response.headers.copy()
             return web.Response(headers=response_headers, status=HTTPStatus(response.status_code), body=response.read())
 

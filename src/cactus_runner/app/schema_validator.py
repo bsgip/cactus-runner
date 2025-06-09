@@ -5,6 +5,7 @@ from pathlib import Path
 from lxml import etree
 
 import cactus_runner.schema.csipaus12 as csipaus12
+from cactus_runner.app.proxy import ProxyResult
 
 logger = logging.getLogger(__name__)
 
@@ -58,3 +59,19 @@ def validate_xml(xml: str) -> list[str]:
         return []
     else:
         return [f"{e.line}: {e.message}" for e in schema.error_log]  # type: ignore
+
+
+def validate_proxy_request_schema(proxy_result: ProxyResult) -> list[str]:
+    """Attempts to apply validate_xml to proxy_result's request body. Will not raise exceptions for decoding request
+    body, these errors will instead be returned as a list of errors (similar to validate_xml)"""
+    if len(proxy_result.request_body) == 0:
+        return []
+
+    encoding = "UTF-8" if proxy_result.request_encoding is None else proxy_result.request_encoding
+    try:
+        xml_string = proxy_result.request_body.decode(encoding=encoding)
+    except Exception as exc:
+        logger.error(f"Error interpreting request body as '{encoding}' text", exc_info=exc)
+        return [f"Unable to interpret request body as '{encoding}' text"]
+
+    return validate_xml(xml_string)

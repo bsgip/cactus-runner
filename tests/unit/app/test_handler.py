@@ -7,6 +7,7 @@ from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import handler
+from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -17,6 +18,10 @@ from cactus_runner.models import (
     RunnerStatus,
     StepStatus,
 )
+
+
+def mocked_ProxyResult(status: int) -> ProxyResult:
+    return ProxyResult("", "", bytes(), None, {}, Response(status=status))
 
 
 @pytest.mark.asyncio
@@ -122,7 +127,7 @@ async def test_proxied_request_handler_performs_authorization(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_before_request_trigger(pg_empty_config, mocker):
+async def test_proxied_request_handler_before_request_trigger(mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
@@ -153,15 +158,25 @@ async def test_proxied_request_handler_before_request_trigger(pg_empty_config, m
     mock_generate_client_request_trigger.return_value = mock_trigger
 
     mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
-    expected_response = Response(status=200)
+    expected_response = mocked_ProxyResult(203)
     mock_proxy_request.return_value = expected_response
+
+    mock_validate_proxy_request_schema = mocker.patch("cactus_runner.app.handler.validate_proxy_request_schema")
+    expected_validate_result = ["abc-123"]
+    mock_validate_proxy_request_schema.return_value = expected_validate_result
 
     # Act
     response = await handler.proxied_request_handler(request=request)
 
     # Assert
+    #  ... verify the result is pulled from proxy response
+    assert response is expected_response.response
+
     #  ... verify we skip authorization
     assert spy_request_is_authorized.call_count == 0
+
+    #  ... verify we check the proxy request for schema errors
+    mock_validate_proxy_request_schema.assert_called_once_with(expected_response)
 
     #  ... verify we update the last client interaction
     assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
@@ -189,10 +204,11 @@ async def test_proxied_request_handler_before_request_trigger(pg_empty_config, m
     assert_nowish(request_entry.timestamp)
     assert request_entry.status == response.status
     assert request_entry.step_name == handling_listener.step
+    assert request_entry.body_xml_errors == expected_validate_result
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_after_request_trigger(pg_empty_config, mocker):
+async def test_proxied_request_handler_after_request_trigger(mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
@@ -224,8 +240,12 @@ async def test_proxied_request_handler_after_request_trigger(pg_empty_config, mo
     mock_generate_client_request_trigger.side_effect = [mock_before_trigger, mock_after_trigger]
 
     mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
-    expected_response = Response(status=200)
+    expected_response = mocked_ProxyResult(200)
     mock_proxy_request.return_value = expected_response
+
+    mock_validate_proxy_request_schema = mocker.patch("cactus_runner.app.handler.validate_proxy_request_schema")
+    expected_validate_result = ["abc-456"]
+    mock_validate_proxy_request_schema.return_value = expected_validate_result
 
     # Act
     response = await handler.proxied_request_handler(request=request)
@@ -233,6 +253,9 @@ async def test_proxied_request_handler_after_request_trigger(pg_empty_config, mo
     # Assert
     #  ... verify we skip authorization
     assert spy_request_is_authorized.call_count == 0
+
+    #  ... verify the result is pulled from proxy response
+    assert response is expected_response.response
 
     #  ... verify we update the last client interaction
     assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
@@ -262,6 +285,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_empty_config, mo
     assert_nowish(request_entry.timestamp)
     assert request_entry.status == response.status
     assert request_entry.step_name == handling_listener.step
+    assert request_entry.body_xml_errors == expected_validate_result
 
 
 @pytest.mark.asyncio

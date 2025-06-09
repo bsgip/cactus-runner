@@ -14,6 +14,7 @@ from cactus_runner.app.env import (
     SERVER_URL,
 )
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.app.schema_validator import validate_proxy_request_schema
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
     APPKEY_ENVOY_ADMIN_CLIENT,
@@ -389,7 +390,7 @@ async def proxied_request_handler(request: web.Request):
         await session.commit()
 
     # Proxy the request to the utility server
-    handler_response = await proxy.proxy_request(
+    proxy_result = await proxy.proxy_request(
         request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
     )
 
@@ -411,15 +412,19 @@ async def proxied_request_handler(request: web.Request):
         handling_listener = trigger_handled[0]
         step_name = handling_listener.step
 
+    # check any request body for schema validity (assumption being that it's XML)
+    body_xml_errors = validate_proxy_request_schema(proxy_result)
+
     # Record in request history
     request_entry = RequestEntry(
         url=remote_url,
         path=relative_url,
         method=http.HTTPMethod(method),
-        status=http.HTTPStatus(handler_response.status),
+        status=http.HTTPStatus(proxy_result.response.status),
         timestamp=request_timestamp,
         step_name=step_name,
+        body_xml_errors=body_xml_errors,
     )
     runner_state.request_history.append(request_entry)
 
-    return handler_response
+    return proxy_result.response

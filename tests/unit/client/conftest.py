@@ -34,6 +34,7 @@ def runner_status_fixture():
                 status=http.HTTPStatus.OK,
                 timestamp=datetime.now(timezone.utc),
                 step_name="ALL-01-001",
+                body_xml_errors=[],
             )
         ],
     )

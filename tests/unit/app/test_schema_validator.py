@@ -1,7 +1,13 @@
+import unittest.mock as mock
+
 import pytest
 from assertical.asserts.type import assert_list_type
 
-from cactus_runner.app.schema_validator import validate_xml
+from cactus_runner.app.proxy import ProxyResult
+from cactus_runner.app.schema_validator import (
+    validate_proxy_request_schema,
+    validate_xml,
+)
 
 
 @pytest.mark.parametrize(
@@ -102,3 +108,41 @@ def test_validate_xml_schema_invalid(xml):
     result = validate_xml(xml)
     assert_list_type(str, result)
     assert len(result) > 0
+
+
+@pytest.mark.parametrize(
+    "input_encoding, output_encoding, is_valid_encoding",
+    [
+        ("utf-8", None, True),
+        ("utf-8", "utf-8", True),
+        ("utf-8", "UTF-8", True),
+        ("utf-32", "utf-32", True),
+        ("utf-32", None, False),
+        ("utf-32", "utf-8", False),
+        ("utf-8", "utf-32", False),
+    ],
+)
+@mock.patch("cactus_runner.app.schema_validator.validate_xml")
+def test_validate_proxy_request_schema_decoding(
+    mock_validate_xml: mock.MagicMock, input_encoding: str, output_encoding: str | None, is_valid_encoding: bool
+):
+    """Tests the various ways that text decoding might succeed/fail"""
+    body = "abc 123 _=@<>/'\""
+    body_encoded = body.encode(input_encoding)
+
+    mock_validate_result = mock.MagicMock()
+    mock_validate_xml.return_value = mock_validate_result
+
+    result = validate_proxy_request_schema(ProxyResult("", "", body_encoded, output_encoding, {}, mock.MagicMock()))
+
+    if is_valid_encoding:
+        mock_validate_xml.assert_called_once_with(body)
+        assert result is mock_validate_result
+    else:
+        mock_validate_xml.assert_not_called()
+        assert_list_type(str, result, count=1)
+
+
+def test_validate_proxy_request_empty_body():
+    result = validate_proxy_request_schema(ProxyResult("", "", bytes(), None, {}, mock.MagicMock()))
+    assert_list_type(str, result, count=0)

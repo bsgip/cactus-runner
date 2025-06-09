@@ -51,6 +51,7 @@ class RequestEntry(JSONWizard):
     status: http.HTTPStatus
     timestamp: datetime
     step_name: str
+    body_xml_errors: list[str]  # Any XML schema errors detected in the incoming body
 
 
 class ClientInteractionType(StrEnum):
