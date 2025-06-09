@@ -3,7 +3,7 @@ from enum import IntEnum
 from typing import Sequence
 
 from envoy.server.model.site import Site
-from envoy.server.model.site_reading import SiteReadingType
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
@@ -79,6 +79,17 @@ async def get_csip_aus_site_reading_types(
             & (SiteReadingType.data_qualifier == qualifier)
         )
         .order_by(SiteReadingType.created_time.asc())
+    )
+
+    return response.scalars().all()
+
+
+async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadingType) -> Sequence[SiteReading]:
+
+    response = await session.execute(
+        select(SiteReading)
+        .where((SiteReading.site_reading_type_id == site_reading_type.site_reading_type_id))
+        .order_by(SiteReading.created_time.asc())
     )
 
     return response.scalars().all()
