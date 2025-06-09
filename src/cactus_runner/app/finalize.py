@@ -138,6 +138,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         )
     ).to_json()
 
+    # Determine all criteria check results
+    check_results = {}
     if active_test_procedure.definition.criteria:
         async with begin_session() as session:
             check_results = await check.determine_check_results(
