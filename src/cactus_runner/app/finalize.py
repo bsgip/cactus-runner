@@ -93,22 +93,6 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
     return zip_contents
 
 
-def create_response(json_status_summary: str, runner_logfile: str, envoy_logfile: str) -> web.Response:
-    """Creates a finalize test procedure response which includes the test procedure artifacts in zip format"""
-    zip_contents = get_zip_contents(
-        json_status_summary=json_status_summary, runner_logfile=runner_logfile, envoy_logfile=envoy_logfile
-    )
-
-    SUGGESTED_FILENAME = "finalize.zip"
-    return web.Response(
-        body=zip_contents,
-        headers={
-            "Content-Type": "application/zip",
-            "Content-Disposition": f"attachment; filename={SUGGESTED_FILENAME}",
-        },
-    )
-
-
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
     """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
     contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState

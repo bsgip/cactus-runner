@@ -42,7 +42,6 @@ async def test_finalize_handler(mocker):
 async def test_finalize_handler_resets_runner_state(mocker):
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].request_history = [None]  # a non-empty list stand-in
-    mocker.patch("cactus_runner.app.finalize.create_response")
     mocker.patch("cactus_runner.app.handler.begin_session")
     mocker.patch("cactus_runner.app.handler.status.get_active_runner_status").return_value = RunnerStatus("", None)
 

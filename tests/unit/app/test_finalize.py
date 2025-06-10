@@ -59,16 +59,3 @@ def test_get_zip_contents_raises_databasedumperror(mocker):
 
     with pytest.raises(finalize.DatabaseDumpError):
         finalize.get_zip_contents(json_status_summary="", runner_logfile="", envoy_logfile="", pdf_data=bytes())
-
-
-def test_create_response(mocker):
-    mocked_zip_contents = random.randbytes(50)
-    get_zip_contents_mock = mocker.patch("cactus_runner.app.finalize.get_zip_contents")
-    get_zip_contents_mock.return_value = mocked_zip_contents
-
-    response = finalize.create_response(json_status_summary="", runner_logfile="", envoy_logfile="")
-
-    assert isinstance(response, Response)
-    assert response.status == 200
-    assert response.content_type == "application/zip"
-    assert response.body == mocked_zip_contents
