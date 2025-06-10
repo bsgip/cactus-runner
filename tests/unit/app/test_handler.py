@@ -127,7 +127,7 @@ async def test_proxied_request_handler_performs_authorization(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_before_request_trigger(mocker):
+async def test_proxied_request_handler_before_request_trigger(pg_base_config, mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
@@ -208,7 +208,7 @@ async def test_proxied_request_handler_before_request_trigger(mocker):
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_after_request_trigger(mocker):
+async def test_proxied_request_handler_after_request_trigger(pg_base_config, mocker):
     # Arrange
     request = MagicMock()
     request.path = "/dcap"
