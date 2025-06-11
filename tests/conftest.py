@@ -1,6 +1,11 @@
 import os
+import unittest.mock as mock
+from http import HTTPStatus
+from pathlib import Path
 from typing import Generator
+from urllib.parse import urlparse
 
+import aiohttp.web as web
 import pytest
 from assertical.fixtures.environment import environment_snapshot
 from assertical.fixtures.fastapi import start_app_with_client
@@ -8,6 +13,8 @@ from assertical.fixtures.postgres import generate_async_conn_str_from_connection
 from envoy.admin.main import generate_app as admin_gen_app
 from envoy.admin.settings import generate_settings as admin_gen_settings
 from envoy.server.alembic import upgrade
+from envoy.server.main import generate_app as envoy_gen_app
+from envoy.server.settings import generate_settings as envoy_gen_settings
 from psycopg import Connection
 
 from cactus_runner.app.database import (
@@ -18,6 +25,7 @@ from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
+from cactus_runner.app.main import create_app
 from tests.adapter import HttpxClientSessionAdapter
 
 
@@ -73,7 +81,7 @@ def anyio_backend():
 
 
 @pytest.fixture(scope="function")
-async def envoy_admin_client(pg_base_config: Connection):
+async def envoy_admin_client(pg_empty_config: Connection):
     """Creates an AsyncClient for a test that is configured to talk to the admin server app"""
     settings = admin_gen_settings()
     basic_auth = (settings.admin_username, settings.admin_password)
@@ -88,3 +96,54 @@ async def envoy_admin_client(pg_base_config: Connection):
         )  # NOTE: these are throw away variables, we replace instance next line
         admin_client._session = session
         yield admin_client
+
+
+@pytest.fixture
+def ensure_logs_dir():
+    """Ensures that the logs directory exists"""
+    dir = Path("./logs/")
+    exists = dir.exists()
+
+    if not exists:
+        dir.mkdir()
+
+
+@pytest.fixture(scope="function")
+async def envoy_server_client(pg_empty_config: Connection):
+    """Creates an AsyncClient for a test that is configured to talk to the envoy server app"""
+    settings = envoy_gen_settings()
+    settings.cert_header = "ssl-client-cert"
+
+    # We want a new app instance for every test - otherwise connection pools get shared and we hit problems
+    # when trying to run multiple tests sequentially
+    app = envoy_gen_app(settings)
+    async with start_app_with_client(app) as envoy_client:
+
+        async def envoy_proxy(request: web.Request, remote_url: str):
+            # This will come in as fully qualified URI - we want to proxy only the path / query params
+            parsed_url = urlparse(remote_url)
+            if parsed_url.query:
+                proxy_url = parsed_url.path + "?" + parsed_url.query
+            else:
+                proxy_url = parsed_url.path
+
+            headers = {k: v for k, v in request.headers.items()}
+            body = await request.read()
+
+            response = await envoy_client.request(request.method, proxy_url, headers=headers, data=body)
+            response_headers = response.headers.copy()
+            return web.Response(headers=response_headers, status=HTTPStatus(response.status_code), body=response.read())
+
+        # We need to substitute out the "normal" HTTP call to envoy with a call to "envoy_client" instead
+        # Patch the proxy module to push all envoy requests through to the testing app we just created
+        with mock.patch("cactus_runner.app.proxy.do_proxy", side_effect=envoy_proxy):
+            yield envoy_client
+
+
+@pytest.fixture
+async def cactus_runner_client(
+    pg_empty_config, aiohttp_client, envoy_server_client, envoy_admin_client, ensure_logs_dir
+):
+    with environment_snapshot():
+        async with await aiohttp_client(create_app()) as app:
+            yield app

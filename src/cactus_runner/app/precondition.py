@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from envoy.server.model.aggregator import Aggregator, AggregatorCertificateAssignment
+from envoy.server.model.aggregator import (
+    Aggregator,
+    AggregatorCertificateAssignment,
+    AggregatorDomain,
+)
 from envoy.server.model.base import Certificate
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -26,12 +30,20 @@ async def execute_sql_file_for_connection(connection: AsyncConnection, path_to_s
         await txn.commit()
 
 
-async def register_aggregator(lfdi: str) -> None:
+async def register_aggregator(lfdi: str, subscription_domain: str | None) -> None:
     async with begin_session() as session:
         now = datetime.now(tz=ZoneInfo("UTC"))
-        expiry = now + timedelta(hours=24)
+        expiry = now + timedelta(hours=48)
         certificate = Certificate(lfdi=lfdi, created=now, expiry=expiry)
         aggregator = Aggregator(name="Cactus", created_time=now, changed_time=now)
+
+        if subscription_domain is not None:
+            aggregator.domains = [
+                AggregatorDomain(
+                    changed_time=now,
+                    domain=subscription_domain,
+                )
+            ]
 
         session.add(aggregator)
         session.add(certificate)

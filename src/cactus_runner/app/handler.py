@@ -14,6 +14,7 @@ from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
     SERVER_URL,
 )
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.shared import (
     APPKEY_AGGREGATOR,
     APPKEY_ENVOY_ADMIN_CLIENT,
@@ -38,33 +39,28 @@ logger = logging.getLogger(__name__)
 async def init_handler(request: web.Request):
     """Handler for init requests.
 
-    Sent by the client to initialise a test procedure.
+        Sent by the client to initialise a test procedure.
 
-    The following initialization steps are performed:
+        The following initialization steps are performed:
 
-    1. All tables in the database are truncated
-    2. Register the aggregator (along with its certificate)
-    3. Apply database preconditions
-    4. Trigger the envoy server to start with the correction configuration.
+        1. All tables in the database are truncated
+        2. Register the aggregator (along with its certificate)
+        3. Apply database preconditions
+        4. Trigger the envoy server to start with the correction configuration.
+    .
+        Args:
+            request: An aiohttp.web.Request instance. The requests must include the following
+            query parameters:
+            'test' - the name of the test procedure to initialize
+            'certificate' - the PEM encoded certificate to register as belonging to the aggregator
+            'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
 
-
-    Triggering the startup of the envoy server (step 4) is achieved by writing a '.env' file
-    containing the envoy server configuration parameters then writing an empty kickoff file
-    which is recognised by the container management system and results in the envoy server starting.
-    The full paths of these two files is set through the ENVOY_ENV_FILE and KICKSTART_FILE environment variables.
-
-    Args:
-        request: An aiohttp.web.Request instance. The requests must include the following
-        query parameters:
-        'test' - the name of the test procedure to initialize
-        'certificate' - the certificate to register as belonging to the aggregator
-
-    Returns:
-        aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
-        409 (Conflict) if there is already a test procedure initialised or
-        400 (Bad Request) if either of query parameters ('test' or 'certificate') are missing or
-        400 (Bad Request) if no test procedure definition could be found for the requested test
-        procedure
+        Returns:
+            aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
+            409 (Conflict) if there is already a test procedure initialised or
+            400 (Bad Request) if either of query parameters ('test' or 'certificate') are missing or
+            400 (Bad Request) if no test procedure definition could be found for the requested test
+            procedure
 
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
@@ -99,9 +95,15 @@ async def init_handler(request: web.Request):
     if aggregator_certificate is None:
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'certificate' query parameter.")
 
+    subscription_domain = request.query.get("subscription_domain", None)
+    if subscription_domain is None:
+        logger.info("Subscriptions will NOT be creatable - no valid domain (subscription_domain not set)")
+    else:
+        logger.info(f"Subscriptions will restricted to the FQDN '{subscription_domain}'")
+
     # Get the lfdi of the aggregator to register
     aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
-    await precondition.register_aggregator(lfdi=aggregator_lfdi)
+    await precondition.register_aggregator(lfdi=aggregator_lfdi, subscription_domain=subscription_domain)
 
     # Save the aggregator details for later request validation
     request.app[APPKEY_AGGREGATOR].certificate = aggregator_certificate
@@ -187,7 +189,7 @@ async def start_handler(request: web.Request):
 
     # We cannot start another test procedure if one is already running.
     # If there are active listeners then the test procedure must have already been started.
-    listener_state = [listener.enabled for listener in active_test_procedure.listeners]
+    listener_state = [listener.enabled_time for listener in active_test_procedure.listeners]
     if any(listener_state):
         return web.Response(
             status=http.HTTPStatus.CONFLICT,
@@ -211,9 +213,9 @@ async def start_handler(request: web.Request):
 
             await session.commit()  # Actions can write updates to the DB directly
 
-    # Active the first listener
+    # Activate the first listener
     if active_test_procedure.listeners:
-        active_test_procedure.listeners[0].enabled = True
+        active_test_procedure.listeners[0].enabled_time = datetime.now(tz=timezone.utc)
 
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' started.",
@@ -316,7 +318,7 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
-async def proxied_request_handler(request):
+async def proxied_request_handler(request: web.Request):
     """Handler for requests that should be forwarded to the utility server.
 
     The handler also logs all requests to `request.app[APPKEY_RUNNER_STATE].request_history`, tagging
@@ -370,7 +372,7 @@ async def proxied_request_handler(request):
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
+    runner_state.client_interactions.append(
         ClientInteraction(interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp)
     )
 
@@ -380,14 +382,39 @@ async def proxied_request_handler(request):
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
-    step_name, serve_request_first = await event.update_test_procedure_progress(request=request, request_served=False)
+    # Fire "before request" event trigger
+    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+    async with begin_session() as session:
+        trigger_handled = await event.handle_event_trigger(
+            trigger=event.generate_client_request_trigger(request, before_serving=True),
+            runner_state=runner_state,
+            session=session,
+            envoy_client=envoy_client,
+        )
+        await session.commit()
 
+    # Proxy the request to the utility server
     handler_response = await proxy.proxy_request(
         request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
     )
 
-    if serve_request_first:
-        step_name, _ = await event.update_test_procedure_progress(request=request, request_served=True)
+    # Fire "after request" event trigger (only if an event didn't handle the before event)
+    if not trigger_handled:
+        async with begin_session() as session:
+            trigger_handled = await event.handle_event_trigger(
+                trigger=event.generate_client_request_trigger(request, before_serving=False),
+                runner_state=runner_state,
+                session=session,
+                envoy_client=envoy_client,
+            )
+            await session.commit()
+
+    # There will only ever be a maximum of 1 entry in this list
+    # The request events will only trigger a max of one listener
+    step_name: str = event.UNRECOGNISED_STEP_NAME
+    if trigger_handled:
+        handling_listener = trigger_handled[0]
+        step_name = handling_listener.step
 
     # Record in request history
     request_entry = RequestEntry(

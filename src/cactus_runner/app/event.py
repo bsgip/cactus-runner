@@ -1,22 +1,19 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import IntEnum, auto
+from http import HTTPMethod
 
 from aiohttp import web
-from cactus_test_definitions import Event
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
-from cactus_runner.app.database import begin_session
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.shared import (
-    APPKEY_ENVOY_ADMIN_CLIENT,
-    APPKEY_RUNNER_STATE,
-)
 from cactus_runner.app.variable_resolver import (
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import Listener, RunnerState, StepStatus
+from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
 
@@ -28,47 +25,126 @@ class WaitEventError(Exception):
     """Custom exception for wait event errors."""
 
 
-async def handle_event(
-    event: Event,
-    runner_state: RunnerState,
-    session: AsyncSession,
-    envoy_client: EnvoyAdminClient,
-    request_served: bool = False,
-) -> tuple[Listener | None, bool]:
-    """Triggers the action associated with any enabled listeners that match then event.
+class EventTriggerType(IntEnum):
+    """The different types of event triggers that can be generated (i.e things that can trigger an Event listener
+    to fire)"""
 
-    Logs an error if the action was able to be executed.
+    # HTTP GET/POST/PUT/DELETE (etc) request, initiated by the client to the CSIP-Aus endpoints, raised BEFORE
+    # the request is routed to the utility server.
+    CLIENT_REQUEST_BEFORE = auto()
+
+    # HTTP GET/POST/PUT/DELETE (etc) request, initiated by the client to the CSIP-Aus endpoints, raised AFTER
+    # the request has been routed to the utility server.
+    CLIENT_REQUEST_AFTER = auto()
+
+    # Raised on a regular interval in response to a period of time elapsing from the last TIME trigger
+    TIME = auto()
+
+
+@dataclass(frozen=True)
+class ClientRequestDetails:
+    """Basic details about a HTTP request initiated from a client"""
+
+    method: HTTPMethod  # The HTTP method being used in the request
+    path: str  # The requested path (no query params)
+
+
+@dataclass(frozen=True)
+class EventTrigger:
+    """Represents a *potential* trigger for an EventListener"""
+
+    type: EventTriggerType  # What is the underlying trigger of this request
+    time: datetime  # When was this event triggered (tz aware)
+    single_listener: bool  # If True - this can trigger a maximum of one Listener. False can trigger more than one.
+    client_request: ClientRequestDetails | None  # Only specified if type == CLIENT_REQUEST
+
+
+async def is_listener_triggerable(
+    listener: Listener,
+    trigger: EventTrigger,
+    session: AsyncSession,
+) -> bool:
+    """Returns True if the specified listener can be triggered by the specified trigger.
+
+    does NOT consider Event.checks - it's a pure comparison on whether the listener is active and whether the
+    underlying event matches the specified trigger"""
+
+    if not listener.enabled_time:
+        return False
+
+    # Is this listener for the variety of HTTP method "request-received" event types?
+    if (
+        listener.event.type.endswith("-request-received")
+        and trigger.type in {EventTriggerType.CLIENT_REQUEST_AFTER, EventTriggerType.CLIENT_REQUEST_BEFORE}
+        and trigger.client_request is not None
+    ):
+        expected_method_string = listener.event.type.split("-")[0]
+
+        # Make sure the method being listened for matches the method we received
+        if HTTPMethod(expected_method_string) != trigger.client_request.method:
+            return False
+
+        resolved_params = await resolve_variable_expressions_from_parameters(session, listener.event.parameters)
+        endpoint = resolved_params.get("endpoint", "")
+        serve_request_first = resolved_params.get("serve_request_first", False)
+
+        if endpoint != trigger.client_request.path:
+            return False
+
+        # Make sure that we are listening to the correct before/after serving event
+        if serve_request_first:
+            return trigger.type == EventTriggerType.CLIENT_REQUEST_AFTER
+        else:
+            return trigger.type == EventTriggerType.CLIENT_REQUEST_BEFORE
+
+    # If this listener is a wait event and the current trigger is time based
+    if listener.event.type == "wait" and trigger.type == EventTriggerType.TIME:
+
+        resolved_params = await resolve_variable_expressions_from_parameters(session, listener.event.parameters)
+        duration_seconds = resolved_params.get("duration_seconds", 0)
+
+        return (trigger.time - listener.enabled_time).seconds >= duration_seconds
+
+    # This event type / trigger doesn't match
+    return False
+
+
+async def handle_event_trigger(
+    trigger: EventTrigger, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
+) -> list[Listener]:
+    """Runs through the currently active listeners for runner_state and potentially triggers their actions if trigger
+    can be matched to an Event. Time based triggers can potentially trigger multiple listeners, HTTP triggers will only
+    match at most a single trigger. Returns all triggered listeners (that had their actions run)
 
     Args:
-        event (Event): An Event to be matched against the test procedures enabled listeners.
-        runner_state (RunnerState): The current state of the runner (including an active test procedure).
+        trigger: The trigger being evaluated
+        runner_state: The current state of tests - requires an active_test_procedure to do anything
+        session: DB session for actions/parameter resolving
+        envoy_client: Client for interacting with admin server (for actions/checks that need it)
 
-    Returns:
-        Listener: If successful return the listener that matched the event, else None if no listener matched.
-        bool: True if the handling of the event was deferred because the request should
-        be served beforehand.
-    """
-
+    returns the list of all Listener's that were triggered by trigger."""
     active_test_procedure = runner_state.active_test_procedure
     if not active_test_procedure:
-        return None, False
+        logger.info(f"handle_event_trigger: no active test procedure for handling trigger {trigger}")
+        return []
 
-    # Check all listeners
-    for listener in active_test_procedure.listeners:
-        # Did any of the current listeners match?
-        if listener.enabled and listener.event == event:
-            logger.info(f"Event matched: {event=}")
+    if active_test_procedure.is_finished():
+        logger.info(f"handle_event_trigger: active test procedure is finished. Ignoring trigger {trigger}")
+        return []
 
-            # Some actions can only be applied after the request has been served by the envoy server
-            if "serve_request_first" in listener.event.parameters and listener.event.parameters["serve_request_first"]:
-                if not request_served:
-                    return listener, True
+    # Check all listeners against this trigger
+    triggered_listeners: list[Listener] = []
+    listeners_to_eval = active_test_procedure.listeners.copy()  # We copy this as the underlying list might mutate
+    for listener in listeners_to_eval:
+
+        if await is_listener_triggerable(listener, trigger, session):
+            logger.info(f"handle_event_trigger: Matched Step {listener.step} for {trigger}")
 
             if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
-                logger.info(f"Event on Step {listener.step} is NOT being fired as one or more checks are failing.")
+                logger.info(f"handle_event_trigger: Step {listener.step} is NOT being triggered due to failing checks.")
                 continue
 
-            # Perform actions associated with event
+            logger.info(f"handle_event_trigger: Step {listener.step} is being triggered.")
             await apply_actions(
                 session=session,
                 listener=listener,
@@ -76,90 +152,31 @@ async def handle_event(
                 envoy_client=envoy_client,
             )
 
-            return listener, False
+            triggered_listeners.append(listener)
+            if trigger.single_listener:
+                break
 
-    return None, False
+    return triggered_listeners
 
 
-async def handle_wait_event(runner_state: RunnerState, envoy_client: EnvoyAdminClient):
-    """Checks for any expired wait events on enabled listeners and triggers their actions.
+def generate_time_trigger() -> EventTrigger:
+    """Generates an EventTrigger representing a poll of the TIME event"""
+    return EventTrigger(
+        type=EventTriggerType.TIME, time=datetime.now(timezone.utc), single_listener=False, client_request=None
+    )
+
+
+def generate_client_request_trigger(request: web.Request, before_serving: bool) -> EventTrigger:
+    """Generates an EventTrigger representing the specified web.Request
 
     Args:
-        runner_state (RunnerState): The current state of the runner (including an active test procedure).
-        envoy_client (EnvoyAdminClient): An instance of an envoy admin client.
+        request: The request to interrogate (body will NOT be read)
+        before_serving: Is this an event trigger for BEFORE the request is served to envoy (True) or after (False)"""
 
-    Raises:
-        WaitEventError: If the wait event is missing a start timestamp or duration.
-    """
-    active_test_procedure = runner_state.active_test_procedure
-    if not active_test_procedure:
-        return
-
-    now = datetime.now(timezone.utc)
-
-    # Loop over enabled listeners with (active) wait events
-    for listener in active_test_procedure.listeners:
-        if listener.enabled and listener.event.type == "wait":
-            async with begin_session() as session:
-                resolved_parameters = await resolve_variable_expressions_from_parameters(
-                    session, listener.event.parameters
-                )
-                try:
-                    wait_start = resolved_parameters["wait_start_timestamp"]
-                except KeyError:
-                    raise WaitEventError("Wait event missing start timestamp ('wait_start_timestamp')")
-                try:
-                    wait_duration_sec = resolved_parameters["duration_seconds"]
-                except KeyError:
-                    raise WaitEventError("Wait event missing duration ('duration_seconds')")
-
-                # Determine if wait period has expired
-                if now - wait_start >= timedelta(seconds=wait_duration_sec):
-                    if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
-                        logger.info(f"Step {listener.step} is NOT being fired as one or more checks are failing.")
-                        continue
-
-                    # Apply actions
-                    await apply_actions(
-                        session=session,
-                        listener=listener,
-                        runner_state=runner_state,
-                        envoy_client=envoy_client,
-                    )
-
-                    # Update step status
-                    active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
-
-                await session.commit()
-
-
-async def update_test_procedure_progress(request: web.Request, request_served: bool = False) -> tuple[str, bool]:
-    """Calls handle_event and updates progress test procedure"""
-
-    runner_state = request.app[APPKEY_RUNNER_STATE]
-
-    # Update the progress of the test procedure
-    request_event = Event(type=f"{request.method}-request-received", parameters={"endpoint": request.path})
-    async with begin_session() as session:
-        envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-        listener, serve_request_first = await handle_event(
-            event=request_event,
-            runner_state=runner_state,
-            session=session,
-            envoy_client=envoy_client,
-            request_served=request_served,
-        )
-        await session.commit()
-
-    # Update step_status when action associated with event is handled.
-    # If we have a listener but serve_request_first is True, event handling has been
-    # deferred till after the request has been served.
-    if runner_state.active_test_procedure and listener and not serve_request_first:
-        runner_state.active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
-
-    # Determine which step of the test procedure was handled by this event.
-    # UNRECOGNISED_STEP_NAME indicates that no listener event was recognised by the
-    # test procedure and didn't progress it any further.
-    step_name = UNRECOGNISED_STEP_NAME if listener is None else listener.step
-
-    return step_name, serve_request_first
+    trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
+    return EventTrigger(
+        type=trigger_type,
+        time=datetime.now(timezone.utc),
+        single_listener=True,
+        client_request=ClientRequestDetails(HTTPMethod(request.method), request.path),
+    )

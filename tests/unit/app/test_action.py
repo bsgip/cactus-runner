@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
+from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
@@ -84,7 +85,8 @@ async def test_action_enable_steps():
     await action_enable_steps(runner_state.active_test_procedure, resolved_parameters)
 
     # Assert
-    assert listeners[0].enabled
+    assert_nowish(listeners[0].enabled_time)
+    assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
 
 
@@ -94,20 +96,35 @@ async def test_action_enable_steps():
         (
             ["step1"],
             [
-                Listener(step="step1", event=Event(type="", parameters={}), actions=[], enabled=True),
+                Listener(
+                    step="step1",
+                    event=Event(type="", parameters={}),
+                    actions=[],
+                    enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                ),
             ],
         ),
         (
             ["step1"],
             [
-                Listener(step="step1", event=Event(type="", parameters={}), actions=[], enabled=False),
+                Listener(step="step1", event=Event(type="", parameters={}), actions=[], enabled_time=None),
             ],
         ),
         (
             ["step1", "step2"],
             [
-                Listener(step="step1", event=Event(type="", parameters={}), actions=[], enabled=True),
-                Listener(step="step2", event=Event(type="", parameters={}), actions=[], enabled=True),
+                Listener(
+                    step="step1",
+                    event=Event(type="", parameters={}),
+                    actions=[],
+                    enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                ),
+                Listener(
+                    step="step2",
+                    event=Event(type="", parameters={}),
+                    actions=[],
+                    enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                ),
             ],
         ),
     ],
@@ -125,6 +142,10 @@ async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[
     # Assert
     assert len(listeners) == 0  # all steps removed from list of listeners
     assert steps_to_disable == original_steps_to_disable  # check we are mutating 'steps_to_diable'
+    for step in steps_to_disable:
+        assert (
+            runner_state.active_test_procedure.step_status[step] == StepStatus.RESOLVED
+        ), "Check we update step_status"
 
 
 @pytest.mark.parametrize(
@@ -175,13 +196,13 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
             step="step",
             event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
             actions=[],
-            enabled=True,
+            enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
         ),  # no actions for listener
         Listener(
             step="step",
             event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
             actions=[Action(type="enable-steps", parameters={})],
-            enabled=True,
+            enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
         ),  # 1 action for listener
         Listener(
             step="step",
@@ -190,7 +211,7 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
                 Action(type="enable-steps", parameters={}),
                 Action(type="remove-steps", parameters={}),
             ],
-            enabled=True,
+            enabled_time=datetime(2000, 1, 1, tzinfo=timezone.utc),
         ),  # 2 actions for listener
     ],
 )

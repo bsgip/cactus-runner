@@ -2,6 +2,10 @@
 
 Cactus Runner is a component of the Client CSIP-AUS Test Harness.
 
+## Demo (Example)
+
+Cactus Runner has a full demo for evaluation purposes. See the [demo/](demo/README.md) directory for instructions on how to get the demo up and running.
+
 ## Test Procedures
 
 The test procedures are defined in the [cactus-test-definitions](https://github.com/bsgip/cactus-test-definitions) repository.
@@ -28,7 +32,6 @@ The cactus runner application uses the following environment variables,
 | SERVER_URL | `http://localhost:8000` | The URL of an envoy server. |
 | APP_HOST | `0.0.0.0` | The host IP of the cactus runner application. |
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
-| ENVOY_ENV_FILE | `/shared/envoy.env` | The location to write the test-specific envoy environment variables. |
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
 
 > NOTE:
@@ -49,10 +52,10 @@ A persistent log is written to `logs/cactus_runner.jsonl`. All messages to the p
 
 ### Setup
 
-The `cactus_runner` package (provided by this repo) should be installed in a suitable virtual environment. Activate your virtual environment and then run,
+The `cactus_runner` package (provided by this repo) should be installed into a suitable virtual environment. Activate your virtual environment and then run,
 
 ```sh
-pip install --editable .[dev,test,cli]
+pip install --editable .[dev,test]
 ```
 
 This repo includes an API client collection made for [Bruno](https://www.usebruno.com/). Bruno is an open-source alternative to [Postman](https://www.postman.com/) and doesn't require an account to use. There are [multiple ways to install Bruno](https://www.usebruno.com/downloads). For linux users, the easiest way is via flatpak or snap,
@@ -71,48 +74,37 @@ Once Bruno is installed, we need to add the API client collection. Run Bruno, th
 
 A new collection called `Cactus-Runner` should appear in the right-hand bar. Clicking on the Cactus-Runner collection should reveal four requests (2 GET requests and 2 POST requests) that can be issued from Bruno.
 
-Next we need to define the [environment variables](#environment-variables). The easiest way is to add then to a `.env` file, using the `dotenv` cli command,
+Next we need to define the [environment variables](#environment-variables). The following is a sample .env that should get you started.
 
 ```sh
-dotenv set DATABASE_URL postgresql+psycopg://test_user:test_pwd@localhost:8003/test_db
+SERVER_URL=http://cactus-envoy:8000
+DATABASE_URL=postgresql+psycopg://test_user:test_pwd@cactus-envoy-db/test_db
+ENVOY_ADMIN_BASICAUTH_USERNAME=admin
+ENVOY_ADMIN_BASICAUTH_PASSWORD=password
+ENVOY_ADMIN_URL=http://cactus-envoy-admin:8001
 ```
 
-Finally we need to create a docker image of the envoy server (tagged as `envoy:latest`) for the cactus runner to interact with. To build this image, follow [these instructions](https://github.com/bsgip/envoy/blob/main/demo/README.md).
+### Running Cactus Runner
 
-### Running locally
+The easiest and preferred way is to bring up the [demo](/demo/README.md). This uses pre-built docker images for all services including the cactus runner.
 
-Start the docker compose stack,
+For local development however it may be easier to run the cactus runner locally.
+
+1.Start the docker compose stack (in the project root),
 
 ```
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+docker compose up
 ```
 
-Start the cactus-runner,
+This brings up all the services that are required to run, for example, the utility server (envoy) and it's database (envoy-db). Like for the demo, this uses prebuilt images pulled from our publically accessible Azure registry.
+
+2. Start the cactus-runner,
 
 ```
 dotenv run -- python src/cactus_runner/app/main.py
 ```
 
-Using Bruno, you can interact with the cactus runner, for example, by starting a test procedure by sending a *Start* request.
+The `dotenv` command makes the environment variables in a .env file available to the cactus runner. See the [Setup](#setup) section for what to include in the .env file. 
 
-### Running locally with docker
-
-First, the cactus runner docker image needs to be built,
-
-```
-cd docker
-docker build -t cactus-runner:latest -f Dockerfile --secret id=github_pat,src=./github-pat.txt ../
-```
-
-The cactus runner has [envoy](https://github.com/bsgip/envoy) as a dependency and requires a [GitHub Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) stored in `docker/github-pat.txt` to build successfully.
-
-In the `docker` directory, start the docker stack with,
-
-```
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
-```
-
-When using the Bruno API client collection with the dockerised cactus runner, it is necessary to change the collections's `HOST` variable from `http://localhost:8080` to `http:localhost:8000`.
-
-
+3. Use Bruno to interact with the cactus runner. See ["Running a Test Case"](demo/README.md) section from the demo README on how to do this.
 

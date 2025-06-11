@@ -1,315 +1,426 @@
-from unittest.mock import MagicMock
+from datetime import datetime, timezone
+from http import HTTPMethod
+from unittest.mock import MagicMock, patch
 
 import pytest
+from assertical.asserts.time import assert_nowish
+from assertical.asserts.type import assert_list_type
+from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Event
 
 from cactus_runner.app import event
-from cactus_runner.app.shared import (
-    APPKEY_RUNNER_STATE,
-)
-from cactus_runner.models import Listener, StepStatus
+from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
+
+
+def test_generate_time_trigger():
+    """Simple sanity check"""
+    trigger = event.generate_time_trigger()
+    assert isinstance(trigger, event.EventTrigger)
+    assert_nowish(trigger.time)
+    assert trigger.time.tzinfo
+    assert trigger.type == event.EventTriggerType.TIME
+    assert trigger.client_request is None
 
 
 @pytest.mark.parametrize(
-    "test_event,listeners,matching_listener_index",
+    "request_method, request_path, before_serving",
+    [
+        ("GET", "/", True),
+        ("GET", "/", False),
+        ("POST", "/foo/bar", True),
+        ("POST", "/foo/bar", False),
+        ("DELETE", "/foo/bar/baz", True),
+        ("DELETE", "/foo/bar/baz", False),
+        ("PUT", "/foo/bar", True),
+        ("PUT", "/foo/bar/baz", False),
+    ],
+)
+def test_generate_client_request_trigger(request_method: str, request_path: str, before_serving: bool):
+    """Checks basic parsing of AIOHttp requests"""
+
+    mock_request = MagicMock()
+    mock_request.method = request_method
+    mock_request.path = request_path
+
+    trigger = event.generate_client_request_trigger(mock_request, before_serving)
+    assert isinstance(trigger, event.EventTrigger)
+    assert_nowish(trigger.time)
+    assert trigger.time.tzinfo
+
+    if before_serving:
+        assert trigger.type == event.EventTriggerType.CLIENT_REQUEST_BEFORE
+    else:
+        assert trigger.type == event.EventTriggerType.CLIENT_REQUEST_AFTER
+
+    assert isinstance(trigger.client_request, event.ClientRequestDetails)
+    assert isinstance(trigger.client_request.method, HTTPMethod)
+    assert trigger.client_request.method == request_method
+    assert isinstance(trigger.client_request.path, str)
+    assert trigger.client_request.path == request_path
+
+
+@pytest.mark.parametrize(
+    "trigger, listener, expected",
     [
         (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-            0,
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Wrong type of event
         ),
         (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/edev"}),
-                    actions=[],
-                    enabled=True,
-                ),
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                ),
-            ],
-            1,
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            Listener(
+                step="step",
+                event=Event(type="unsupported-event-type", parameters={}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Unrecognized event type
         ),
         (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            Listener(
+                step="step",
+                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # This was enabled after the event trigger (negative time)
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                actions=[],
+                enabled_time=None,
+            ),
+            False,  # This listener is NOT enabled
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+            ),
+            False,  # Not enough time elapsed
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="POST-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.PUT, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="PUT-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(
+                    type="GET-request-received", parameters={"endpoint": "/foo/bar", "serve_request_first": False}
                 ),
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_AFTER,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(
+                    type="GET-request-received", parameters={"endpoint": "/foo/bar", "serve_request_first": True}
                 ),
-            ],
-            1,
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_AFTER,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Without serve_request_first: True - Only BEFORE events will fire
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Wrong endpoint
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Wrong endpoint
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Wrong method
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                actions=[],
+                enabled_time=None,
+            ),
+            False,  # Not enabled
         ),
     ],
 )
-@pytest.mark.asyncio
-async def test_handle_event_with_matching_listener(
-    mocker, test_event: Event, listeners: list[Listener], matching_listener_index: int
+@patch("cactus_runner.app.event.resolve_variable_expressions_from_parameters")
+@pytest.mark.anyio
+async def test_is_listener_triggerable(
+    mock_resolve_variable_expressions_from_parameters: MagicMock,
+    trigger: event.EventTrigger,
+    listener: Listener,
+    expected: bool,
 ):
-    # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
-    mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
-
-    # Act
-    matched_listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
-    )
-
-    # Assert
-    assert matched_listener == listeners[matching_listener_index]
-    assert not serve_request_first
-    mock_all_checks_passing.assert_called_once()
-    assert_mock_session(mock_session)
-
-
-@pytest.mark.asyncio
-async def test_handle_event_with_checks_failing(mocker):
-    test_event = Event(type="GET-request-received", parameters={"endpoint": "/dcap"})
-    listeners = [
-        Listener(
-            step="step",
-            event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            actions=[],
-            enabled=True,
-        )
-    ]
+    """Tests various combinations of listeners and events to see if they could potentially trigger"""
 
     # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = False
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
     mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
+    mock_resolve_variable_expressions_from_parameters.side_effect = lambda session, parameters: parameters
 
-    # Act
-    matched_listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
-    )
+    result = await event.is_listener_triggerable(listener, trigger, mock_session)
 
     # Assert
-    assert matched_listener is None
-    assert not serve_request_first
-    mock_all_checks_passing.assert_called_once()
+    assert isinstance(result, bool)
+    assert result == expected
     assert_mock_session(mock_session)
+    assert all([ca.args[0] is mock_session for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
 
 
 @pytest.mark.parametrize(
-    "test_event,listeners",
+    "runner_state",
     [
+        (RunnerState(None, [], None)),  # This is when we have no active test procedure
         (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),
+            RunnerState(
+                ActiveTestProcedure("", None, [], {}, "", 0, finished_zip_data=bytes([0, 1])),
+                [generate_class_instance(Listener, actions=[])],
+                None,
+            )
+        ),  # This is a finished test
     ],
 )
-@pytest.mark.asyncio
-async def test_handle_event_calls_apply_actions(mocker, test_event: Event, listeners: list[Listener]):
-    # Arrange
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
+@patch("cactus_runner.app.event.is_listener_triggerable")
+@pytest.mark.anyio
+async def test_handle_event_trigger_shortcircuit_conditions(
+    mock_is_listener_triggerable: MagicMock, runner_state: RunnerState
+):
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
 
-    mock_apply_actions = mocker.patch("cactus_runner.app.event.apply_actions")
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-
     # Act
-    await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
+    result = await event.handle_event_trigger(
+        generate_class_instance(event.EventTrigger), runner_state, mock_session, mock_envoy_client
     )
 
-    # Assert
-    mock_apply_actions.assert_called_once()
-    mock_all_checks_passing.assert_called_once()
+    # Assertgenerate_class_instance(event.EventTrigger)
+    assert result == []
     assert_mock_session(mock_session)
+    mock_is_listener_triggerable.assert_not_called()
+
+
+def gen_listener(
+    seed,
+) -> Listener:
+    return generate_class_instance(Listener, seed=seed, actions=[])
 
 
 @pytest.mark.parametrize(
-    "test_event,listeners",
+    "single_listener, listeners, trigger_indexes, check_indexes, expected_indexes",
     [
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=False,
-                )
-            ],
-        ),  # Events match but the listener is disabled
-        (
-            Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/dcap"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),  # Parameters match but event types differ
-        (
-            Event(type="POST-request-received", parameters={"endpoint": "/mup"}),
-            [
-                Listener(
-                    step="step",
-                    event=Event(type="POST-request-received", parameters={"endpoint": "/edev"}),
-                    actions=[],
-                    enabled=True,
-                )
-            ],
-        ),  # Event types match but parameters differ
+        (False, [], [], [], []),
+        (False, [gen_listener(0)], [], [], []),
+        (False, [gen_listener(0)], [0], [], []),
+        (False, [gen_listener(0)], [0], [0], [0]),
+        (False, [gen_listener(0), gen_listener(1)], [0, 1], [0, 1], [0, 1]),
+        (True, [gen_listener(0), gen_listener(1)], [0, 1], [0, 1], [0]),
+        (False, [gen_listener(0), gen_listener(1), gen_listener(2)], [0, 2], [1, 2], [2]),
+        (False, [gen_listener(0), gen_listener(1), gen_listener(2)], [2], [0, 1, 2], [2]),
+        (True, [gen_listener(0), gen_listener(1), gen_listener(2)], [0, 1, 2], [1, 2], [1]),
     ],
 )
-@pytest.mark.asyncio
-async def test_handle_event_with_no_matches(mocker, test_event: Event, listeners: list[Listener]):
+@patch("cactus_runner.app.event.is_listener_triggerable")
+@patch("cactus_runner.app.event.all_checks_passing")
+@pytest.mark.anyio
+async def test_handle_event_trigger_normal_operation(
+    mock_all_checks_passing: MagicMock,
+    mock_is_listener_triggerable: MagicMock,
+    single_listener: bool,
+    listeners: list[Listener],
+    trigger_indexes: list[int],
+    check_indexes: list[int],
+    expected_indexes: list[int],
+):
+    """Runs various scenarios for testing listeners and validating they pass checks"""
     # Arrange
-    mock_all_checks_passing = mocker.patch("cactus_runner.app.event.all_checks_passing")
-    mock_all_checks_passing.return_value = True
-
-    runner_state = MagicMock()
-    runner_state.active_test_procedure.listeners = listeners
-
     mock_session = create_mock_session()
     mock_envoy_client = MagicMock()
-
-    # Act
-    listener, serve_request_first = await event.handle_event(
-        session=mock_session,
-        event=test_event,
-        runner_state=runner_state,
-        envoy_client=mock_envoy_client,
+    input_trigger = generate_class_instance(event.EventTrigger, single_listener=single_listener)
+    input_runner_state = RunnerState(
+        ActiveTestProcedure("", None, listeners, {}, "", 0, finished_zip_data=None),
+        [],
+        None,
     )
 
+    # we want a unique "checks" reference for each event listener so we can look it up later
+    for idx, l in enumerate(listeners):
+        l.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
+
+    def find_index(to_find, items) -> int | None:
+        for idx, i in enumerate(items):
+            if i is to_find:
+                return idx
+        return None
+
+    # Mock is_listener_triggerable to return True if the listener is in trigger_indexes
+    def do_mock_is_listener_triggerable(listener, trigger, session):
+        assert session is mock_session
+        assert trigger is input_trigger
+
+        idx = find_index(listener, listeners)
+        assert idx is not None, f"Couldn't find listener {listener}. This is a test setup issue."
+        return idx in trigger_indexes
+
+    mock_is_listener_triggerable.side_effect = do_mock_is_listener_triggerable
+
+    # Mock all_checks_passing to return True if the checks is in check_indexes
+    def do_mock_all_checks_passing(checks, active_test_procedure, session):
+        assert session is mock_session
+        assert active_test_procedure is input_runner_state.active_test_procedure
+
+        idx = find_index(checks, [listener.event.checks for listener in listeners])
+        assert idx is not None, "Couldn't find checks. This is a test setup issue."
+
+        return idx in check_indexes
+
+    mock_all_checks_passing.side_effect = do_mock_all_checks_passing
+
+    # Act
+    result = await event.handle_event_trigger(input_trigger, input_runner_state, mock_session, mock_envoy_client)
+
     # Assert
-    assert listener is None
-    assert not serve_request_first
+    assert_list_type(Listener, result, len(expected_indexes))
+    for listener in result:
+        assert find_index(listener, listeners) in expected_indexes
     assert_mock_session(mock_session)
-
-
-@pytest.mark.asyncio
-async def test_update_test_procedure_progress(pg_empty_config, mocker):
-    # Arrange
-    request = MagicMock()
-    request.path = "/dcap"
-    request.path_qs = "/dcap"
-    request.method = "GET"
-
-    active_test_procedure = MagicMock()
-    active_test_procedure.step_status = {}
-
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
-
-    step_name = "STEP-NAME"
-    serve_request_first = False
-    listener = MagicMock()
-    listener.step = step_name
-    mock_handle_event = mocker.patch("cactus_runner.app.event.handle_event")
-    mock_handle_event.return_value = (listener, serve_request_first)
-
-    # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
-
-    # Assert
-    mock_handle_event.assert_called_once()
-    assert matching_step_name == step_name
-    assert serve_request_first == serve_request_first
-    assert active_test_procedure.step_status[step_name] == StepStatus.RESOLVED
-
-
-@pytest.mark.asyncio
-async def test_update_test_procedure_progress_respects_serve_request_first(pg_empty_config, mocker):
-    # Arrange
-    request = MagicMock()
-    request.path = "/dcap"
-    request.path_qs = "/dcap"
-    request.method = "GET"
-
-    active_test_procedure = MagicMock()
-    active_test_procedure.step_status = {}
-
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
-
-    step_name = "STEP-NAME"
-    serve_request_first = True
-    listener = MagicMock()
-    listener.step = step_name
-    listener.parameters = {"serve_request_first": True}
-    mock_handle_event = mocker.patch("cactus_runner.app.event.handle_event")
-    mock_handle_event.return_value = (listener, serve_request_first)
-
-    # Act
-    matching_step_name, serve_request_first = await event.update_test_procedure_progress(request=request)
-
-    # Assert
-    mock_handle_event.assert_called_once()
-    assert matching_step_name == step_name
-    assert serve_request_first == serve_request_first
-    assert not request.app[APPKEY_RUNNER_STATE].active_test_procedure.step_status

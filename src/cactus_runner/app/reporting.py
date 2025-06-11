@@ -244,7 +244,7 @@ def generate_page_elements(
     # Readings Section
     page_elements.extend(
         test_procedure_readings(
-            readings=readings, reading_counts=reading_counts, style=Styles["Heading1"], table_style=table_style()
+            readings=readings, reading_counts=reading_counts, style=styles["Heading1"], table_style=table_style()
         )
     )
 

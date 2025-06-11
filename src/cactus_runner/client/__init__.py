@@ -20,11 +20,23 @@ class RunnerClientException(Exception): ...  # noqa: E701
 
 class RunnerClient:
     @staticmethod
-    async def init(session: ClientSession, test_id: TestProcedureId, aggregator_certificate: str) -> InitResponseBody:
+    async def init(
+        session: ClientSession,
+        test_id: TestProcedureId,
+        aggregator_certificate: str,
+        subscription_domain: str | None = None,
+    ) -> InitResponseBody:
+        """
+        Args:
+            test_id: The TestProcedureId to initialise the runner with
+            aggregator_certificate: The PEM encoded public certificate to be installed as the "aggregator" cert
+            subscription_domain: The FQDN that will be added to the allow list for subscription notifications"""
         try:
-            async with session.post(
-                url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
-            ) as response:
+            params = {"test": test_id.value, "certificate": aggregator_certificate}
+            if subscription_domain is not None:
+                params["subscription_domain"] = subscription_domain
+
+            async with session.post(url="/init", params=params) as response:
                 json = await response.text()
                 init_response_body = InitResponseBody.from_json(json)
                 if isinstance(init_response_body, list):
