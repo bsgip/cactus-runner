@@ -15,6 +15,7 @@ from cactus_runner.app.database import (
     begin_session,
     get_postgres_dsn,
 )
+from cactus_runner.app.readings import MANDATORY_READING_SPECIFIERS, get_readings
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -129,7 +130,12 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             check_results = await check.determine_check_results(
                 active_test_procedure.definition.criteria.checks, active_test_procedure, session
             )
-    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state, check_results=check_results)
+
+    # Determine readings for the CSIP-AUS mandatory reading types
+    readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
+
+    # Generate the pdf (as bytes)
+    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state, check_results=check_results, readings=readings)
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,

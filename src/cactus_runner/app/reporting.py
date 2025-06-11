@@ -132,7 +132,10 @@ def first_client_interaction_of_type(
 
 
 def generate_page_elements(
-    runner_state: RunnerState, check_results: dict[str, CheckResult], styles: StyleSheet1
+    runner_state: RunnerState,
+    check_results: dict[str, CheckResult],
+    readings: dict[SiteReadingType, pd.DataFrame],
+    styles: StyleSheet1,
 ) -> list:
     active_test_procedure = runner_state.active_test_procedure
     if active_test_procedure is None:
@@ -196,11 +199,15 @@ def generate_page_elements_no_active_procedure(styles: StyleSheet1):
     return page_elements
 
 
-def pdf_report_as_bytes(runner_state: RunnerState, check_results: dict[str, CheckResult]) -> bytes:
+def pdf_report_as_bytes(
+    runner_state: RunnerState, check_results: dict[str, CheckResult], readings: dict[SiteReadingType, pd.DataFrame]
+) -> bytes:
     styles = getSampleStyleSheet()
 
     if runner_state.active_test_procedure is not None:
-        page_elements = generate_page_elements(runner_state=runner_state, check_results=check_results, styles=styles)
+        page_elements = generate_page_elements(
+            runner_state=runner_state, check_results=check_results, readings=readings, styles=styles
+        )
     else:
         page_elements = generate_page_elements_no_active_procedure(styles=styles)
 
