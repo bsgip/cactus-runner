@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import plotly.express as px
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -122,6 +123,40 @@ def test_procedure_communications(
     return elements
 
 
+def readings_timeline(readings: pd.DataFrame, title: str) -> Image:
+    WIDTH = 500
+    HEIGHT = 250
+
+    fig = px.line(readings, x="created_time", y="scaled_value")
+
+    fig.update_layout(title_text=title, title_x=0.5)
+    fig.update_layout(
+        autosize=False,
+        width=WIDTH,
+        height=HEIGHT,
+        margin=dict(l=30, r=30, b=50, t=50, pad=4),
+    )
+
+    img_bytes = fig.to_image(format="png")
+    buffer = io.BytesIO(img_bytes)
+    return Image(buffer)
+
+
+def test_procedure_readings(
+    readings: dict[SiteReadingType, pd.DataFrame], style: ParagraphStyle, table_style: TableStyle
+) -> list:
+    elements = []
+    elements.append(Paragraph("Readings", style))
+
+    # Add charts for each of the different reading types
+    for reading_type, readings_df in readings.items():
+        title = f"{reading_type}"
+        elements.append(readings_timeline(readings=readings, title=title))
+
+    elements.append(DEFAULT_SPACER)
+    return elements
+
+
 def first_client_interaction_of_type(
     client_interactions: list[ClientInteraction], interaction_type: ClientInteractionType
 ):
@@ -185,6 +220,11 @@ def generate_page_elements(
     # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
     page_elements.extend(test_procedure_communications(request_timestamps=request_timestamps, style=styles["Heading1"]))
+
+    # Readings Section
+    page_elements.extend(
+        test_procedure_readings(readings=readings, style=Styles["Heading1"], table_style=table_style())
+    )
 
     return page_elements
 
