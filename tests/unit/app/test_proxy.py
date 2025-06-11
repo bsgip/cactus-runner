@@ -18,7 +18,7 @@ async def test_proxy_request(mocker):
     request.path_qs = "/dcap"
     request.method = "GET"
     request.read = request_read
-    request.charset = "UTF-9999"
+    request.charset = "UTF-9999"  # Set to a nonsensical value to ensure it's being extracted (and not defaulted)
 
     response_text = "RESPONSE-TEXT"
     response_status = http.HTTPStatus.OK

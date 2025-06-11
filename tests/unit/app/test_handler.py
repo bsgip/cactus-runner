@@ -158,7 +158,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     mock_generate_client_request_trigger.return_value = mock_trigger
 
     mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
-    expected_response = mocked_ProxyResult(203)
+    expected_response = mocked_ProxyResult(203)  # Set to a random "success" code to ensure it's extracted correctly
     mock_proxy_request.return_value = expected_response
 
     mock_validate_proxy_request_schema = mocker.patch("cactus_runner.app.handler.validate_proxy_request_schema")
