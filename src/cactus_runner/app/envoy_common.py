@@ -10,7 +10,7 @@ from envoy_schema.server.schema.sep2.types import (
     RoleFlagsType,
     UomType,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -93,3 +93,43 @@ async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadin
     )
 
     return response.scalars().all()
+
+
+async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> dict[SiteReadingType, int]:
+    """Returns the number of readings for each reading type
+
+    Reading types with no readings are NOT returned.
+    """
+    # TODO this function works by performing two database queries
+    # First to get the number of readings (grouped by reading type id)
+    # Second to get the reading types (that have readings)
+    # These two queries are combined to produced the final mapping:
+    # Reading type -> Count of readings
+    #
+    # These queries could probably be combined into a single query for efficiency.
+    count_statement = (
+        select(SiteReading.site_reading_type_id, func.count())
+        .select_from(SiteReading)
+        .group_by(SiteReading.site_reading_type_id)
+    )
+
+    count_resp = await session.execute(
+        count_statement,
+    )
+
+    count_by_site_reading_type_id: dict[int, int] = {}
+    for site_reading_type, count in count_resp.all():
+        print(f"{site_reading_type=} {count=}")
+        count_by_site_reading_type_id[site_reading_type] = count
+
+    site_reading_type_ids = list(count_by_site_reading_type_id.keys())
+
+    reading_types_resp = await session.execute(
+        select(SiteReadingType).where(SiteReadingType.site_reading_type_id.in_(site_reading_type_ids))
+    )
+
+    count_by_site_reading_type: dict[SiteReadingType, int] = {}
+    for reading_type in reading_types_resp.scalars().all():
+        count_by_site_reading_type[reading_type] = count_by_site_reading_type_id[reading_type.site_reading_type_id]
+
+    return count_by_site_reading_type

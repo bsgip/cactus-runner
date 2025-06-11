@@ -17,6 +17,7 @@ from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
     get_csip_aus_site_reading_types,
+    get_reading_counts_grouped_by_reading_type,
     get_site_readings,
 )
 
@@ -225,3 +226,65 @@ async def test_get_site_readings(pg_base_config):
         )
         voltage_readings = await get_site_readings(session=session, site_reading_type=voltage_type)
         assert_list_type(SiteReading, voltage_readings, count=num_voltage_readings)
+
+
+@pytest.mark.anyio
+async def test_get_reading_counts_grouped_by_reading_type(pg_base_config):
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        # Add active site
+        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
+        session.add(site1)
+
+        # Add reading type
+        power = generate_class_instance(
+            SiteReadingType,
+            seed=202,
+            aggregator_id=1,
+            site_reading_type_id=1,
+            site=site1,
+            uom=UomType.REAL_POWER_WATT,
+            data_qualifier=DataQualifierType.AVERAGE,
+            kind=KindType.POWER,
+            role_flags=ReadingLocation.DEVICE_READING,
+        )
+        voltage = generate_class_instance(
+            SiteReadingType,
+            seed=303,
+            aggregator_id=1,
+            site_reading_type_id=2,
+            site=site1,
+            uom=UomType.VOLTAGE,
+            data_qualifier=DataQualifierType.AVERAGE,
+            kind=KindType.POWER,
+            role_flags=ReadingLocation.DEVICE_READING,
+        )
+        session.add_all([power, voltage])
+
+        # Add readings
+        def gen_sr(seed: int, srt: SiteReadingType) -> SiteReading:
+            """Shorthand for generating a new SiteReading with the specified type"""
+            return generate_class_instance(SiteReading, seed=seed, site_reading_type=srt)
+
+        num_power_readings = 5
+        power_readings = [gen_sr(i, power) for i in range(1, num_power_readings + 1)]
+        session.add_all(power_readings)
+
+        num_voltage_readings = 3
+        voltage_readings = [gen_sr(i + num_power_readings, voltage) for i in range(1, num_voltage_readings + 1)]
+        session.add_all(voltage_readings)
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        power_type, *_ = await get_csip_aus_site_reading_types(
+            session, UomType.REAL_POWER_WATT, ReadingLocation.DEVICE_READING, DataQualifierType.AVERAGE
+        )
+        voltage_type, *_ = await get_csip_aus_site_reading_types(
+            session, UomType.VOLTAGE, ReadingLocation.DEVICE_READING, DataQualifierType.AVERAGE
+        )
+        count_by_reading_type = await get_reading_counts_grouped_by_reading_type(session)
+
+        assert len(count_by_reading_type) == 2  # two reading types (voltage and power)
+        assert count_by_reading_type[power_type] == num_power_readings
+        assert count_by_reading_type[voltage_type] == num_voltage_readings
