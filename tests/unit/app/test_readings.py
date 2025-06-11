@@ -9,6 +9,7 @@ from envoy_schema.server.schema.sep2.types import (
     KindType,
     UomType,
 )
+from pandas import DataFrame
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -78,5 +79,5 @@ async def test_get_readings(mocker, pg_base_config):
     readings_map = await get_readings(reading_specifiers=reading_specifiers)
 
     # Assert
-    assert_dict_type(SiteReadingType, list, readings_map, count=2)  # two reading types (voltage and power)
+    assert_dict_type(SiteReadingType, DataFrame, readings_map, count=2)  # two reading types (voltage and power)
     assert [num_power_readings, num_voltage_readings] == [len(readings) for readings in readings_map.values()]
