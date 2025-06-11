@@ -123,11 +123,11 @@ def test_procedure_communications(
     return elements
 
 
-def readings_timeline(readings: pd.DataFrame, title: str) -> Image:
+def readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
     WIDTH = 500
     HEIGHT = 250
 
-    fig = px.line(readings, x="created_time", y="scaled_value")
+    fig = px.line(readings_df, x="created_time", y="scaled_value")
 
     fig.update_layout(title_text=title, title_x=0.5)
     fig.update_layout(
@@ -142,16 +142,35 @@ def readings_timeline(readings: pd.DataFrame, title: str) -> Image:
     return Image(buffer)
 
 
+def reading_count_table(reading_counts: dict[SiteReadingType, int], table_style) -> list:
+    elements = []
+    table_data = [[f"{reading_type.uom}", count] for reading_type, count in reading_counts.items()]
+    table_data.insert(0, ["Reading Type", "Counts"])
+    table = Table(table_data, colWidths=[140, 80])
+    table.setStyle(table_style)
+    elements.append(table)
+    elements.append(DEFAULT_SPACER)
+    return elements
+
+
 def test_procedure_readings(
-    readings: dict[SiteReadingType, pd.DataFrame], style: ParagraphStyle, table_style: TableStyle
+    readings: dict[SiteReadingType, pd.DataFrame],
+    reading_counts: dict[SiteReadingType, int],
+    style: ParagraphStyle,
+    table_style: TableStyle,
 ) -> list:
     elements = []
     elements.append(Paragraph("Readings", style))
 
+    # Add table to show how many of each reading type was sent to the utility server (all reading types)
+    if reading_counts:
+        elements.extend(reading_count_table(reading_counts=reading_counts, table_style=table_style))
+
     # Add charts for each of the different reading types
-    for reading_type, readings_df in readings.items():
-        title = f"{reading_type}"
-        elements.append(readings_timeline(readings=readings, title=title))
+    # if readings:
+    #     for reading_type, readings_df in readings.items():
+    #         title = f"{reading_type}"
+    #         elements.append(readings_timeline(readings_df=readings_df, title=title))
 
     elements.append(DEFAULT_SPACER)
     return elements
@@ -170,6 +189,7 @@ def generate_page_elements(
     runner_state: RunnerState,
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
+    reading_counts: dict[SiteReadingType, int],
     styles: StyleSheet1,
 ) -> list:
     active_test_procedure = runner_state.active_test_procedure
@@ -223,7 +243,9 @@ def generate_page_elements(
 
     # Readings Section
     page_elements.extend(
-        test_procedure_readings(readings=readings, style=Styles["Heading1"], table_style=table_style())
+        test_procedure_readings(
+            readings=readings, reading_counts=reading_counts, style=Styles["Heading1"], table_style=table_style()
+        )
     )
 
     return page_elements
@@ -240,13 +262,20 @@ def generate_page_elements_no_active_procedure(styles: StyleSheet1):
 
 
 def pdf_report_as_bytes(
-    runner_state: RunnerState, check_results: dict[str, CheckResult], readings: dict[SiteReadingType, pd.DataFrame]
+    runner_state: RunnerState,
+    check_results: dict[str, CheckResult],
+    readings: dict[SiteReadingType, pd.DataFrame],
+    reading_counts: dict[SiteReadingType, int],
 ) -> bytes:
     styles = getSampleStyleSheet()
 
     if runner_state.active_test_procedure is not None:
         page_elements = generate_page_elements(
-            runner_state=runner_state, check_results=check_results, readings=readings, styles=styles
+            runner_state=runner_state,
+            check_results=check_results,
+            readings=readings,
+            reading_counts=reading_counts,
+            styles=styles,
         )
     else:
         page_elements = generate_page_elements_no_active_procedure(styles=styles)

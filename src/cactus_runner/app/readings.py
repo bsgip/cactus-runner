@@ -12,6 +12,7 @@ from cactus_runner.app.database import (
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_csip_aus_site_reading_types,
+    get_reading_counts_grouped_by_reading_type,
     get_site_readings,
 )
 
@@ -57,3 +58,10 @@ def process_readings(reading_type: SiteReadingType, readings: Sequence[SiteReadi
     df["scaled_value"] = df["value"] * scale_factor
 
     return df
+
+
+async def get_reading_counts() -> dict[SiteReadingType, int]:
+    reading_counts = {}
+    async with begin_session() as session:
+        reading_counts = await get_reading_counts_grouped_by_reading_type(session=session)
+    return reading_counts

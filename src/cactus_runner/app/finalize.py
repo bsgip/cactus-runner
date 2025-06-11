@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
-from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting
@@ -15,7 +14,11 @@ from cactus_runner.app.database import (
     begin_session,
     get_postgres_dsn,
 )
-from cactus_runner.app.readings import MANDATORY_READING_SPECIFIERS, get_readings
+from cactus_runner.app.readings import (
+    MANDATORY_READING_SPECIFIERS,
+    get_reading_counts,
+    get_readings,
+)
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -134,8 +137,12 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     # Determine readings for the CSIP-AUS mandatory reading types
     readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
 
+    # Determine reading counts
+    reading_counts = await get_reading_counts()
     # Generate the pdf (as bytes)
-    pdf_data = reporting.pdf_report_as_bytes(runner_state=runner_state, check_results=check_results, readings=readings)
+    pdf_data = reporting.pdf_report_as_bytes(
+        runner_state=runner_state, check_results=check_results, readings=readings, reading_counts=reading_counts
+    )
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
