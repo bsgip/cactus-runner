@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -46,11 +47,11 @@ def stylesheet() -> StyleSheet1:
     return getSampleStyleSheet()
 
 
-def title(test_procedure_name: str, style: ParagraphStyle) -> list:
+def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list:
     return [Paragraph(f"{test_procedure_name} Test Procedure Report", style), Spacer(1, 10)]
 
 
-def test_procedure_overview(
+def generate_overview_section(
     test_procedure_name: str,
     init_timestamp: datetime,
     start_timestamp: datetime,
@@ -75,24 +76,28 @@ def test_procedure_overview(
     return elements
 
 
-def test_procedure_criteria(
-    check_results: dict[str, CheckResult], style: ParagraphStyle, table_style: TableStyle
+def generate_criteria_section(
+    check_results: dict[str, CheckResult], title_style: ParagraphStyle, table_style: TableStyle
 ) -> list:
     elements = []
-    elements.append(Paragraph("Criteria", style))
+    elements.append(Paragraph("Criteria", title_style))
     criteria_data = [
-        [check_name, "PASS" if check_result.passed else "FAIL", check_result.description]
+        [
+            check_name,
+            "PASS" if check_result.passed else "FAIL",
+            Paragraph("" if check_result.description is None else check_result.description),
+        ]
         for check_name, check_result in check_results.items()
     ]
-    criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Description"])
-    table = Table(criteria_data, colWidths=[140, 80, 200])
+    criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Comment"])
+    table = Table(criteria_data, colWidths=[130, 60, 250])
     table.setStyle(table_style)
     elements.append(table)
     elements.append(DEFAULT_SPACER)
     return elements
 
 
-def requests_timeline(request_timestamps: list[datetime]) -> Image:
+def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 
     WIDTH = 500
     HEIGHT = 250
@@ -112,22 +117,22 @@ def requests_timeline(request_timestamps: list[datetime]) -> Image:
     return Image(buffer)
 
 
-def test_procedure_communications(
+def generate_communications_section(
     request_timestamps: list[datetime],
     style: ParagraphStyle,
 ) -> list:
     elements = []
     elements.append(Paragraph("Communications", style))
-    elements.append(requests_timeline(request_timestamps=request_timestamps))
+    elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
     elements.append(DEFAULT_SPACER)
     return elements
 
 
-def readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
+def generate_readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
     WIDTH = 500
     HEIGHT = 250
 
-    fig = px.line(readings_df, x="created_time", y="scaled_value")
+    fig = px.line(readings_df, x="time_period_start", y="scaled_value", markers=True)
 
     fig.update_layout(title_text=title, title_x=0.5)
     fig.update_layout(
@@ -136,24 +141,44 @@ def readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
         height=HEIGHT,
         margin=dict(l=30, r=30, b=50, t=50, pad=4),
     )
+    fig.update_layout(
+        xaxis=dict(title=dict(text="Time (UTC)")),
+        yaxis=dict(title=dict(text="Value")),
+    )
 
     img_bytes = fig.to_image(format="png")
     buffer = io.BytesIO(img_bytes)
     return Image(buffer)
 
 
-def reading_count_table(reading_counts: dict[SiteReadingType, int], table_style) -> list:
+def reading_description(srt: SiteReadingType) -> str:
+    quantity = UomType(srt.uom).name
+    quantity = quantity.replace("_", " ").title()
+    qualifier = DataQualifierType(srt.data_qualifier).name
+    qualifier = qualifier.replace("_", " ").title()
+    if srt.phase == 0:
+        description = f"{quantity} ({qualifier})"
+    else:
+        phase = PhaseCode(srt.phase).name
+        phase = phase.replace("_", " ").title()
+        description = f"{quantity} ({qualifier}, {phase})"
+
+    return description
+
+
+def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], table_style) -> list:
     elements = []
-    table_data = [[f"{reading_type.uom}", count] for reading_type, count in reading_counts.items()]
-    table_data.insert(0, ["Reading Type", "Counts"])
-    table = Table(table_data, colWidths=[140, 80])
+
+    table_data = [[reading_description(reading_type), count] for reading_type, count in reading_counts.items()]
+    table_data.insert(0, ["Reading", "Number received"])
+    table = Table(table_data, colWidths=[330, 100])
     table.setStyle(table_style)
     elements.append(table)
     elements.append(DEFAULT_SPACER)
     return elements
 
 
-def test_procedure_readings(
+def generate_readings_section(
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
     style: ParagraphStyle,
@@ -164,13 +189,13 @@ def test_procedure_readings(
 
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
-        elements.extend(reading_count_table(reading_counts=reading_counts, table_style=table_style))
+        elements.extend(generate_reading_count_table(reading_counts=reading_counts, table_style=table_style))
 
     # Add charts for each of the different reading types
-    # if readings:
-    #     for reading_type, readings_df in readings.items():
-    #         title = f"{reading_type}"
-    #         elements.append(readings_timeline(readings_df=readings_df, title=title))
+    if readings:
+        for reading_type, readings_df in readings.items():
+            title = reading_description(reading_type)
+            elements.append(generate_readings_timeline(readings_df=readings_df, title=title))
 
     elements.append(DEFAULT_SPACER)
     return elements
@@ -201,7 +226,7 @@ def generate_page_elements(
     test_procedure_name = active_test_procedure.name
 
     # Document Title
-    page_elements.extend(title(test_procedure_name, style=styles["Title"]))
+    page_elements.extend(generate_title(test_procedure_name, style=styles["Title"]))
 
     # Overview Section
     try:
@@ -216,7 +241,7 @@ def generate_page_elements(
         duration = runner_state.last_client_interaction.timestamp - init_timestamp
 
         page_elements.extend(
-            test_procedure_overview(
+            generate_overview_section(
                 test_procedure_name=test_procedure_name,
                 init_timestamp=init_timestamp,
                 start_timestamp=start_timestamp,
@@ -234,16 +259,20 @@ def generate_page_elements(
 
     # Criteria Section
     page_elements.extend(
-        test_procedure_criteria(check_results=check_results, style=styles["Heading1"], table_style=table_style())
+        generate_criteria_section(
+            check_results=check_results, title_style=styles["Heading1"], table_style=table_style()
+        )
     )
 
     # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
-    page_elements.extend(test_procedure_communications(request_timestamps=request_timestamps, style=styles["Heading1"]))
+    page_elements.extend(
+        generate_communications_section(request_timestamps=request_timestamps, style=styles["Heading1"])
+    )
 
     # Readings Section
     page_elements.extend(
-        test_procedure_readings(
+        generate_readings_section(
             readings=readings, reading_counts=reading_counts, style=styles["Heading1"], table_style=table_style()
         )
     )
