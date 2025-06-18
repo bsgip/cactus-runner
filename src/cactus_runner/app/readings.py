@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Sequence
 
+import pandas as pd
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import UomType
 from pandas import DataFrame
@@ -44,12 +45,80 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
             for reading_type in reading_types:
                 reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
 
-                readings[reading_type] = process_readings(reading_type=reading_type, readings=reading_data)
+                readings[reading_type] = rescale_readings(reading_type=reading_type, readings=reading_data)
 
-    return readings
+    groups = group_reading_types(list(readings.keys()))
+    merged_readings = merge_readings(readings=readings, groups=groups)
+
+    return merged_readings
 
 
-def process_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
+def merge_readings(readings: dict[SiteReadingType, DataFrame], groups: list[list[SiteReadingType]]):
+    """Merges the dataframes for reading types that have been grouped"""
+    merged_readings = {}
+    for group in groups:
+        # We need to choose a SiteReadingType to represent all the merged values, choosing the first one in the group.
+        primary_key: SiteReadingType = group[0]
+        merged = pd.concat([readings[reading_type] for reading_type in group])
+        sorted = merged.sort_values(by=["time_period_start"])
+        merged_readings[primary_key] = sorted
+
+    return merged_readings
+
+
+def reading_types_equivalent(rt1: SiteReadingType, rt2: SiteReadingType) -> bool:
+    """Determines if two SiteReadingTypes are equivalent
+
+    The purpose of this function is to find site reading types that represent
+    the same quantity but only (effectively) differ by power_of_ten_multiplier
+
+    Ignores the following attributes:
+    - power_of_ten_multiplier
+    - site_reading_type_id
+    - default_interval_seconds
+    - created_time
+    - changed_time
+    - site (already covered by site_id)
+
+    """
+    return (
+        rt1.aggregator_id == rt2.aggregator_id
+        and rt1.site_id == rt2.site_id
+        and rt1.uom == rt2.uom
+        and rt1.data_qualifier == rt2.data_qualifier
+        and rt1.flow_direction == rt2.flow_direction
+        and rt1.accumulation_behaviour == rt2.accumulation_behaviour
+        and rt1.kind == rt2.kind
+        and rt1.phase == rt2.phase
+        and rt1.role_flags == rt2.role_flags
+    )
+
+
+def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteReadingType]]:
+    """Groups equivalent reading types together.
+
+    A group consists of a list of reading types that all represent the same physical quantity but only
+    (effectively) differ in 'power_of_10_multiplier'.
+    """
+    unprocessed_reading_types = reading_types.copy()
+
+    grouped_reading_types = []
+    while unprocessed_reading_types:
+        current_reading_type = unprocessed_reading_types.pop()
+
+        # Does current reading type match one in an existing group?
+        added_to_existing_group = False
+        for group in grouped_reading_types:
+            if reading_types_equivalent(current_reading_type, group[0]):
+                added_to_existing_group = True
+
+        if not added_to_existing_group:
+            grouped_reading_types.append([current_reading_type])
+
+    return grouped_reading_types
+
+
+def rescale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
     # Convert list of readings into a dataframe
     df = DataFrame([reading.__dict__ for reading in readings])
 
