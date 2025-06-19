@@ -14,6 +14,7 @@ from cactus_runner.app.database import (
     begin_session,
     get_postgres_dsn,
 )
+from cactus_runner.app.envoy_common import get_sites
 from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_reading_counts,
@@ -146,9 +147,19 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     # Determine reading counts
     reading_counts = await get_reading_counts()
 
+    # Determine sites
+    sites = await get_sites(session=session)
+
+    if not sites:
+        sites = []
+
     # Generate the pdf (as bytes)
     pdf_data = reporting.pdf_report_as_bytes(
-        runner_state=runner_state, check_results=check_results, readings=readings, reading_counts=reading_counts
+        runner_state=runner_state,
+        check_results=check_results,
+        readings=readings,
+        reading_counts=reading_counts,
+        sites=list(sites),
     )
 
     active_test_procedure.finished_zip_data = get_zip_contents(
