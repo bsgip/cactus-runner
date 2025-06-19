@@ -102,7 +102,7 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
     """
     unprocessed_reading_types = reading_types.copy()
 
-    grouped_reading_types = []
+    grouped_reading_types: list[list[SiteReadingType]] = []
     while unprocessed_reading_types:
         current_reading_type = unprocessed_reading_types.pop()
 
