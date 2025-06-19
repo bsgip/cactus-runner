@@ -1,16 +1,17 @@
 import io
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import pandas as pd
 import plotly.express as px
-from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy.server.model.site import Site
+from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
     ParagraphStyle,
-    StyleSheet1,
     getSampleStyleSheet,
 )
 from reportlab.platypus import (
@@ -29,22 +30,32 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SPACER = Spacer(1, 20)
 
+DEFAULT_TABLE_STYLE = TableStyle(
+    [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+    ]
+)
 
-def table_style() -> TableStyle:
-    return TableStyle(
-        [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-            ("GRID", (0, 0), (-1, -1), 1, colors.black),
-        ]
+
+@dataclass
+class StyleSheet:
+    """A collection of all the styles used in the PDF report"""
+
+    title: ParagraphStyle
+    heading: ParagraphStyle
+    table: TableStyle
+
+
+def get_stylesheet() -> StyleSheet:
+    sample_style_sheet = getSampleStyleSheet()
+    return StyleSheet(
+        title=sample_style_sheet.get("Title"), heading=sample_style_sheet.get("Heading1"), table=DEFAULT_TABLE_STYLE
     )
-
-
-def stylesheet() -> StyleSheet1:
-    return getSampleStyleSheet()
 
 
 def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list:
@@ -57,11 +68,10 @@ def generate_overview_section(
     start_timestamp: datetime,
     client_lfdi: str,
     duration: timedelta,
-    style: ParagraphStyle,
-    table_style: TableStyle,
+    stylesheet: StyleSheet,
 ) -> list:
     elements = []
-    elements.append(Paragraph("Overview", style))
+    elements.append(Paragraph("Overview", stylesheet.heading))
     doe_data = [
         ["Test Procedure", test_procedure_name],
         ["Client LFDI", client_lfdi],
@@ -70,17 +80,15 @@ def generate_overview_section(
         ["Duration", duration],
     ]
     table = Table(doe_data, colWidths=[200, 250])
-    table.setStyle(table_style)
+    table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(DEFAULT_SPACER)
     return elements
 
 
-def generate_criteria_section(
-    check_results: dict[str, CheckResult], title_style: ParagraphStyle, table_style: TableStyle
-) -> list:
+def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list:
     elements = []
-    elements.append(Paragraph("Criteria", title_style))
+    elements.append(Paragraph("Criteria", stylesheet.heading))
     criteria_data = [
         [
             check_name,
@@ -91,10 +99,15 @@ def generate_criteria_section(
     ]
     criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Comment"])
     table = Table(criteria_data, colWidths=[130, 60, 250])
-    table.setStyle(table_style)
+    table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(DEFAULT_SPACER)
     return elements
+
+
+# image_bytes = fig.to_image(format="png", scale=2)
+# buffer_img = io.BytesIO(pdf_element.image_bytes)
+# img = Image(buffer_img, width=450, height=300)
 
 
 def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
@@ -119,11 +132,34 @@ def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 
 def generate_communications_section(
     request_timestamps: list[datetime],
-    style: ParagraphStyle,
+    stylesheet: StyleSheet,
 ) -> list:
     elements = []
-    elements.append(Paragraph("Communications", style))
+    elements.append(Paragraph("Communications", stylesheet.heading))
     elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
+    elements.append(DEFAULT_SPACER)
+    return elements
+
+
+def generate_devices_table(sites: list[Site], table_style: TableStyle) -> list:
+    elements = []
+
+    table_data = [[site.site_id, site.nmi, site.created_time] for site in sites]
+    table_data.insert(0, ["Site", "NMI", "Created Time"])
+    table = Table(table_data)
+    table.setStyle(table_style)
+    elements.append(table)
+    elements.append(DEFAULT_SPACER)
+    return elements
+
+
+def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list:
+    elements = []
+    elements.append(Paragraph("Devices", stylesheet.heading))
+    if sites:
+        elements.extend(generate_devices_table(sites=sites, table_style=stylesheet.table))
+    else:
+        elements.append(Paragraph("No devices registered either out-of-band or in-band during this test procedure."))
     elements.append(DEFAULT_SPACER)
     return elements
 
@@ -166,7 +202,7 @@ def reading_description(srt: SiteReadingType) -> str:
     return description
 
 
-def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], table_style) -> list:
+def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], table_style: TableStyle) -> list:
     elements = []
 
     table_data = [[reading_description(reading_type), count] for reading_type, count in reading_counts.items()]
@@ -181,21 +217,22 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], tab
 def generate_readings_section(
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
-    style: ParagraphStyle,
-    table_style: TableStyle,
+    stylesheet: StyleSheet,
 ) -> list:
     elements = []
-    elements.append(Paragraph("Readings", style))
+    elements.append(Paragraph("Readings", stylesheet.heading))
 
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
-        elements.extend(generate_reading_count_table(reading_counts=reading_counts, table_style=table_style))
+        elements.extend(generate_reading_count_table(reading_counts=reading_counts, table_style=stylesheet.table))
 
-    # Add charts for each of the different reading types
-    if readings:
-        for reading_type, readings_df in readings.items():
-            title = reading_description(reading_type)
-            elements.append(generate_readings_timeline(readings_df=readings_df, title=title))
+        # Add charts for each of the different reading types
+        if readings:
+            for reading_type, readings_df in readings.items():
+                title = reading_description(reading_type)
+                elements.append(generate_readings_timeline(readings_df=readings_df, title=title))
+    else:
+        elements.append(Paragraph("No readings sent to the utility server during this test procedure."))
 
     elements.append(DEFAULT_SPACER)
     return elements
@@ -215,7 +252,8 @@ def generate_page_elements(
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
-    styles: StyleSheet1,
+    sites: list[Site],
+    stylesheet: StyleSheet,
 ) -> list:
     active_test_procedure = runner_state.active_test_procedure
     if active_test_procedure is None:
@@ -226,7 +264,7 @@ def generate_page_elements(
     test_procedure_name = active_test_procedure.name
 
     # Document Title
-    page_elements.extend(generate_title(test_procedure_name, style=styles["Title"]))
+    page_elements.extend(generate_title(test_procedure_name, style=stylesheet.title))
 
     # Overview Section
     try:
@@ -247,8 +285,7 @@ def generate_page_elements(
                 start_timestamp=start_timestamp,
                 client_lfdi=active_test_procedure.client_lfdi,
                 duration=duration,
-                style=styles["Heading1"],
-                table_style=table_style(),
+                stylesheet=stylesheet,
             )
         )
     except ValueError as e:
@@ -258,34 +295,31 @@ def generate_page_elements(
         logger.error(f"Unable to add 'test procedure overview' to PDF report. Reason={repr(e)}")
 
     # Criteria Section
-    page_elements.extend(
-        generate_criteria_section(
-            check_results=check_results, title_style=styles["Heading1"], table_style=table_style()
-        )
-    )
+    page_elements.extend(generate_criteria_section(check_results=check_results, stylesheet=stylesheet))
 
     # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
-    page_elements.extend(
-        generate_communications_section(request_timestamps=request_timestamps, style=styles["Heading1"])
-    )
+    page_elements.extend(generate_communications_section(request_timestamps=request_timestamps, stylesheet=stylesheet))
+
+    # Devices Section
+    page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
     # Readings Section
     page_elements.extend(
-        generate_readings_section(
-            readings=readings, reading_counts=reading_counts, style=styles["Heading1"], table_style=table_style()
-        )
+        generate_readings_section(readings=readings, reading_counts=reading_counts, stylesheet=stylesheet)
     )
 
     return page_elements
 
 
-def generate_page_elements_no_active_procedure(styles: StyleSheet1):
+def generate_page_elements_no_active_procedure(stylesheet: StyleSheet):
     page_elements = []
-    page_elements.append(Paragraph("Test Procedure Report", styles["Title"]))
+    page_elements.append(Paragraph("Test Procedure Report", stylesheet.title))
     page_elements.append(DEFAULT_SPACER)
     page_elements.append(
-        Paragraph("NO ACTIVE TEST PROCEDURE", ParagraphStyle("red-title", parent=styles["Title"], textColor=colors.red))
+        Paragraph(
+            "NO ACTIVE TEST PROCEDURE", ParagraphStyle("red-title", parent=stylesheet.title, textColor=colors.red)
+        )
     )
     return page_elements
 
@@ -295,8 +329,9 @@ def pdf_report_as_bytes(
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
+    sites: list[Site],
 ) -> bytes:
-    styles = getSampleStyleSheet()
+    stylesheet = get_stylesheet()
 
     if runner_state.active_test_procedure is not None:
         page_elements = generate_page_elements(
@@ -304,10 +339,11 @@ def pdf_report_as_bytes(
             check_results=check_results,
             readings=readings,
             reading_counts=reading_counts,
-            styles=styles,
+            sites=sites,
+            stylesheet=stylesheet,
         )
     else:
-        page_elements = generate_page_elements_no_active_procedure(styles=styles)
+        page_elements = generate_page_elements_no_active_procedure(stylesheet=stylesheet)
 
     with io.BytesIO() as buffer:
         doc = SimpleDocTemplate(buffer, pagesize=A4)
