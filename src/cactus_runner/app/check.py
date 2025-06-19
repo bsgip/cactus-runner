@@ -338,7 +338,7 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 async def determine_check_results(
     checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
 ) -> dict[str, CheckResult]:
-    check_results = {}
+    check_results: dict[str, CheckResult] = {}
     if checks is None:
         return check_results
 
