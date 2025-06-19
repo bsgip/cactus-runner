@@ -50,6 +50,7 @@ class StyleSheet:
     heading: ParagraphStyle
     subheading: ParagraphStyle
     table: TableStyle
+    date_format: str
 
 
 def get_stylesheet() -> StyleSheet:
@@ -59,6 +60,7 @@ def get_stylesheet() -> StyleSheet:
         heading=sample_style_sheet.get("Heading2"),
         subheading=sample_style_sheet.get("Heading4"),
         table=DEFAULT_TABLE_STYLE,
+        date_format="%Y-%m-%d %H:%M:%S",
     )
 
 
@@ -79,9 +81,9 @@ def generate_overview_section(
     doe_data = [
         ["Test Procedure", test_procedure_name],
         ["Client LFDI", client_lfdi],
-        ["Test Initialisation Timestamp (UTC)", init_timestamp.isoformat()],
-        ["Test Start Timestamp (UTC)", start_timestamp.isoformat()],
-        ["Duration", duration],
+        ["Test Initialisation Timestamp (UTC)", init_timestamp.strftime(stylesheet.date_format)],
+        ["Test Start Timestamp (UTC)", start_timestamp.strftime(stylesheet.date_format)],
+        ["Duration", str(duration).split(".")[0]],  # remove microseconds from output
     ]
     table = Table(doe_data, colWidths=[200, 250])
     table.setStyle(stylesheet.table)
