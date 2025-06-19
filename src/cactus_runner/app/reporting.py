@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import plotly.express as px
-from envoy.server.model.site import Site
+from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
 from reportlab.lib import colors
@@ -48,13 +48,17 @@ class StyleSheet:
 
     title: ParagraphStyle
     heading: ParagraphStyle
+    subheading: ParagraphStyle
     table: TableStyle
 
 
 def get_stylesheet() -> StyleSheet:
     sample_style_sheet = getSampleStyleSheet()
     return StyleSheet(
-        title=sample_style_sheet.get("Title"), heading=sample_style_sheet.get("Heading1"), table=DEFAULT_TABLE_STYLE
+        title=sample_style_sheet.get("Title"),
+        heading=sample_style_sheet.get("Heading2"),
+        subheading=sample_style_sheet.get("Heading4"),
+        table=DEFAULT_TABLE_STYLE,
     )
 
 
@@ -141,13 +145,26 @@ def generate_communications_section(
     return elements
 
 
-def generate_devices_table(sites: list[Site], table_style: TableStyle) -> list:
+def generate_site_section(site: Site, stylesheet: StyleSheet) -> list:
     elements = []
 
-    table_data = [[site.site_id, site.nmi, site.created_time] for site in sites]
-    table_data.insert(0, ["Site", "NMI", "Created Time"])
+    section_title = f"Site '{site.site_id}'"
+    site_description = f"nmi: {site.nmi} created: {site.created_time}"
+    elements.append(Paragraph(section_title, stylesheet.subheading))
+    elements.append(Paragraph(site_description))
+
+    table_data = [
+        [
+            Paragraph(site_der.site_der_rating.model_dump()),
+            site_der.site_der_setting,
+            site_der.site_der_availability,
+            site_der.site_der_status,
+        ]
+        for site_der in site.site_ders
+    ]
+    table_data.insert(0, ["Rating", "Setting", "Availability", "Status"])
     table = Table(table_data)
-    table.setStyle(table_style)
+    table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(DEFAULT_SPACER)
     return elements
@@ -157,7 +174,8 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list:
     elements = []
     elements.append(Paragraph("Devices", stylesheet.heading))
     if sites:
-        elements.extend(generate_devices_table(sites=sites, table_style=stylesheet.table))
+        for site in sites:
+            elements.extend(generate_site_section(site=site, stylesheet=stylesheet))
     else:
         elements.append(Paragraph("No devices registered either out-of-band or in-band during this test procedure."))
     elements.append(DEFAULT_SPACER)
