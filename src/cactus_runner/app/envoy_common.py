@@ -2,7 +2,7 @@ import logging
 from enum import IntEnum
 from typing import Sequence
 
-from envoy.server.model.site import Site
+from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -12,6 +12,7 @@ from envoy_schema.server.schema.sep2.types import (
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -133,3 +134,18 @@ async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> d
         count_by_site_reading_type[reading_type] = count_by_site_reading_type_id[reading_type.site_reading_type_id]
 
     return count_by_site_reading_type
+
+
+async def get_sites(session: AsyncSession) -> Sequence[Site] | None:
+    statement = (
+        select(Site)
+        .order_by(Site.site_id.asc())
+        .options(
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_availability),
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_rating),
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
+        )
+    )
+    response = await session.execute(statement)
+    return response.scalars().all()
