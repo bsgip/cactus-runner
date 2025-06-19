@@ -50,6 +50,7 @@ class StyleSheet:
     heading: ParagraphStyle
     subheading: ParagraphStyle
     table: TableStyle
+    spacer: Spacer
     date_format: str
 
 
@@ -58,8 +59,9 @@ def get_stylesheet() -> StyleSheet:
     return StyleSheet(
         title=sample_style_sheet.get("Title"),
         heading=sample_style_sheet.get("Heading2"),
-        subheading=sample_style_sheet.get("Heading4"),
+        subheading=sample_style_sheet.get("Heading3"),
         table=DEFAULT_TABLE_STYLE,
+        spacer=DEFAULT_SPACER,
         date_format="%Y-%m-%d %H:%M:%S",
     )
 
@@ -88,7 +90,7 @@ def generate_overview_section(
     table = Table(doe_data, colWidths=[200, 250])
     table.setStyle(stylesheet.table)
     elements.append(table)
-    elements.append(DEFAULT_SPACER)
+    elements.append(stylesheet.spacer)
     return elements
 
 
@@ -107,7 +109,7 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     table = Table(criteria_data, colWidths=[130, 60, 250])
     table.setStyle(stylesheet.table)
     elements.append(table)
-    elements.append(DEFAULT_SPACER)
+    elements.append(stylesheet.spacer)
     return elements
 
 
@@ -123,7 +125,7 @@ def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
     df = pd.DataFrame({"timestamp": request_timestamps})
     fig = px.histogram(df, x="timestamp", labels={"timestamp": "Time (UTC)"})
     fig.update_layout(bargap=0.2)
-    fig.update_layout(title_text="Requests over time", title_x=0.5)
+    fig.update_layout(yaxis_title="Number of requests")
     fig.update_layout(
         autosize=False,
         width=WIDTH,
@@ -142,33 +144,49 @@ def generate_communications_section(
 ) -> list:
     elements = []
     elements.append(Paragraph("Communications", stylesheet.heading))
-    elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
-    elements.append(DEFAULT_SPACER)
+    if request_timestamps:
+        elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
+    else:
+        elements.append(Paragraph("No requests were received by utility server during the test procedure."))
+    elements.append(stylesheet.spacer)
+    return elements
+
+
+def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list:
+    elements = []
+    table_data = [
+        [
+            Paragraph(site_der.site_der_rating.model_dump()),
+            Paragraph(site_der.site_der_setting.model_dump()),
+            Paragraph(site_der.site_der_availability.model_dump()),
+            Paragraph(site_der.site_der_status.model_dump()),
+        ]
+        for site_der in site.site_ders
+    ]
+    table_data.insert(0, [Paragraph("Rating"), Paragraph("Setting"), Paragraph("Availability"), Paragraph("Status")])
+    table = Table(table_data)
+    table.setStyle(stylesheet.table)
+    elements.append(table)
+    elements.append(stylesheet.spacer)
     return elements
 
 
 def generate_site_section(site: Site, stylesheet: StyleSheet) -> list:
     elements = []
 
-    section_title = f"Site '{site.site_id}'"
-    site_description = f"nmi: {site.nmi} created: {site.created_time}"
+    if site.nmi:
+        section_title = f"Site {site.site_id} (nmi: {site.nmi})"
+        site_description = f"Created at {site.created_time.strftime(stylesheet.date_format)}"
+    else:
+        section_title = f"Site {site.site_id}"
+        site_description = "Generated as part of test procedure precondition."
     elements.append(Paragraph(section_title, stylesheet.subheading))
     elements.append(Paragraph(site_description))
-
-    table_data = [
-        [
-            Paragraph(site_der.site_der_rating.model_dump()),
-            site_der.site_der_setting,
-            site_der.site_der_availability,
-            site_der.site_der_status,
-        ]
-        for site_der in site.site_ders
-    ]
-    table_data.insert(0, ["Rating", "Setting", "Availability", "Status"])
-    table = Table(table_data)
-    table.setStyle(stylesheet.table)
-    elements.append(table)
-    elements.append(DEFAULT_SPACER)
+    elements.append(stylesheet.spacer)
+    if site.site_ders:
+        elements.extend(generate_site_der_table(site=site, stylesheet=stylesheet))
+    else:
+        elements.append(Paragraph("No Site DER registered for this site."))
     return elements
 
 
@@ -180,7 +198,7 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list:
             elements.extend(generate_site_section(site=site, stylesheet=stylesheet))
     else:
         elements.append(Paragraph("No devices registered either out-of-band or in-band during this test procedure."))
-    elements.append(DEFAULT_SPACER)
+    elements.append(stylesheet.spacer)
     return elements
 
 
@@ -222,15 +240,15 @@ def reading_description(srt: SiteReadingType) -> str:
     return description
 
 
-def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], table_style: TableStyle) -> list:
+def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list:
     elements = []
 
     table_data = [[reading_description(reading_type), count] for reading_type, count in reading_counts.items()]
     table_data.insert(0, ["Reading", "Number received"])
     table = Table(table_data, colWidths=[330, 100])
-    table.setStyle(table_style)
+    table.setStyle(stylesheet.table)
     elements.append(table)
-    elements.append(DEFAULT_SPACER)
+    elements.append(stylesheet.spacer)
     return elements
 
 
@@ -244,7 +262,7 @@ def generate_readings_section(
 
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
-        elements.extend(generate_reading_count_table(reading_counts=reading_counts, table_style=stylesheet.table))
+        elements.extend(generate_reading_count_table(reading_counts=reading_counts, stylesheet=stylesheet))
 
         # Add charts for each of the different reading types
         if readings:
