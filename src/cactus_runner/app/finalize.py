@@ -149,7 +149,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     # Determine sites
     sites = await get_sites(session=session)
-
     if not sites:
         sites = []
 
