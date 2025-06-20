@@ -113,11 +113,6 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     return elements
 
 
-# image_bytes = fig.to_image(format="png", scale=2)
-# buffer_img = io.BytesIO(pdf_element.image_bytes)
-# img = Image(buffer_img, width=450, height=300)
-
-
 def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 
     WIDTH = 500
@@ -202,13 +197,12 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list:
     return elements
 
 
-def generate_readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
+def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str) -> Image:
     WIDTH = 500
     HEIGHT = 250
 
     fig = px.line(readings_df, x="time_period_start", y="scaled_value", markers=True)
 
-    fig.update_layout(title_text=title, title_x=0.5)
     fig.update_layout(
         autosize=False,
         width=WIDTH,
@@ -217,7 +211,7 @@ def generate_readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
     )
     fig.update_layout(
         xaxis=dict(title=dict(text="Time (UTC)")),
-        yaxis=dict(title=dict(text="Value")),
+        yaxis=dict(title=dict(text=quantity)),
     )
 
     img_bytes = fig.to_image(format="png")
@@ -225,17 +219,23 @@ def generate_readings_timeline(readings_df: pd.DataFrame, title: str) -> Image:
     return Image(buffer)
 
 
-def reading_description(srt: SiteReadingType) -> str:
+def reading_quantity(srt: SiteReadingType) -> str:
     quantity = UomType(srt.uom).name
     quantity = quantity.replace("_", " ").title()
+    return quantity
+
+
+def reading_description(srt: SiteReadingType) -> str:
+    mup = srt.site_reading_type_id
+    quantity = reading_quantity(srt)
     qualifier = DataQualifierType(srt.data_qualifier).name
     qualifier = qualifier.replace("_", " ").title()
     if srt.phase == 0:
-        description = f"{quantity} ({qualifier})"
+        description = f"MUP {mup}: {quantity} ({qualifier})"
     else:
         phase = PhaseCode(srt.phase).name
         phase = phase.replace("_", " ").title()
-        description = f"{quantity} ({qualifier}, {phase})"
+        description = f"MUP {mup}: {quantity} ({qualifier}, {phase})"
 
     return description
 
@@ -243,9 +243,12 @@ def reading_description(srt: SiteReadingType) -> str:
 def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list:
     elements = []
 
-    table_data = [[reading_description(reading_type), count] for reading_type, count in reading_counts.items()]
-    table_data.insert(0, ["Reading", "Number received"])
-    table = Table(table_data, colWidths=[330, 100])
+    table_data = [
+        [reading_type.site_reading_type_id, reading_description(reading_type), count]
+        for reading_type, count in reading_counts.items()
+    ]
+    table_data.insert(0, ["MUP", "Description", "Number received"])
+    table = Table(table_data, colWidths=[50, 250, 100])
     table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(stylesheet.spacer)
@@ -267,8 +270,10 @@ def generate_readings_section(
         # Add charts for each of the different reading types
         if readings:
             for reading_type, readings_df in readings.items():
-                title = reading_description(reading_type)
-                elements.append(generate_readings_timeline(readings_df=readings_df, title=title))
+                elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
+                elements.append(
+                    generate_readings_timeline(readings_df=readings_df, quantity=reading_quantity(reading_type))
+                )
     else:
         elements.append(Paragraph("No readings sent to the utility server during this test procedure."))
 
