@@ -104,13 +104,15 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
 
     grouped_reading_types: list[list[SiteReadingType]] = []
     while unprocessed_reading_types:
-        current_reading_type = unprocessed_reading_types.pop()
+        current_reading_type = unprocessed_reading_types.pop(0)
 
         # Does current reading type match one in an existing group?
         added_to_existing_group = False
         for group in grouped_reading_types:
             if reading_types_equivalent(current_reading_type, group[0]):
                 added_to_existing_group = True
+                group.append(current_reading_type)
+                break
 
         if not added_to_existing_group:
             grouped_reading_types.append([current_reading_type])
