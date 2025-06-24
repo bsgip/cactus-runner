@@ -5,8 +5,11 @@ from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
+    AccumulationBehaviourType,
     DataQualifierType,
+    FlowDirectionType,
     KindType,
+    PhaseCode,
     UomType,
 )
 from pandas import DataFrame
@@ -14,7 +17,11 @@ from pandas import DataFrame
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
 )
-from cactus_runner.app.readings import ReadingSpecifier, get_readings
+from cactus_runner.app.readings import (
+    ReadingSpecifier,
+    get_readings,
+    reading_types_equivalent,
+)
 
 
 @pytest.mark.asyncio
@@ -80,4 +87,305 @@ async def test_get_readings(mocker, pg_base_config):
 
     # Assert
     assert_dict_type(SiteReadingType, DataFrame, readings_map, count=2)  # two reading types (voltage and power)
-    assert [num_power_readings, num_voltage_readings] == [len(readings) for readings in readings_map.values()]
+    assert sorted([num_power_readings, num_voltage_readings]) == sorted(
+        [len(readings) for readings in readings_map.values()]
+    )
+
+
+@pytest.mark.parametrize(
+    "rt1,rt2,expected_result",
+    [
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            True,
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=2,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different aggregator
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=2,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different site id
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.VOLTAGE,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different uom
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.MAXIMUM,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different data qualifier
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.REVERSE,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different flow direction
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.SUMMATION,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different accumulation behaviour
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.ENERGY,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different kind
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_B,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            False,  # different phase
+        ),
+        (
+            generate_class_instance(
+                SiteReadingType,
+                seed=1,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.DEVICE_READING,
+            ),
+            generate_class_instance(
+                SiteReadingType,
+                seed=2,
+                aggregator_id=1,
+                site_id=1,
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                flow_direction=FlowDirectionType.FORWARD,
+                accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                kind=KindType.POWER,
+                phase=PhaseCode.PHASE_ABC,
+                role_flags=ReadingLocation.SITE_READING,
+            ),
+            False,  # different role flags/location
+        ),
+    ],
+)
+def test_reading_types_equivalent(rt1, rt2, expected_result):
+    assert reading_types_equivalent(rt1, rt2) == expected_result
