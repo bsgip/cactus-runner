@@ -1,3 +1,5 @@
+import itertools
+
 import pytest
 from assertical.asserts.type import assert_dict_type
 from assertical.fake.generator import generate_class_instance
@@ -20,6 +22,7 @@ from cactus_runner.app.envoy_common import (
 from cactus_runner.app.readings import (
     ReadingSpecifier,
     get_readings,
+    group_reading_types,
     reading_types_equivalent,
 )
 
@@ -389,3 +392,111 @@ async def test_get_readings(mocker, pg_base_config):
 )
 def test_reading_types_equivalent(rt1, rt2, expected_result):
     assert reading_types_equivalent(rt1, rt2) == expected_result
+
+
+@pytest.mark.parametrize(
+    "reading_types, expected_group_indexes",
+    [
+        (
+            [
+                generate_class_instance(
+                    SiteReadingType,
+                    seed=1,
+                    aggregator_id=1,
+                    site_id=1,
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    flow_direction=FlowDirectionType.FORWARD,
+                    accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                    kind=KindType.POWER,
+                    phase=PhaseCode.PHASE_ABC,
+                    role_flags=ReadingLocation.DEVICE_READING,
+                )
+            ],
+            [[0]],  # one group (only one reading type)
+        ),
+        (
+            [
+                generate_class_instance(
+                    SiteReadingType,
+                    seed=1,
+                    aggregator_id=1,
+                    site_id=1,
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    flow_direction=FlowDirectionType.FORWARD,
+                    accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                    kind=KindType.POWER,
+                    phase=PhaseCode.PHASE_ABC,
+                    role_flags=ReadingLocation.DEVICE_READING,
+                ),
+                generate_class_instance(
+                    SiteReadingType,
+                    seed=2,
+                    aggregator_id=1,
+                    site_id=1,
+                    uom=UomType.CURRENT_AMPERES,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    flow_direction=FlowDirectionType.FORWARD,
+                    accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                    kind=KindType.POWER,
+                    phase=PhaseCode.PHASE_ABC,
+                    role_flags=ReadingLocation.DEVICE_READING,
+                ),
+            ],
+            [[0], [1]],  # Two groups (different uom)
+        ),
+        (
+            [
+                generate_class_instance(
+                    SiteReadingType,
+                    seed=1,
+                    aggregator_id=1,
+                    site_id=1,
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    flow_direction=FlowDirectionType.FORWARD,
+                    accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                    kind=KindType.POWER,
+                    phase=PhaseCode.PHASE_ABC,
+                    role_flags=ReadingLocation.DEVICE_READING,
+                    power_of_ten_multiplier=1,
+                ),
+                generate_class_instance(
+                    SiteReadingType,
+                    seed=2,
+                    aggregator_id=1,
+                    site_id=1,
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    flow_direction=FlowDirectionType.FORWARD,
+                    accumulation_behaviour=AccumulationBehaviourType.CUMULATIVE,
+                    kind=KindType.POWER,
+                    phase=PhaseCode.PHASE_ABC,
+                    role_flags=ReadingLocation.DEVICE_READING,
+                    power_of_ten_multiplier=2,
+                ),
+            ],
+            [[0, 1]],  # One group (despite different power of ten multiplier)
+        ),
+    ],
+)
+def test_group_reading_types(reading_types, expected_group_indexes):
+    def replace_index_by_reading_type(item, reading_types):
+        if isinstance(item, list):
+            return [replace_index_by_reading_type(x, reading_types) for x in item]
+        else:
+            return reading_types[item]
+
+    # Arrange
+    expected_groups = replace_index_by_reading_type(expected_group_indexes, reading_types)
+
+    # Act
+    groups = group_reading_types(reading_types=reading_types)
+
+    # Assert
+    flattened = list(itertools.chain(*groups))
+    assert len(reading_types) == len(flattened)
+    assert len(groups) == len(expected_groups)
+    for expected_group in expected_groups:
+        assert expected_group in groups
