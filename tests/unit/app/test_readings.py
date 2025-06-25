@@ -23,6 +23,7 @@ from cactus_runner.app.readings import (
     ReadingSpecifier,
     get_readings,
     group_reading_types,
+    merge_readings,
     reading_types_equivalent,
 )
 
@@ -93,6 +94,42 @@ async def test_get_readings(mocker, pg_base_config):
     assert sorted([num_power_readings, num_voltage_readings]) == sorted(
         [len(readings) for readings in readings_map.values()]
     )
+
+
+def test_merge_readings():
+    # Arrange
+    number_of_readings_per_type = [20, 15, 17, 42, 11, 24, 52, 103]
+    number_of_types = len(number_of_readings_per_type)
+    reading_types = [generate_class_instance(SiteReadingType, seed=i + 1) for i in range(number_of_types)]
+
+    readings = {}
+    for i in range(number_of_types):
+        reading_type = reading_types[i]
+        n = number_of_readings_per_type[i]
+        readings[reading_type] = DataFrame(
+            [generate_class_instance(SiteReading, seed=i * j + 1).__dict__ for j in range(n)]
+        )
+    groups = [reading_types[:3], reading_types[3:7], reading_types[-1:]]
+
+    # Act
+    merged_readings = merge_readings(readings=readings, groups=groups)
+
+    # Assert - check each group results in one entry in merged_readings
+    assert len(merged_readings) == len(groups)
+
+    merged_reading_types = merged_readings.keys()
+    for group in groups:
+        # Assert that the first SiteReadingType is used as the representative
+        # SiteReadingType in merged_readings dict.
+        assert group[0] in merged_reading_types
+
+        total_readings_in_group = 0
+        for reading_type in group:
+            total_readings_in_group += len(readings[reading_type])
+
+        # Assert that the number of readings after merging is the same
+        # as the total for that group.
+        assert len(merged_readings[group[0]]) == total_readings_in_group
 
 
 @pytest.mark.parametrize(
