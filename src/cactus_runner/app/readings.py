@@ -20,10 +20,14 @@ from cactus_runner.app.envoy_common import (
 
 @dataclass
 class ReadingSpecifier:
+    """A shorthand alternative to SiteReadingType"""
+
     uom: UomType
     location: ReadingLocation
 
 
+# Defines the mandatory CSIP-AUS readings expected to be sent to a utility server
+# See Annex A - Reporting DER Data (DER Monitoring Data) of the CSIP-AUS (Jan 2023) specification.
 MANDATORY_READING_SPECIFIERS = [
     ReadingSpecifier(uom=UomType.VOLTAGE, location=ReadingLocation.SITE_READING),
     ReadingSpecifier(uom=UomType.REAL_POWER_WATT, location=ReadingLocation.SITE_READING),
@@ -35,6 +39,16 @@ MANDATORY_READING_SPECIFIERS = [
 
 
 async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteReadingType, DataFrame]:
+    """Returns a dataframe containing readings matching the 'reading_specifiers'.
+
+    Args:
+        reading_specifiers: A list of the types of readings to return.
+
+    Returns:
+        A dict of SiteReadingType mapped to a dataframe containing all the readings of that type. The dataframe
+        contains all the attributes of a SiteReading along with extra column 'scaled_value'. The 'scaled_value'
+        is the readings 'value' scaled by the SiteReadingType's power_of_10_multiplier.
+    """
     readings = {}
     async with begin_session() as session:
         for reading_specifier in reading_specifiers:
@@ -45,7 +59,7 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
             for reading_type in reading_types:
                 reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
 
-                readings[reading_type] = rescale_readings(reading_type=reading_type, readings=reading_data)
+                readings[reading_type] = scale_readings(reading_type=reading_type, readings=reading_data)
 
     groups = group_reading_types(list(readings.keys()))
     merged_readings = merge_readings(readings=readings, groups=groups)
@@ -53,8 +67,20 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
     return merged_readings
 
 
-def merge_readings(readings: dict[SiteReadingType, DataFrame], groups: list[list[SiteReadingType]]):
-    """Merges the dataframes for reading types that have been grouped"""
+def merge_readings(
+    readings: dict[SiteReadingType, DataFrame], groups: list[list[SiteReadingType]]
+) -> dict[SiteReadingType, DataFrame]:
+    """Merges the dataframes for reading types that have been grouped.
+
+    Args:
+        readings: A dict of SiteReadintType mapped to a dataframe containing readings of that type.
+        groups: A list of groups. Each group is a list of SiteReadingTypes that need to be merged.
+
+    Returns:
+        A new readings dictionary mapping a representative SiteReadingType to a merged dataframe containing
+        all the rows from dataframes in the same group. The first SiteReadingType in a group is selected as
+        the representative SiteReadingType to key the new dictionary.
+    """
     merged_readings = {}
     for group in groups:
         # We need to choose a SiteReadingType to represent all the merged values, choosing the first one in the group.
@@ -80,6 +106,12 @@ def reading_types_equivalent(rt1: SiteReadingType, rt2: SiteReadingType) -> bool
     - changed_time
     - site (already covered by site_id)
 
+    Args:
+        rt1: A SiteReadingType instance.
+        rt2: Another SiteReadingType instance to compare to 'rt1'.
+
+    Returns:
+        bool: True is 'rt1' and 'rt2' are equivalent (see above) else False.
     """
     return (
         rt1.aggregator_id == rt2.aggregator_id
@@ -99,6 +131,12 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
 
     A group consists of a list of reading types that all represent the same physical quantity but only
     (effectively) differ in 'power_of_10_multiplier'.
+
+    Args:
+        reading_types: A list of SiteReadingTypes to group.
+
+    Returns:
+        A list of grouped SiteReadingTypes. Each group is list where the SiteReadingTypes are equivalent.
     """
     unprocessed_reading_types = reading_types.copy()
 
@@ -120,7 +158,17 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
     return grouped_reading_types
 
 
-def rescale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
+def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
+    """Converts the readings to dataframe and calculates scaled value (power of 10 multiplier).
+
+    Args:
+        reading_type: The SiteReadingType associated with the 'readings'.
+        readings: A sequence of SiteReadings to be scaled by the power of 10 multiplier of 'reading_type'.
+
+    Returns:
+        DataFrame: A dataframe containing all the readings in 'readings' along with an extra column
+        'scaled_value'. 'scaled_value' = 'value' * power_of_10_multiplier.
+    """
     # Convert list of readings into a dataframe
     df = DataFrame([reading.__dict__ for reading in readings])
 
@@ -132,6 +180,15 @@ def rescale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReadi
 
 
 async def get_reading_counts() -> dict[SiteReadingType, int]:
+    """Determines the number of readings per reading type
+
+    No grouping of equivalent SiteReadingTypes is performed (i.e. SiteReadingTypes that only differ
+    by their power of 10 multiplier are treated separately).
+
+    Returns:
+        A mapping containing all the SiteReadingTypes register in a utility server, along with the
+        number of readings of that type.
+    """
     reading_counts = {}
     async with begin_session() as session:
         reading_counts = await get_reading_counts_grouped_by_reading_type(session=session)
