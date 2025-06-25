@@ -1,4 +1,5 @@
 import itertools
+from decimal import Decimal
 
 import pytest
 from assertical.asserts.type import assert_dict_type
@@ -25,6 +26,7 @@ from cactus_runner.app.readings import (
     group_reading_types,
     merge_readings,
     reading_types_equivalent,
+    scale_readings,
 )
 
 
@@ -114,7 +116,7 @@ def test_merge_readings():
     # Act
     merged_readings = merge_readings(readings=readings, groups=groups)
 
-    # Assert - check each group results in one entry in merged_readings
+    # Assert that each group results in one entry in merged_readings
     assert len(merged_readings) == len(groups)
 
     merged_reading_types = merged_readings.keys()
@@ -130,6 +132,40 @@ def test_merge_readings():
         # Assert that the number of readings after merging is the same
         # as the total for that group.
         assert len(merged_readings[group[0]]) == total_readings_in_group
+
+
+@pytest.mark.parametrize(
+    "power_of_ten_multiplier,values,expected_scaled_values",
+    [
+        (0, [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384], [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384]),
+        (1, [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384], [0, 10, 50, 120, 720, 1590, 4280, 10570, 50120, 923840]),
+        (
+            2,
+            [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384],
+            [0, 100, 500, 1200, 7200, 15900, 42800, 105700, 501200, 9238400],
+        ),
+        (
+            -1,
+            [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384],
+            [0, 0.1, 0.5, 1.2, 7.2, 15.9, 42.8, 105.7, 501.2, 9238.4],
+        ),
+    ],
+)
+def test_scale_readings(power_of_ten_multiplier, values, expected_scaled_values):
+
+    reading_type = generate_class_instance(SiteReadingType, power_of_ten_multiplier=power_of_ten_multiplier)
+    readings = [generate_class_instance(SiteReading, value=v) for v in values]
+
+    expected_scaled_values = [Decimal(i) for i in expected_scaled_values]
+
+    # Act
+    df = scale_readings(reading_type=reading_type, readings=readings)
+
+    # Assert
+    assert "scaled_value" in df
+    TOLERANCE = 1e-5
+    for v1, v2 in zip(df["scaled_value"].tolist(), expected_scaled_values):
+        assert abs(v1 - v2) < TOLERANCE
 
 
 @pytest.mark.parametrize(
