@@ -83,7 +83,8 @@ def merge_readings(
     """
     merged_readings = {}
     for group in groups:
-        # We need to choose a SiteReadingType to represent all the merged values, choosing the first one in the group.
+        # We need to choose a SiteReadingType to represent all the merged values.
+        # Here we choose the first SiteReadingType in the group.
         primary_key: SiteReadingType = group[0]
         merged = pd.concat([readings[reading_type] for reading_type in group])
         sorted = merged.sort_values(by=["time_period_start"])
@@ -180,7 +181,7 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
 
 
 async def get_reading_counts() -> dict[SiteReadingType, int]:
-    """Determines the number of readings per reading type
+    """Determines the number of readings per reading type.
 
     No grouping of equivalent SiteReadingTypes is performed (i.e. SiteReadingTypes that only differ
     by their power of 10 multiplier are treated separately).
