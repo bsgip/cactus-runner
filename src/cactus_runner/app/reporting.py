@@ -113,6 +113,37 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     return elements
 
 
+def generate_test_progress_chart() -> Image:
+    WIDTH = 500
+    HEIGHT = 250
+    df = pd.DataFrame(
+        [
+            dict(Phase="Init", Start="2009-01-01", Finish="2009-01-01", Request="/dcap"),
+            dict(Phase="Unmatched", Start="2009-03-05", Finish="2009-04-15", Request="/edev"),
+            dict(Phase="Step 1.", Start="2009-02-20", Finish="2009-05-30", Request="/tm"),
+            # dict(Phase="Step 2.", Start="2009-02-20", Finish="2009-05-30", Request="/edev/1"),
+            # dict(Phase="Step 3.", Start="2009-02-20", Finish="2009-05-30", Request="/edev/1/der"),
+            # dict(Phase="Step 4.", Start="2009-02-20", Finish="2009-05-30", Request="/tm"),
+        ]
+    )
+
+    fig = px.timeline(df, x_start="Start", x_end="Finish", y="Phase", color="Request")
+    fig.update_yaxes(autorange="reversed")
+    # fig.write_image("/home/mike/Downloads/fig1.pdf", scale=1)
+
+    img_bytes = fig.to_image(format="png")
+    buffer = io.BytesIO(img_bytes)
+    return Image(buffer)
+
+
+def generate_test_progress_section(stylesheet: StyleSheet) -> list:
+    elements = []
+    elements.append(Paragraph("Test Progress", stylesheet.heading))
+    elements.append(generate_test_progress_chart())
+    elements.append(stylesheet.spacer)
+    return elements
+
+
 def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 
     WIDTH = 500
@@ -339,6 +370,9 @@ def generate_page_elements(
 
     # Criteria Section
     page_elements.extend(generate_criteria_section(check_results=check_results, stylesheet=stylesheet))
+
+    # Test Progress Section
+    page_elements.extend(generate_test_progress_section(stylesheet=stylesheet))
 
     # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
