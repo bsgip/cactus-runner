@@ -8,13 +8,14 @@ import plotly.express as px
 from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
-from reportlab.lib import colors
+from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
     ParagraphStyle,
     getSampleStyleSheet,
 )
 from reportlab.platypus import (
+    Flowable,
     Image,
     Paragraph,
     SimpleDocTemplate,
@@ -30,16 +31,25 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SPACER = Spacer(1, 20)
 
+HIGHLIGHT_COLOR = HexColor(0x157371)  # Teal green used on cactus UI
+TABLE_HEADER_COLOR = HexColor(0xF5F5F5)
+TABLE_LINE_COLOR = HexColor(0xE0E0E0)
+TABLE_TEXT_COLOR = HexColor(0x262626)
+WARNING_COLOR = HexColor(0xFF4545)
+
 DEFAULT_TABLE_STYLE = TableStyle(
     [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_COLOR),
+        ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_TEXT_COLOR),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ("GRID", (0, 0), (-1, -1), 1, TABLE_LINE_COLOR),
     ]
 )
+
+# Limit all tables to a max width of 400px
+DEFAULT_MAX_TABLE_WIDTH = 430
 
 
 @dataclass
@@ -50,6 +60,7 @@ class StyleSheet:
     heading: ParagraphStyle
     subheading: ParagraphStyle
     table: TableStyle
+    table_width: int
     spacer: Spacer
     date_format: str
 
@@ -61,12 +72,13 @@ def get_stylesheet() -> StyleSheet:
         heading=sample_style_sheet.get("Heading2"),
         subheading=sample_style_sheet.get("Heading3"),
         table=DEFAULT_TABLE_STYLE,
+        table_width=DEFAULT_MAX_TABLE_WIDTH,
         spacer=DEFAULT_SPACER,
         date_format="%Y-%m-%d %H:%M:%S",
     )
 
 
-def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list:
+def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list[Flowable]:
     return [Paragraph(f"{test_procedure_name} Test Procedure Report", style), Spacer(1, 10)]
 
 
@@ -77,7 +89,7 @@ def generate_overview_section(
     client_lfdi: str,
     duration: timedelta,
     stylesheet: StyleSheet,
-) -> list:
+) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Overview", stylesheet.heading))
     doe_data = [
@@ -87,14 +99,15 @@ def generate_overview_section(
         ["Test Start Timestamp (UTC)", start_timestamp.strftime(stylesheet.date_format)],
         ["Duration", str(duration).split(".")[0]],  # remove microseconds from output
     ]
-    table = Table(doe_data, colWidths=[200, 250])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.4, 0.60]]
+    table = Table(doe_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(stylesheet.spacer)
     return elements
 
 
-def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list:
+def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Criteria", stylesheet.heading))
     criteria_data = [
@@ -106,7 +119,8 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
         for check_name, check_result in check_results.items()
     ]
     criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Comment"])
-    table = Table(criteria_data, colWidths=[130, 60, 250])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.33, 0.15, 0.52]]
+    table = Table(criteria_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(stylesheet.spacer)
@@ -136,7 +150,7 @@ def generate_test_progress_chart() -> Image:
     return Image(buffer)
 
 
-def generate_test_progress_section(stylesheet: StyleSheet) -> list:
+def generate_test_progress_section(stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Test Progress", stylesheet.heading))
     elements.append(generate_test_progress_chart())
@@ -167,7 +181,7 @@ def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 def generate_communications_section(
     request_timestamps: list[datetime],
     stylesheet: StyleSheet,
-) -> list:
+) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Communications", stylesheet.heading))
     if request_timestamps:
@@ -178,7 +192,7 @@ def generate_communications_section(
     return elements
 
 
-def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list:
+def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     table_data = [
         [
@@ -197,7 +211,7 @@ def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list:
     return elements
 
 
-def generate_site_section(site: Site, stylesheet: StyleSheet) -> list:
+def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
 
     if site.nmi:
@@ -216,7 +230,7 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list:
     return elements
 
 
-def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list:
+def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Devices", stylesheet.heading))
     if sites:
@@ -271,7 +285,7 @@ def reading_description(srt: SiteReadingType) -> str:
     return description
 
 
-def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list:
+def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
 
     table_data = [
@@ -279,7 +293,8 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
         for reading_type, count in reading_counts.items()
     ]
     table_data.insert(0, ["MUP", "Description", "Number received"])
-    table = Table(table_data, colWidths=[50, 250, 100])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.13, 0.63, 0.24]]
+    table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
     elements.append(stylesheet.spacer)
@@ -290,7 +305,7 @@ def generate_readings_section(
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
     stylesheet: StyleSheet,
-) -> list:
+) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Readings", stylesheet.heading))
 
@@ -314,7 +329,7 @@ def generate_readings_section(
 
 def first_client_interaction_of_type(
     client_interactions: list[ClientInteraction], interaction_type: ClientInteractionType
-):
+) -> ClientInteraction:
     for client_interaction in client_interactions:
         if client_interaction.interaction_type == interaction_type:
             return client_interaction
@@ -328,7 +343,7 @@ def generate_page_elements(
     reading_counts: dict[SiteReadingType, int],
     sites: list[Site],
     stylesheet: StyleSheet,
-) -> list:
+) -> list[Flowable]:
     active_test_procedure = runner_state.active_test_procedure
     if active_test_procedure is None:
         raise ValueError("'active_test_procedure' attribute of 'runner_state' cannot be None")
@@ -389,13 +404,13 @@ def generate_page_elements(
     return page_elements
 
 
-def generate_page_elements_no_active_procedure(stylesheet: StyleSheet):
+def generate_page_elements_no_active_procedure(stylesheet: StyleSheet) -> list[Flowable]:
     page_elements = []
     page_elements.append(Paragraph("Test Procedure Report", stylesheet.title))
     page_elements.append(DEFAULT_SPACER)
     page_elements.append(
         Paragraph(
-            "NO ACTIVE TEST PROCEDURE", ParagraphStyle("red-title", parent=stylesheet.title, textColor=colors.red)
+            "NO ACTIVE TEST PROCEDURE", ParagraphStyle("red-title", parent=stylesheet.title, textColor=WARNING_COLOR)
         )
     )
     return page_elements
