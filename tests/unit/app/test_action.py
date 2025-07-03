@@ -17,6 +17,7 @@ from cactus_runner.app.action import (
     action_cancel_active_controls,
     action_communications_status,
     action_create_der_control,
+    action_create_der_program,
     action_edev_registration_links,
     action_enable_steps,
     action_register_end_device,
@@ -37,6 +38,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str] = {
     "finish-test": "action_finish_test",
     "set-default-der-control": "action_set_default_der_control",
     "create-der-control": "action_create_der_control",
+    "create-der-program": "action_create_der_program",
     "cancel-active-der-controls": "action_cancel_active_controls",
     "set-poll-rate": "action_set_poll_rate",
     "set-post-rate": "action_set_post_rate",
@@ -328,6 +330,20 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
     assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
     assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
     assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_action_create_der_program(pg_base_config, envoy_admin_client):
+    # Arrange
+    resolved_params = {
+        "primacy": 17,
+    }
+
+    # Act
+    await action_create_der_program(resolved_params, envoy_admin_client)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from site_control_group where primacy = 17;").fetchone()[0] == 1
 
 
 @pytest.mark.anyio

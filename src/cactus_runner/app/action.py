@@ -14,7 +14,6 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlGroupRequest,
     SiteControlRequest,
 )
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -139,11 +138,21 @@ async def action_set_default_der_control(
     )
 
 
+async def action_create_der_program(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+    primacy: int = int(resolved_parameters["primacy"])  # mandatory param
+
+    await envoy_client.post_site_control_group(
+        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy)
+    )
+
+
 async def action_create_der_control(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
     # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
-    active_site = (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
+    active_site = await get_active_site(session)
+    if active_site is None:
+        raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
 
     start_time: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
@@ -302,6 +311,9 @@ async def apply_action(
                 return
             case "create-der-control":
                 await action_create_der_control(resolved_parameters, session, envoy_client)
+                return
+            case "create-der-program":
+                await action_create_der_program(resolved_parameters, envoy_client)
                 return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)
