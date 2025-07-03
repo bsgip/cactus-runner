@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from cactus_test_definitions.checks import Check
+from envoy.server.exception import InvalidMappingError
+from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model.site import (
     SiteDER,
     SiteDERRating,
@@ -10,7 +12,7 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading
-from envoy.server.model.subscription import TransmitNotificationLog
+from envoy.server.model.subscription import Subscription, TransmitNotificationLog
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -301,6 +303,37 @@ async def check_all_notifications_transmitted(session: AsyncSession) -> CheckRes
     return CheckResult(True, f"All {len(all_logs)} notifications yielded HTTP success codes")
 
 
+async def check_subscription_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
+    """Implements the subscription-contents check"""
+
+    subscribed_resource: str = resolved_parameters["subscribed_resource"]  # mandatory param
+    active_site = await get_active_site(session)
+    if active_site is None:
+        return CheckResult(False, "No EndDevice is currently registered")
+
+    # Decode the href so we know what to look for in the DB
+    try:
+        resource_type, _, resource_id = SubscriptionMapper.parse_resource_href(subscribed_resource)
+    except InvalidMappingError as exc:
+        logger.error(f"check_subscription_contents: Caught InvalidMappingError for {subscribed_resource}", exc_info=exc)
+        return CheckResult(False, f"Unable to interpret resource {subscribed_resource}: {exc.message}")
+
+    matching_sub = (
+        await session.execute(
+            select(Subscription).where(
+                (Subscription.aggregator_id == active_site.aggregator_id)
+                & (Subscription.scoped_site_id == active_site.site_id)
+                & (Subscription.resource_type == resource_type)
+                & (Subscription.resource_id == resource_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if matching_sub is None:
+        return CheckResult(False, f"Couldn't find a subscription for {subscribed_resource}")
+
+    return CheckResult(True, f"Matched {subscribed_resource} to /sub/{matching_sub.subscription_id}")
+
+
 async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -354,6 +387,9 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
             case "all-notifications-transmitted":
                 check_result = await check_all_notifications_transmitted(session)
+
+            case "subscription-contents":
+                check_result = await check_subscription_contents(resolved_parameters, session)
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)

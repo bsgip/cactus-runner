@@ -1,4 +1,5 @@
 import unittest.mock as mock
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -7,6 +8,7 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CHECK_PARAMETER_SCHEMA, Event, Step, TestProcedure
 from cactus_test_definitions.checks import Check
+from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.site import (
     Site,
     SiteDER,
@@ -15,8 +17,13 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy.server.model.subscription import TransmitNotificationLog
+from envoy.server.model.subscription import (
+    Subscription,
+    SubscriptionResource,
+    TransmitNotificationLog,
+)
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
+from sqlalchemy import select
 
 from cactus_runner.app.check import (
     CheckResult,
@@ -29,6 +36,7 @@ from cactus_runner.app.check import (
     check_der_settings_contents,
     check_der_status_contents,
     check_end_device_contents,
+    check_subscription_contents,
     do_check_readings_for_types,
     do_check_site_readings_and_params,
     run_check,
@@ -51,6 +59,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "readings-der-reactive-power": "check_readings_der_reactive_power",
     "readings-der-voltage": "check_readings_der_voltage",
     "all-notifications-transmitted": "check_all_notifications_transmitted",
+    "subscription-contents": "check_subscription_contents",
 }
 
 
@@ -663,6 +672,179 @@ async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, True)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_no_site(pg_base_config):
+    """check_subscription_contents should fail if there is no active site"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_no_matches(pg_base_config):
+    """check_subscription_contents should fail if there is no matching subscription"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    # Fill up the DB with subscriptions
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
+        session.add(agg2)
+
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        session.add(site1)
+        session.add(site2)
+        await session.flush()
+
+        # wrong site_id
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=202,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site2,
+            )
+        )
+
+        # Wrong resource type
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=303,
+                resource_type=SubscriptionResource.READING,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong der program
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=404,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=99,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong aggregator
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=505,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg2,
+                scoped_site=site1,
+            )
+        )
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_success(pg_base_config):
+    """check_subscription_contents should succeed if there is at least 1 matching subscription"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    # Fill up the DB with subscriptions
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
+        session.add(agg2)
+
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        session.add(site1)
+        session.add(site2)
+        await session.flush()
+
+        # wrong site_id
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=202,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site2,
+            )
+        )
+
+        # Wrong resource type
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=303,
+                resource_type=SubscriptionResource.READING,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong der program
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=404,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=99,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong aggregator
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=505,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg2,
+                scoped_site=site1,
+            )
+        )
+
+        # Will match
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=606,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        subs = (await session.execute(select(Subscription))).scalars().all()
+        print(subs)
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
         assert_check_result(actual, True)
 
 
