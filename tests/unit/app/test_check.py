@@ -23,10 +23,10 @@ from cactus_runner.app.check import (
     UnknownCheckError,
     all_checks_passing,
     check_all_steps_complete,
-    check_connectionpoint_contents,
     check_der_capability_contents,
     check_der_settings_contents,
     check_der_status_contents,
+    check_end_device_contents,
     do_check_readings_for_types,
     do_check_site_readings_and_params,
     run_check,
@@ -38,7 +38,7 @@ from cactus_runner.models import ActiveTestProcedure, Listener
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
 CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "all-steps-complete": "check_all_steps_complete",
-    "connectionpoint-contents": "check_connectionpoint_contents",
+    "end-device-contents": "check_end_device_contents",
     "der-settings-contents": "check_der_settings_contents",
     "der-capability-contents": "check_der_capability_contents",
     "der-status-contents": "check_der_status_contents",
@@ -111,33 +111,44 @@ def test_check_all_steps_complete(
 
 
 @pytest.mark.parametrize(
-    "active_site, expected",
+    "active_site, has_connection_point_id, expected",
     [
-        (None, False),
-        (generate_class_instance(Site, nmi=None), False),
-        (generate_class_instance(Site, nmi=""), False),
-        (generate_class_instance(Site, nmi="abc123"), True),
+        (None, True, False),
+        (None, False, False),
+        (None, None, False),
+        (generate_class_instance(Site, nmi=None), True, False),
+        (generate_class_instance(Site, nmi=None), False, True),
+        (generate_class_instance(Site, nmi=None), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(Site, nmi=""), True, False),
+        (generate_class_instance(Site, nmi=""), False, True),
+        (generate_class_instance(Site, nmi=""), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(Site, nmi="abc123"), True, True),
+        (generate_class_instance(Site, nmi="abc123"), False, True),
+        (generate_class_instance(Site, nmi="abc123"), None, True),
     ],
 )
 @mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_connectionpoint_contents(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, expected: bool
+    mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
 ):
 
     mock_get_active_site.return_value = active_site
     mock_session = create_mock_session()
+    resolved_params = {}
+    if has_connection_point_id is not None:
+        resolved_params["has_connection_point_id"] = has_connection_point_id
 
-    result = await check_connectionpoint_contents(mock_session)
+    result = await check_end_device_contents(mock_session, resolved_params)
     assert_check_result(result, expected)
 
     assert_mock_session(mock_session)
 
 
 @pytest.mark.parametrize(
-    "existing_sites, expected",
+    "existing_sites, resolved_params, expected",
     [
-        ([], False),
+        ([], {}, False),
         (
             [
                 generate_class_instance(
@@ -149,8 +160,41 @@ async def test_check_connectionpoint_contents(
                     ],
                 )
             ],
+            {},
             True,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
+                        )
+                    ],
+                )
+            ],
+            {"setGradW": 12345},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
+                        )
+                    ],
+                )
+            ],
+            {"setGradW": 1234},
+            False,
+        ),  # setGradW doesn't match value
         (
             [
                 generate_class_instance(
@@ -162,6 +206,7 @@ async def test_check_connectionpoint_contents(
                     ],
                 )
             ],
+            {},
             False,
         ),  # Is setting DERCapability - not DERSetting
         (
@@ -173,6 +218,7 @@ async def test_check_connectionpoint_contents(
                     site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
+            {},
             False,
         ),
         (
@@ -183,18 +229,21 @@ async def test_check_connectionpoint_contents(
                     aggregator_id=1,
                 )
             ],
+            {},
             False,
         ),
     ],
 )
 @pytest.mark.anyio
-async def test_check_der_settings_contents(pg_base_config, existing_sites: list[Site], expected: bool):
+async def test_check_der_settings_contents(
+    pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
+):
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_settings_contents(session)
+        result = await check_der_settings_contents(session, resolved_params)
         assert_check_result(result, expected)
 
 

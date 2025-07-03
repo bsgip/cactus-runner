@@ -69,22 +69,23 @@ def check_all_steps_complete(
         return CheckResult(True, None)
 
 
-async def check_connectionpoint_contents(session: AsyncSession) -> CheckResult:
-    """Implements the connectionpoint-contents
+async def check_end_device_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the end-device-contents check
 
-    Returns pass if the active test site has a connection point"""
+    Returns pass if there is an active test site (an optionally checks the contents of that EndDevice)"""
 
     site = await get_active_site(session)
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered")
 
-    if not site.nmi:
+    has_connection_point_id: bool = resolved_parameters.get("has_connection_point_id", False)
+    if has_connection_point_id and not site.nmi:
         return CheckResult(False, f"EndDevice {site.site_id} has no ConnectionPoint id specified.")
 
     return CheckResult(True, None)
 
 
-async def check_der_settings_contents(session: AsyncSession) -> CheckResult:
+async def check_der_settings_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the der-settings-contents check
 
     Returns pass if DERSettings has been submitted for the active site"""
@@ -99,6 +100,12 @@ async def check_der_settings_contents(session: AsyncSession) -> CheckResult:
     der_settings = response.scalar_one_or_none()
     if der_settings is None:
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}")
+
+    set_grad_w_value: int | None = resolved_parameters.get("setGradW", None)
+    if set_grad_w_value is not None and der_settings.grad_w != set_grad_w_value:
+        return CheckResult(
+            False, f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {set_grad_w_value}"
+        )
 
     return CheckResult(True, None)
 
@@ -294,11 +301,11 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
             case "all-steps-complete":
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 
-            case "connectionpoint-contents":
-                check_result = await check_connectionpoint_contents(session)
+            case "end-device-contents":
+                check_result = await check_end_device_contents(session, resolved_parameters)
 
             case "der-settings-contents":
-                check_result = await check_der_settings_contents(session)
+                check_result = await check_der_settings_contents(session, resolved_parameters)
 
             case "der-capability-contents":
                 check_result = await check_der_capability_contents(session)

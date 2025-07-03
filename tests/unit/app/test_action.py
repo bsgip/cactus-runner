@@ -9,7 +9,8 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import ACTION_PARAMETER_SCHEMA, Action, Event
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
-from envoy.server.model.site import Site
+from envoy.server.model.site import DefaultSiteControl, Site
+from sqlalchemy import select
 
 from cactus_runner.app.action import (
     UnknownActionError,
@@ -235,19 +236,52 @@ async def test_apply_actions(mocker, listener: Listener):
     assert mock_apply_action.call_count == len(listener.actions)
 
 
+@pytest.mark.parametrize("cancelled", [True, False, None])
 @pytest.mark.anyio
-async def test_action_set_default_der_control(pg_base_config, envoy_admin_client):
+async def test_action_set_default_der_control(pg_base_config, envoy_admin_client, cancelled: bool | None):
     """Success tests"""
     # Arrange
+    SITE_ID = 2
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, aggregator_id=1, site_id=SITE_ID))
         await session.commit()
     resolved_params = {
         "opModImpLimW": 10,
-        "opModExpLimW": 10,
-        "opModGenLimW": 10,
-        "opModLoadLimW": 10,
-        "setGradW": 10,
+        "opModExpLimW": 11,
+        "opModGenLimW": 12,
+        "opModLoadLimW": 13,
+        "setGradW": 14,
+    }
+    if cancelled is not None:
+        resolved_params["cancelled"] = cancelled
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_set_default_der_control(
+            session=session, envoy_client=envoy_admin_client, resolved_parameters=resolved_params
+        )
+
+    # Assert
+    async with generate_async_session(pg_base_config) as session:
+        result = await session.execute(select(DefaultSiteControl).where(DefaultSiteControl.site_id == SITE_ID))
+        saved_result = result.scalar_one()
+        assert saved_result.import_limit_active_watts == 10
+        assert saved_result.export_limit_active_watts == 11
+        assert saved_result.generation_limit_active_watts == 12
+        assert saved_result.load_limit_active_watts == 13
+        assert saved_result.ramp_rate_percent_per_second == 14
+
+
+@pytest.mark.anyio
+async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_admin_client):
+    """Success tests when cancelling"""
+    # Arrange
+    SITE_ID = 2
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1, site_id=SITE_ID))
+        await session.commit()
+    resolved_params = {
+        "cancelled": True,
     }
     # Act
     async with generate_async_session(pg_base_config) as session:
@@ -256,7 +290,14 @@ async def test_action_set_default_der_control(pg_base_config, envoy_admin_client
         )
 
     # Assert
-    assert pg_base_config.execute("select count(*) from default_site_control;").fetchone()[0] == 1
+    async with generate_async_session(pg_base_config) as session:
+        result = await session.execute(select(DefaultSiteControl).where(DefaultSiteControl.site_id == SITE_ID))
+        saved_result = result.scalar_one()
+        assert saved_result.import_limit_active_watts is None
+        assert saved_result.export_limit_active_watts is None
+        assert saved_result.generation_limit_active_watts is None
+        assert saved_result.load_limit_active_watts is None
+        assert saved_result.ramp_rate_percent_per_second is None
 
 
 @pytest.mark.anyio

@@ -115,15 +115,26 @@ async def action_set_default_der_control(
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
     setGradW = resolved_parameters.get("setGradW", None)
+    cancelled = resolved_parameters.get("cancelled", False)
+
+    default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
     await envoy_client.post_site_control_default(
         active_site.site_id,
         ControlDefaultRequest(
-            import_limit_watts=UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else None,
-            export_limit_watts=UpdateDefaultValue(value=export_limit_watts) if export_limit_watts is not None else None,
-            generation_limit_watts=UpdateDefaultValue(value=gen_limit_watts) if gen_limit_watts is not None else None,
-            load_limit_watts=UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else None,
-            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else None,
+            import_limit_watts=(
+                UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else default_val
+            ),
+            export_limit_watts=(
+                UpdateDefaultValue(value=export_limit_watts) if export_limit_watts is not None else default_val
+            ),
+            generation_limit_watts=(
+                UpdateDefaultValue(value=gen_limit_watts) if gen_limit_watts is not None else default_val
+            ),
+            load_limit_watts=(
+                UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else default_val
+            ),
+            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else default_val,
         ),
     )
 
