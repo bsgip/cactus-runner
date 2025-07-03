@@ -1,7 +1,8 @@
 import io
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from functools import partial
 
 import pandas as pd
 import plotly.express as px
@@ -14,6 +15,7 @@ from reportlab.lib.styles import (
     ParagraphStyle,
     getSampleStyleSheet,
 )
+from reportlab.lib.units import inch
 from reportlab.platypus import (
     Flowable,
     Image,
@@ -24,18 +26,26 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from cactus_runner import __version__
 from cactus_runner.app.check import CheckResult
 from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SPACER = Spacer(1, 20)
+PAGE_WIDTH, PAGE_HEIGHT = A4
+DEFAULT_SPACER = Spacer(1, 0.25 * inch)
+MARGIN = 0.5 * inch
+BANNER_HEIGHT = inch
 
-HIGHLIGHT_COLOR = HexColor(0x157371)  # Teal green used on cactus UI
+HIGHLIGHT_COLOR = HexColor(0x09BB71)  # Teal green used on cactus UI
 TABLE_HEADER_COLOR = HexColor(0xF5F5F5)
 TABLE_LINE_COLOR = HexColor(0xE0E0E0)
 TABLE_TEXT_COLOR = HexColor(0x262626)
 WARNING_COLOR = HexColor(0xFF4545)
+TEXT_COLOR = HexColor(0x000000)
+WHITE = HexColor(0xFFFFFF)
+# OVERVIEW_BACKGROUND = HexColor(0x96EAC7)
+OVERVIEW_BACKGROUND = HexColor(0xD7FCEF)
 
 DEFAULT_TABLE_STYLE = TableStyle(
     [
@@ -48,8 +58,13 @@ DEFAULT_TABLE_STYLE = TableStyle(
     ]
 )
 
-# Limit all tables to a max width of 400px
-DEFAULT_MAX_TABLE_WIDTH = 430
+
+# Limit all tables to full width of page (minus margins)
+DEFAULT_MAX_TABLE_WIDTH = PAGE_WIDTH - 2 * MARGIN
+
+DOCUMENT_TITLE = "CSIP-AUS Client Test Procedure"
+AUTHOR = "Cactus Test Harness"
+AUTHOR_URL = "https://cactus.cecs.anu.edu.au"
 
 
 @dataclass
@@ -60,7 +75,7 @@ class StyleSheet:
     heading: ParagraphStyle
     subheading: ParagraphStyle
     table: TableStyle
-    table_width: int
+    table_width: float
     spacer: Spacer
     date_format: str
 
@@ -68,7 +83,14 @@ class StyleSheet:
 def get_stylesheet() -> StyleSheet:
     sample_style_sheet = getSampleStyleSheet()
     return StyleSheet(
-        title=sample_style_sheet.get("Title"),
+        title=ParagraphStyle(
+            name="Title",
+            parent=sample_style_sheet["Normal"],
+            fontName=sample_style_sheet["Title"].fontName,
+            fontSize=28,
+            leading=22,
+            spaceAfter=3,
+        ),
         heading=sample_style_sheet.get("Heading2"),
         subheading=sample_style_sheet.get("Heading3"),
         table=DEFAULT_TABLE_STYLE,
@@ -78,12 +100,88 @@ def get_stylesheet() -> StyleSheet:
     )
 
 
+def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_instance: str):
+    """Template for the first/front/title page of the report"""
+
+    # test_procedure_name = "ALL-01"
+    # test_procedure_instance = "https://cactus.cecs.anu.edu.au/asjaskdfjlkasdjf"
+    document_creation: str = datetime.now(timezone.utc).strftime("%d-%m-%Y")
+
+    canvas.saveState()
+
+    # Banner
+    canvas.setFillColor(HIGHLIGHT_COLOR)
+    canvas.rect(0, PAGE_HEIGHT - BANNER_HEIGHT, PAGE_WIDTH, BANNER_HEIGHT, stroke=0, fill=1)
+
+    # Title (Banner)
+    canvas.setFillColor(TEXT_COLOR)
+    canvas.setFont("Helvetica-Bold", 16)
+    canvas.drawString(MARGIN, PAGE_HEIGHT - 0.6 * inch, DOCUMENT_TITLE)
+
+    # Logo (Banner)
+    size = 40
+    # canvas.drawInlineImage(
+    #     "/home/mike/Downloads/cactus.png", PAGE_WIDTH - PAGE_WIDTH / 3.0, PAGE_HEIGHT - size, width=size, height=size
+    # )
+    canvas.setFillColor(WHITE)
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawRightString(PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 0.5 * inch, AUTHOR)
+    # canvas.linkURL("https://cactus.cecs.anu.edu.au")
+    canvas.drawRightString(PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 0.7 * inch, AUTHOR_URL)
+
+    # Footer
+    # Footer Banner
+    canvas.setFillColor(HIGHLIGHT_COLOR)
+    canvas.rect(0, 0, PAGE_WIDTH, 0.4 * inch, stroke=0, fill=1)
+    canvas.setFillColor(WHITE)
+    canvas.setFont("Helvetica-Bold", 8)
+    footer_offset = 0.2 * inch
+    # Footer left
+    canvas.drawString(MARGIN, footer_offset, test_procedure_instance)
+    # Footer mid
+    canvas.drawCentredString(PAGE_WIDTH / 2.0, footer_offset, f"{test_procedure_name} Test Procedure Report")
+    # Footer right
+    canvas.drawRightString(PAGE_WIDTH - MARGIN, footer_offset, f"Page {doc.page}")
+    canvas.restoreState()
+
+    # Document "Metadata"
+    canvas.setFillColor(TEXT_COLOR)
+    canvas.setFont("Helvetica", 6)
+    canvas.drawRightString(
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.2 * inch, f"Created on {document_creation}"
+    )
+    canvas.drawRightString(
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.35 * inch, f"by Cactus Runner {__version__}"
+    )
+
+
+def later_pages_template(canvas, doc, test_procedure_name: str, test_procedure_instance: str):
+    """Template for subsequent pages"""
+    canvas.saveState()
+    # Footer
+    # Footer Banner
+    canvas.setFillColor(HIGHLIGHT_COLOR)
+    canvas.rect(0, 0, PAGE_WIDTH, 0.4 * inch, stroke=0, fill=1)
+    canvas.setFillColor(WHITE)
+    canvas.setFont("Helvetica", 8)
+    footer_offset = 0.2 * inch
+    # Footer left
+    canvas.drawString(MARGIN, footer_offset, test_procedure_instance)
+    # Footer mid
+    canvas.drawCentredString(PAGE_WIDTH / 2.0, footer_offset, f"{test_procedure_name} Test Procedure Report")
+    # Footer right
+    canvas.drawRightString(PAGE_WIDTH - MARGIN, footer_offset, f"Page {doc.page}")
+    canvas.restoreState()
+
+
 def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list[Flowable]:
     return [Paragraph(f"{test_procedure_name} Test Procedure Report", style), Spacer(1, 10)]
 
 
 def generate_overview_section(
     test_procedure_name: str,
+    test_procedure_description: str,
+    test_procedure_instance: str,
     init_timestamp: datetime,
     start_timestamp: datetime,
     client_lfdi: str,
@@ -91,17 +189,36 @@ def generate_overview_section(
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
     elements = []
-    elements.append(Paragraph("Overview", stylesheet.heading))
+    elements.append(Paragraph(test_procedure_name, style=stylesheet.title))
+    elements.append(Paragraph(test_procedure_description, style=stylesheet.subheading))
+    elements.append(stylesheet.spacer)
     doe_data = [
-        ["Test Procedure", test_procedure_name],
-        ["Client LFDI", client_lfdi],
-        ["Test Initialisation Timestamp (UTC)", init_timestamp.strftime(stylesheet.date_format)],
-        ["Test Start Timestamp (UTC)", start_timestamp.strftime(stylesheet.date_format)],
-        ["Duration", str(duration).split(".")[0]],  # remove microseconds from output
+        [
+            "Instance",
+            test_procedure_instance,
+            "",
+            "Initialisation time (UTC)",
+            init_timestamp.strftime(stylesheet.date_format),
+        ],
+        ["Client LFDI", client_lfdi, "", "Start time (UTC)", start_timestamp.strftime(stylesheet.date_format)],
+        ["", "", "", "Duration", str(duration).split(".")[0]],  # remove microseconds from output
     ]
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.4, 0.60]]
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.15, 0.4, 0.05, 0.2, 0.2]]
     table = Table(doe_data, colWidths=column_widths)
-    table.setStyle(stylesheet.table)
+    tstyle = TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (1, 2), OVERVIEW_BACKGROUND),
+            ("BACKGROUND", (3, 0), (4, 2), OVERVIEW_BACKGROUND),
+            ("TEXTCOLOR", (0, 0), (-1, -1), TABLE_TEXT_COLOR),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("FONTNAME", (0, 0), (0, 2), "Helvetica-Bold"),
+            ("FONTNAME", (3, 0), (3, 2), "Helvetica-Bold"),
+            ("TOPPADDING", (0, 0), (4, 0), 6),
+            ("BOTTOMPADDING", (0, 2), (4, 2), 6),
+        ]
+    )
+    table.setStyle(tstyle)
     elements.append(table)
     elements.append(stylesheet.spacer)
     return elements
@@ -338,6 +455,7 @@ def first_client_interaction_of_type(
 
 def generate_page_elements(
     runner_state: RunnerState,
+    test_procedure_instance: str,
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
@@ -351,9 +469,13 @@ def generate_page_elements(
     page_elements = []
 
     test_procedure_name = active_test_procedure.name
+    test_procedure_description = active_test_procedure.definition.description
 
     # Document Title
-    page_elements.extend(generate_title(test_procedure_name, style=stylesheet.title))
+    # page_elements.extend(generate_title(test_procedure_name, style=stylesheet.title))
+    # The title is handles by the first page banner
+    # We need a space to skip past the banner
+    page_elements.append(Spacer(1, MARGIN))
 
     # Overview Section
     try:
@@ -370,6 +492,8 @@ def generate_page_elements(
         page_elements.extend(
             generate_overview_section(
                 test_procedure_name=test_procedure_name,
+                test_procedure_description=test_procedure_description,
+                test_procedure_instance=test_procedure_instance,
                 init_timestamp=init_timestamp,
                 start_timestamp=start_timestamp,
                 client_lfdi=active_test_procedure.client_lfdi,
@@ -425,9 +549,12 @@ def pdf_report_as_bytes(
 ) -> bytes:
     stylesheet = get_stylesheet()
 
+    test_procedure_instance = "cactus.cecs.anu.edu.au/0ab24cce-cd1b-4bfc"
+
     if runner_state.active_test_procedure is not None:
         page_elements = generate_page_elements(
             runner_state=runner_state,
+            test_procedure_instance=test_procedure_instance,
             check_results=check_results,
             readings=readings,
             reading_counts=reading_counts,
@@ -437,9 +564,26 @@ def pdf_report_as_bytes(
     else:
         page_elements = generate_page_elements_no_active_procedure(stylesheet=stylesheet)
 
+    test_procedure_name = runner_state.active_test_procedure.name
+    first_page = partial(
+        first_page_template, test_procedure_name=test_procedure_name, test_procedure_instance=test_procedure_instance
+    )
+    later_pages = partial(
+        later_pages_template, test_procedure_name=test_procedure_name, test_procedure_instance=test_procedure_instance
+    )
+
     with io.BytesIO() as buffer:
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        doc.build(page_elements)
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            title=DOCUMENT_TITLE,
+            author=AUTHOR,
+            leftMargin=MARGIN,
+            rightMargin=MARGIN,
+            topMargin=MARGIN,
+            bottomMargin=MARGIN,
+        )
+        doc.build(page_elements, onFirstPage=first_page, onLaterPages=later_pages)
         pdf_data = buffer.getvalue()
 
     return pdf_data
