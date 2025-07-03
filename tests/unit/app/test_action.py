@@ -9,6 +9,7 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import ACTION_PARAMETER_SCHEMA, Action, Event
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.server import RuntimeServerConfig
 from envoy.server.model.site import DefaultSiteControl, Site
 from sqlalchemy import select
 
@@ -22,9 +23,8 @@ from cactus_runner.app.action import (
     action_enable_steps,
     action_register_end_device,
     action_remove_steps,
+    action_set_comms_rate,
     action_set_default_der_control,
-    action_set_poll_rate,
-    action_set_post_rate,
     apply_action,
     apply_actions,
 )
@@ -40,8 +40,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str] = {
     "create-der-control": "action_create_der_control",
     "create-der-program": "action_create_der_program",
     "cancel-active-der-controls": "action_cancel_active_controls",
-    "set-poll-rate": "action_set_poll_rate",
-    "set-post-rate": "action_set_post_rate",
+    "set-comms-rate": "action_set_comms_rate",
     "register-end-device": "action_register_end_device",
     "communications-status": "action_communications_status",
     "edev-registration-links": "action_edev_registration_links",
@@ -406,27 +405,65 @@ async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client)
 
 
 @pytest.mark.anyio
-async def test_action_set_poll_rate(pg_base_config, envoy_admin_client):
+async def test_action_set_comms_rate_all_values(pg_base_config, envoy_admin_client):
     # Arrange
-    resolved_params = {"rate_seconds": 10}
+    resolved_params = {
+        "dcap_poll_seconds": 10,
+        "edev_post_seconds": 11,
+        "edev_list_poll_seconds": 12,
+        "fsa_list_poll_seconds": 13,
+        "derp_list_poll_seconds": 14,
+        "der_list_poll_seconds": 15,
+        "mup_post_seconds": 16,
+    }
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        session.add(site)
+        await session.commit()
 
     # Act
-    await action_set_poll_rate(resolved_params, envoy_admin_client)
+    async with generate_async_session(pg_base_config) as session:
+        await action_set_comms_rate(resolved_params, session, envoy_admin_client)
 
     # Assert
-    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+    async with generate_async_session(pg_base_config) as session:
+        runtime_config = (await session.execute(select(RuntimeServerConfig).limit(1))).scalar_one()
+        site = (await session.execute(select(Site).where(Site.site_id == 1).limit(1))).scalar_one()
+
+        assert_nowish(runtime_config.changed_time)
+        assert runtime_config.dcap_pollrate_seconds == 10
+        assert runtime_config.edevl_pollrate_seconds == 12
+        assert runtime_config.fsal_pollrate_seconds == 13
+        assert runtime_config.derpl_pollrate_seconds == 14
+        assert runtime_config.derl_pollrate_seconds == 15
+        assert runtime_config.mup_postrate_seconds == 16
+
+        assert_nowish(site.changed_time)
+        assert site.post_rate_seconds == 11
 
 
 @pytest.mark.anyio
-async def test_action_set_post_rate(pg_base_config, envoy_admin_client):
+async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_client):
     # Arrange
-    resolved_params = {"rate_seconds": 10}
+    resolved_params = {}
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1, post_rate_seconds=123)
+        session.add(site)
+        await session.commit()
 
     # Act
-    await action_set_post_rate(resolved_params, envoy_admin_client)
+    async with generate_async_session(pg_base_config) as session:
+        await action_set_comms_rate(resolved_params, session, envoy_admin_client)
 
     # Assert
-    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+    async with generate_async_session(pg_base_config) as session:
+        runtime_config = (await session.execute(select(RuntimeServerConfig).limit(1))).scalar_one_or_none()
+        assert runtime_config is None, "No config should've been send to envoy"
+
+        site = (await session.execute(select(Site).where(Site.site_id == 1).limit(1))).scalar_one()
+        assert site.post_rate_seconds == 123, "This value shouldn't have changed"
 
 
 @pytest.mark.anyio

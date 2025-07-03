@@ -10,6 +10,7 @@ from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
     UpdateDefaultValue,
 )
+from envoy_schema.admin.schema.site import SiteUpdateRequest
 from envoy_schema.admin.schema.site_control import (
     SiteControlGroupRequest,
     SiteControlRequest,
@@ -220,22 +221,49 @@ async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
             )
 
 
-async def action_set_poll_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
-    rate_seconds: int = resolved_parameters["rate_seconds"]
-    await envoy_client.update_runtime_config(
-        RuntimeServerConfigRequest(
-            dcap_pollrate_seconds=rate_seconds,
-            edevl_pollrate_seconds=rate_seconds,
-            fsal_pollrate_seconds=rate_seconds,
-            derl_pollrate_seconds=rate_seconds,
-            derpl_pollrate_seconds=rate_seconds,
+async def action_set_comms_rate(
+    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+):
+    dcap_poll_seconds: int | None = resolved_parameters.get("dcap_poll_seconds", None)
+    edev_list_poll_seconds: int | None = resolved_parameters.get("edev_list_poll_seconds", None)
+    fsa_list_poll_seconds: int | None = resolved_parameters.get("fsa_list_poll_seconds", None)
+    derp_list_poll_seconds: int | None = resolved_parameters.get("derp_list_poll_seconds", None)
+    der_list_poll_seconds: int | None = resolved_parameters.get("der_list_poll_seconds", None)
+    mup_post_seconds: int | None = resolved_parameters.get("mup_post_seconds", None)
+    edev_post_seconds: int | None = resolved_parameters.get("edev_post_seconds", None)
+
+    # If we have any of the server config values set - send that request
+    if any(
+        [
+            dcap_poll_seconds,
+            edev_list_poll_seconds,
+            der_list_poll_seconds,
+            derp_list_poll_seconds,
+            fsa_list_poll_seconds,
+            mup_post_seconds,
+        ]
+    ):
+        await envoy_client.update_runtime_config(
+            RuntimeServerConfigRequest(
+                dcap_pollrate_seconds=dcap_poll_seconds,
+                edevl_pollrate_seconds=edev_list_poll_seconds,
+                derl_pollrate_seconds=der_list_poll_seconds,
+                derpl_pollrate_seconds=derp_list_poll_seconds,
+                fsal_pollrate_seconds=fsa_list_poll_seconds,
+                mup_postrate_seconds=mup_post_seconds,
+            )
         )
-    )
 
+    # If we are updating the active EndDevice postRate - send that request
+    if edev_post_seconds is not None:
+        active_site = await get_active_site(session)
+        if active_site is None:
+            raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
 
-async def action_set_post_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
-    rate_seconds: int = resolved_parameters["rate_seconds"]
-    await envoy_client.update_runtime_config(RuntimeServerConfigRequest(mup_postrate_seconds=rate_seconds))
+        await envoy_client.update_single_site(
+            active_site.site_id,
+            SiteUpdateRequest(nmi=None, timezone_id=None, device_category=None, post_rate_seconds=edev_post_seconds),
+        )
 
 
 async def action_register_end_device(
@@ -318,11 +346,8 @@ async def apply_action(
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)
                 return
-            case "set-poll-rate":
-                await action_set_poll_rate(resolved_parameters, envoy_client)
-                return
-            case "set-post-rate":
-                await action_set_post_rate(resolved_parameters, envoy_client)
+            case "set-comms-rate":
+                await action_set_comms_rate(resolved_parameters, session, envoy_client)
                 return
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)

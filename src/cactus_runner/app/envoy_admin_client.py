@@ -15,7 +15,7 @@ from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
     RuntimeServerConfigResponse,
 )
-from envoy_schema.admin.schema.site import SiteResponse
+from envoy_schema.admin.schema.site import SiteResponse, SiteUpdateRequest
 from envoy_schema.admin.schema.site_control import (
     SiteControlGroupPageResponse,
     SiteControlGroupRequest,
@@ -24,11 +24,11 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlResponse,
 )
 from envoy_schema.admin.schema.uri import (
-    SiteControlRangeUri,
     ServerConfigRuntimeUri,
     SiteControlDefaultConfigUri,
     SiteControlGroupListUri,
     SiteControlGroupUri,
+    SiteControlRangeUri,
     SiteControlUri,
     SiteUri,
 )
@@ -88,6 +88,11 @@ class EnvoyAdminClient:
 
     async def delete_single_site(self, site_id: int) -> HTTPStatus:
         resp = await self._session.delete(SiteUri.format(site_id=site_id))
+        resp.raise_for_status()
+        return HTTPStatus(resp.status)
+
+    async def update_single_site(self, site_id: int, update_request: SiteUpdateRequest) -> HTTPStatus:
+        resp = await self._session.post(SiteUri.format(site_id=site_id), json=update_request.model_dump())
         resp.raise_for_status()
         return HTTPStatus(resp.status)
 
