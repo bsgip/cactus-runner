@@ -15,6 +15,7 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy.server.model.subscription import TransmitNotificationLog
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 
 from cactus_runner.app.check import (
@@ -22,6 +23,7 @@ from cactus_runner.app.check import (
     FailedCheckError,
     UnknownCheckError,
     all_checks_passing,
+    check_all_notifications_transmitted,
     check_all_steps_complete,
     check_der_capability_contents,
     check_der_settings_contents,
@@ -48,6 +50,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "readings-der-active-power": "check_readings_der_active_power",
     "readings-der-reactive-power": "check_readings_der_reactive_power",
     "readings-der-voltage": "check_readings_der_voltage",
+    "all-notifications-transmitted": "check_all_notifications_transmitted",
 }
 
 
@@ -634,6 +637,58 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     ), "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
 
     assert_mock_session(mock_session)
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_no_logs(pg_base_config):
+    """check_all_notifications_transmitted should fail if there are no logs"""
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
+    """check_all_notifications_transmitted should succeed only all logs are OK"""
+
+    # Fill up the DB with successes
+    async with generate_async_session(pg_base_config) as session:
+        for i in range(200, 299):
+            session.add(
+                generate_class_instance(
+                    TransmitNotificationLog, seed=i, transmit_notification_log_id=None, http_status_code=i
+                )
+            )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, True)
+
+
+@pytest.mark.parametrize("failure_code", [-1, 0, 199, 301, 404, 401, 500])
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, failure_code):
+    """check_all_notifications_transmitted should fail if any logs are not success response"""
+
+    # Fill up the DB with successes and one failure
+    async with generate_async_session(pg_base_config) as session:
+        for i in range(200, 210):
+            session.add(
+                generate_class_instance(
+                    TransmitNotificationLog, seed=i, transmit_notification_log_id=None, http_status_code=i
+                )
+            )
+        session.add(
+            generate_class_instance(
+                TransmitNotificationLog, seed=1, transmit_notification_log_id=None, http_status_code=failure_code
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, False)
 
 
 @pytest.mark.anyio

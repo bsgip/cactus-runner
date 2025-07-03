@@ -10,6 +10,7 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading
+from envoy.server.model.subscription import TransmitNotificationLog
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -280,6 +281,26 @@ async def check_readings_der_voltage(session: AsyncSession, resolved_parameters:
     )
 
 
+async def check_all_notifications_transmitted(session: AsyncSession) -> CheckResult:
+    """Implements the all-notifications-transmitted check.
+
+    Will assume that 0 transmission logs is a failure to avoid long running timeouts from being overlooked"""
+
+    all_logs = (await session.execute(select(TransmitNotificationLog))).scalars().all()
+    if len(all_logs) == 0:
+        return CheckResult(False, "No TransmitNotificationLog entries found. Are there active subscriptions?")
+
+    for log in all_logs:
+        if log.http_status_code < 200 or log.http_status_code >= 300:
+            sub_id = log.subscription_id_snapshot
+            return CheckResult(
+                False,
+                f"/sub/{sub_id} received a HTTP {log.http_status_code} when sending a notification",
+            )
+
+    return CheckResult(True, f"All {len(all_logs)} notifications yielded HTTP success codes")
+
+
 async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -330,6 +351,9 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
             case "readings-der-voltage":
                 check_result = await check_readings_der_voltage(session, resolved_parameters)
+
+            case "all-notifications-transmitted":
+                check_result = await check_all_notifications_transmitted(session)
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)
