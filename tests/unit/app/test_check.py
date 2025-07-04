@@ -9,6 +9,8 @@ from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CHECK_PARAMETER_SCHEMA, Event, Step, TestProcedure
 from cactus_test_definitions.checks import Check
 from envoy.server.model.aggregator import Aggregator
+from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     Site,
     SiteDER,
@@ -22,6 +24,7 @@ from envoy.server.model.subscription import (
     SubscriptionResource,
     TransmitNotificationLog,
 )
+from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 from sqlalchemy import select
 
@@ -36,9 +39,11 @@ from cactus_runner.app.check import (
     check_der_settings_contents,
     check_der_status_contents,
     check_end_device_contents,
+    check_response_contents,
     check_subscription_contents,
     do_check_readings_for_types,
     do_check_site_readings_and_params,
+    response_type_to_string,
     run_check,
 )
 from cactus_runner.app.envoy_common import ReadingLocation
@@ -60,6 +65,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "readings-der-voltage": "check_readings_der_voltage",
     "all-notifications-transmitted": "check_all_notifications_transmitted",
     "subscription-contents": "check_subscription_contents",
+    "response-contents": "check_response_contents",
 }
 
 
@@ -871,6 +877,195 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
     async with generate_async_session(pg_base_config) as session:
         actual = await check_all_notifications_transmitted(session)
         assert_check_result(actual, False)
+
+
+@pytest.mark.parametrize("input_val", [-1, {"a": 2}, 99999998, [1, 2, 3], "abc123"])
+def test_response_type_to_string_bad_values(input_val):
+    output = response_type_to_string(input_val)
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+def test_response_type_to_string_unique_values():
+    all_values: list[str] = []
+    for rt in ResponseType:
+        output = response_type_to_string(rt)
+        assert isinstance(output, str)
+        assert len(output) > 0
+        assert output == response_type_to_string(rt.value), "int or enum should be identical"
+
+        all_values.append(output)
+
+    assert len(all_values) > 1
+    assert len(all_values) == len(set(all_values)), "All values should be unique"
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_latest(pg_base_config):
+    """check_response_contents should behave correctly when looking ONLY at the latest Response"""
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        der_control_1 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=303,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+        )
+        session.add(der_control_1)
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=505,
+                response_type=ResponseType.EVENT_CANCELLED,
+                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        # This is the latest
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=606,
+                response_type=ResponseType.EVENT_COMPLETED,
+                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=707,
+                response_type=ResponseType.EVENT_RECEIVED,
+                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is a latest
+        assert_check_result(await check_response_contents({"latest": True}, session), True)
+
+        # This will check that there is a latest and that the status matches the filter
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session), True
+        )
+
+        # This will check that the filter on latest will fail if there is mismatch on the latest record
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, session),
+            False,
+        )
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_any(pg_base_config):
+    """check_response_contents should behave correctly when looking at ANY of the Responses"""
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        der_control_1 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=303,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+        )
+        session.add(der_control_1)
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=505,
+                response_type=ResponseType.EVENT_CANCELLED,
+                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=606,
+                response_type=ResponseType.EVENT_COMPLETED,
+                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=707,
+                response_type=ResponseType.EVENT_RECEIVED,
+                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is any response
+        assert_check_result(await check_response_contents({"latest": False}, session), True)
+        assert_check_result(await check_response_contents({}, session), True)
+
+        # Checks on existing values
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), True
+        )
+        assert_check_result(await check_response_contents({"status": ResponseType.EVENT_RECEIVED.value}, session), True)
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_CANCELLED.value}, session), True
+        )
+
+        # This will check that the filter will fail if a matching record cant be found
+        assert_check_result(
+            await check_response_contents({"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, session),
+            False,
+        )
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_empty(pg_base_config):
+    """check_response_contents should behave correctly when the DB is empty of responses"""
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is any response
+        assert_check_result(await check_response_contents({"latest": False}, session), False)
+        assert_check_result(await check_response_contents({"latest": True}, session), False)
+        assert_check_result(await check_response_contents({}, session), False)
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), False
+        )
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session),
+            False,
+        )
 
 
 @pytest.mark.anyio

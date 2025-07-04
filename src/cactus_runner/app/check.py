@@ -5,6 +5,7 @@ from typing import Any, Optional
 from cactus_test_definitions.checks import Check
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
+from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     SiteDER,
     SiteDERRating,
@@ -13,6 +14,7 @@ from envoy.server.model.site import (
 )
 from envoy.server.model.site_reading import SiteReading
 from envoy.server.model.subscription import Subscription, TransmitNotificationLog
+from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -334,6 +336,66 @@ async def check_subscription_contents(resolved_parameters: dict[str, Any], sessi
     return CheckResult(True, f"Matched {subscribed_resource} to /sub/{matching_sub.subscription_id}")
 
 
+def response_type_to_string(t: int | ResponseType | None) -> str:
+    if t is None:
+        return "N/A"
+    elif isinstance(t, ResponseType):
+        return f"{t} ({t.value})"
+    elif isinstance(t, int):
+        try:
+            return response_type_to_string(ResponseType(t))
+        except Exception:
+            return f"({t})"
+    else:
+        return f"{t}"
+
+
+async def check_response_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
+    """Implements the response-contents check by inspecting the response table for site controls"""
+
+    is_latest: bool = resolved_parameters.get("latest", False)
+    status_filter: int | None = resolved_parameters.get("status", None)
+    status_filter_string = response_type_to_string(status_filter)
+
+    # Latest queries require evaluating ONLY the latest response object
+    if is_latest:
+        latest_response = (
+            await session.execute(
+                (
+                    select(DynamicOperatingEnvelopeResponse)
+                    .order_by(DynamicOperatingEnvelopeResponse.created_time.desc())
+                    .limit(1)
+                )
+            )
+        ).scalar_one_or_none()
+        if latest_response is None:
+            return CheckResult(False, "No responses have been recorded for any DERControls")
+
+        rt_string = response_type_to_string(latest_response.response_type)
+        if status_filter is not None and latest_response.response_type != status_filter:
+            return CheckResult(
+                False,
+                f"Latest response expected a response_type of {status_filter_string} but got {rt_string}",
+            )
+
+        return CheckResult(True, f"Latest DERControl response of type {rt_string} matches check.")
+    else:
+        # Otherwise we look for ANY responses that match our request
+        any_query = (
+            select(DynamicOperatingEnvelopeResponse)
+            .order_by(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id)
+            .limit(1)
+        )
+        if status_filter is not None:
+            any_query = any_query.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
+
+        matching_response = (await session.execute(any_query)).scalar_one_or_none()
+        if matching_response is None:
+            return CheckResult(False, f"No DERControl response of type {status_filter_string} was found.")
+
+        return CheckResult(True, f"At least one DERControl response of type {status_filter_string} was found")
+
+
 async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -390,6 +452,9 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
             case "subscription-contents":
                 check_result = await check_subscription_contents(resolved_parameters, session)
+
+            case "response-contents":
+                check_result = await check_response_contents(resolved_parameters, session)
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)
