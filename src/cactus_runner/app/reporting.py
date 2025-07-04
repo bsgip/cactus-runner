@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 
 import pandas as pd
+import PIL.Image as PilImage
 import plotly.express as px
 from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReadingType
@@ -245,26 +246,34 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
 
 
 def generate_test_progress_chart() -> Image:
-    WIDTH = 500
-    HEIGHT = 250
+    # gannt/timeline style
     df = pd.DataFrame(
         [
-            dict(Phase="Init", Start="2009-01-01", Finish="2009-01-01", Request="/dcap"),
-            dict(Phase="Unmatched", Start="2009-03-05", Finish="2009-04-15", Request="/edev"),
-            dict(Phase="Step 1.", Start="2009-02-20", Finish="2009-05-30", Request="/tm"),
-            # dict(Phase="Step 2.", Start="2009-02-20", Finish="2009-05-30", Request="/edev/1"),
-            # dict(Phase="Step 3.", Start="2009-02-20", Finish="2009-05-30", Request="/edev/1/der"),
-            # dict(Phase="Step 4.", Start="2009-02-20", Finish="2009-05-30", Request="/tm"),
+            dict(Stage="Init", Start="2009-01-01", Finish="2009-01-01", Request="/dcap", Method="GET"),
+            dict(Stage="Unmatched", Start="2009-03-05", Finish="2009-04-15", Request="/edev", Method="GET"),
+            dict(Stage="Unmatched", Start="2009-02-20", Finish="2009-05-30", Request="/edev", Method="GET"),
+            dict(Stage="Step 1.", Start="2009-02-20", Finish="2009-05-30", Request="/tm", Method="GET"),
+            dict(Stage="Step 2.", Start="2009-02-21", Finish="2009-05-30", Request="/edev/1", Method="GET"),
+            dict(Stage="Step 3.", Start="2009-02-22", Finish="2009-05-30", Request="/edev/1/der", Method="GET"),
+            dict(Stage="Step 4.", Start="2009-02-23", Finish="2009-05-30", Request="/tm", Method="POST"),
         ]
     )
 
-    fig = px.timeline(df, x_start="Start", x_end="Finish", y="Phase", color="Request")
-    fig.update_yaxes(autorange="reversed")
-    # fig.write_image("/home/mike/Downloads/fig1.pdf", scale=1)
+    fig = px.scatter(
+        df,
+        x="Start",
+        y="Stage",
+        color="Request",
+        symbol="Method",
+        category_orders={"Stage": ["Init", "Unmatched", "Step 1.", "Step 2.", "Step 3.", "Step 4."]},
+    )
+    fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
 
-    img_bytes = fig.to_image(format="png")
+    img_bytes = fig.to_image(format="png", scale=4)  # Scale up figure so it's high enough resolution
+    pil_image = PilImage.open(io.BytesIO(img_bytes))
     buffer = io.BytesIO(img_bytes)
-    return Image(buffer)
+    scale_factor = pil_image.width / DEFAULT_MAX_TABLE_WIDTH  # rescale image to width of page content
+    return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
 
 
 def generate_test_progress_section(stylesheet: StyleSheet) -> list[Flowable]:
