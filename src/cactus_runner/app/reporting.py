@@ -60,8 +60,8 @@ DEFAULT_TABLE_STYLE = TableStyle(
 )
 
 
-# Limit all tables to full width of page (minus margins)
-DEFAULT_MAX_TABLE_WIDTH = PAGE_WIDTH - 2 * MARGIN
+# Limit document content to full width of page (minus margins)
+MAX_CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
 DOCUMENT_TITLE = "CSIP-AUS Client Test Procedure"
 AUTHOR = "Cactus Test Harness"
@@ -95,7 +95,7 @@ def get_stylesheet() -> StyleSheet:
         heading=sample_style_sheet.get("Heading2"),
         subheading=sample_style_sheet.get("Heading3"),
         table=DEFAULT_TABLE_STYLE,
-        table_width=DEFAULT_MAX_TABLE_WIDTH,
+        table_width=MAX_CONTENT_WIDTH,
         spacer=DEFAULT_SPACER,
         date_format="%Y-%m-%d %H:%M:%S",
     )
@@ -272,7 +272,7 @@ def generate_test_progress_chart() -> Image:
     img_bytes = fig.to_image(format="png", scale=4)  # Scale up figure so it's high enough resolution
     pil_image = PilImage.open(io.BytesIO(img_bytes))
     buffer = io.BytesIO(img_bytes)
-    scale_factor = pil_image.width / DEFAULT_MAX_TABLE_WIDTH  # rescale image to width of page content
+    scale_factor = pil_image.width / MAX_CONTENT_WIDTH  # rescale image to width of page content
     return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
 
 
