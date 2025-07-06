@@ -301,8 +301,9 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
         assert saved_result.ramp_rate_percent_per_second is None
 
 
+@pytest.mark.parametrize("fsa_id", [None, 6812])
 @pytest.mark.anyio
-async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_client):
+async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
@@ -320,6 +321,8 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
         "opModGenLimW": 0,
         "opModLoadLimW": 0,
     }
+    if fsa_id is not None:
+        resolved_params["fsa_id"] = fsa_id
 
     # Act
     async with generate_async_session(pg_base_config) as session:
@@ -330,27 +333,48 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
     assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
     assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
 
+    async with generate_async_session(pg_base_config) as session:
+        new_scg = (await session.execute(select(SiteControlGroup))).scalar_one()
+        if fsa_id is None:
+            assert new_scg.fsa_id == 1
+        else:
+            assert new_scg.fsa_id == fsa_id
 
+
+@pytest.mark.parametrize("fsa_id", [None, 6812])
 @pytest.mark.anyio
-async def test_action_create_der_program(pg_base_config, envoy_admin_client):
+async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
     resolved_params = {
         "primacy": 17,
     }
+    if fsa_id is not None:
+        resolved_params["fsa_id"] = fsa_id
 
     # Act
     await action_create_der_program(resolved_params, envoy_admin_client)
 
     # Assert
-    assert pg_base_config.execute("select count(*) from site_control_group where primacy = 17;").fetchone()[0] == 1
+    if fsa_id is None:
+        expected_fsa_id = 1
+    else:
+        expected_fsa_id = fsa_id
+    assert (
+        pg_base_config.execute(
+            f"select count(*) from site_control_group where primacy = 17 and fsa_id = {expected_fsa_id};"
+        ).fetchone()[0]
+        == 1
+    )
 
 
+@pytest.mark.parametrize("fsa_id", [2134, None])
 @pytest.mark.anyio
-async def test_action_create_der_control_existing_group(pg_base_config, envoy_admin_client):
+async def test_action_create_der_control_existing_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
+    existing_fsa_id = fsa_id if fsa_id is not None else 21515215
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
-        session.add(generate_class_instance(SiteControlGroup, primacy=2))
+        session.add(generate_class_instance(SiteControlGroup, primacy=2, fsa_id=existing_fsa_id))
         await session.commit()
     resolved_params = {
         "start": datetime.now(timezone.utc),
@@ -365,6 +389,8 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
         "opModGenLimW": 0,
         "opModLoadLimW": 0,
     }
+    if fsa_id is not None:
+        resolved_params["fsa_id"] = fsa_id
 
     # Act
     async with generate_async_session(pg_base_config) as session:
@@ -374,6 +400,10 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
     assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
     assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
     assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+    async with generate_async_session(pg_base_config) as session:
+        new_scg = (await session.execute(select(SiteControlGroup))).scalar_one()
+        assert new_scg.fsa_id == existing_fsa_id
 
 
 @pytest.mark.anyio

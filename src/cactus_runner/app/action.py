@@ -141,9 +141,10 @@ async def action_set_default_der_control(
 
 async def action_create_der_program(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
     primacy: int = int(resolved_parameters["primacy"])  # mandatory param
+    fsa_id: int = int(resolved_parameters.get("fsa_id", 1))
 
     await envoy_client.post_site_control_group(
-        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy)
+        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id)
     )
 
 
@@ -163,20 +164,23 @@ async def action_create_der_control(
     if pow_10mult is not None:
         await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=pow_10mult))
 
-    # For primacy - we need to find the site_control_group with the specified primacy (creating one if required)
+    # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
     primacy: int = resolved_parameters.get("primacy", 0)
+    fsa_id: int | None = resolved_parameters.get("fsa_id", None)
     site_control_group_id: int | None = None
     control_groups_response = await envoy_client.get_all_site_control_groups()
     if control_groups_response.site_control_groups:
         for g in control_groups_response.site_control_groups:
-            if g.primacy == primacy:
+            if g.primacy == primacy and (fsa_id is None or fsa_id == g.fsa_id):
                 site_control_group_id = g.site_control_group_id
                 break
 
     # Create our site control group if we don't have an existing one
     if site_control_group_id is None:
         site_control_group_id = await envoy_client.post_site_control_group(
-            SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy)
+            SiteControlGroupRequest(
+                description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id if fsa_id is not None else 1
+            )
         )
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
