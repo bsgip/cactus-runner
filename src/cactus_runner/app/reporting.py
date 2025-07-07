@@ -7,7 +7,8 @@ from functools import partial
 import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px
-from envoy.server.model.site import Site, SiteDER
+import plotly.graph_objects as go
+from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
 from reportlab.lib.colors import HexColor
@@ -18,6 +19,7 @@ from reportlab.lib.styles import (
 )
 from reportlab.lib.units import inch
 from reportlab.platypus import (
+    BalancedColumns,
     Flowable,
     Image,
     Paragraph,
@@ -47,6 +49,8 @@ TEXT_COLOR = HexColor(0x000000)
 WHITE = HexColor(0xFFFFFF)
 # OVERVIEW_BACKGROUND = HexColor(0x96EAC7)
 OVERVIEW_BACKGROUND = HexColor(0xD7FCEF)
+PASS_COLOR = HIGHLIGHT_COLOR
+FAIL_COLOR = HexColor(0xF1420E)
 
 DEFAULT_TABLE_STYLE = TableStyle(
     [
@@ -225,22 +229,146 @@ def generate_overview_section(
     return elements
 
 
-def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
-    elements.append(Paragraph("Criteria", stylesheet.heading))
+def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
+    labels = ["Pass", "Fail"]
+    values = [num_passed, num_failed]
+    total = num_passed+num_failed
+
+    # Create pie chart
+    pie = go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.6,  #  Adds a hole to centre of pie chart (for annotation)
+        textinfo="none",  # Hide the % labels on each segment
+    )
+
+    # Adds separators between pie segments
+    pie.marker.line.width = 5
+    pie.marker.line.color = "white"
+
+    # Create a figure from the pie chart
+    fig = go.Figure(data=[pie])
+
+    # Remove all margins and padding to make chart as small as possible
+    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, b=0, t=0, pad=0))
+
+    # Add summary annotation to middle of pie doughnut
+    annotation = "<b>All</b><br>passed" if num_passed == total else f"<b>{num_passed}</b> / <b>{total}</b><br>passed"
+    fig.add_annotation(
+        x=0.5,
+        y=0.5,
+        text=annotation,
+        font=dict(size=40),
+        showarrow=False,
+    )
+
+    # Set the colors of the segments
+    fig.update_traces(marker=dict(colors=[f"#{PASS_COLOR.hexval()[2:]}", f"#{FAIL_COLOR.hexval()[2:]}"]))
+
+    # Generate the image from the fig
+    img_bytes = fig.to_image(format="png", scale=4)  # Scale up figure so it's high enough resolution
+    pil_image = PilImage.open(io.BytesIO(img_bytes))
+    buffer = io.BytesIO(img_bytes)
+    scale_factor = pil_image.width / (
+        MAX_CONTENT_WIDTH / 2.5
+    )  # rescale image to width of KeepTogether column (roughly)
+    return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
+
+
+def generate_criteria_summary_table(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> Table:
+    table_style = TableStyle(
+        [
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
+            ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+            ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ]
+    )
+
+    # Generate table data
     criteria_data = [
         [
+            index + 1,
             check_name,
-            "PASS" if check_result.passed else "FAIL",
-            Paragraph("" if check_result.description is None else check_result.description),
+            "Pass" if check_results[check_name].passed else "Fail",
+            # Paragraph("" if check_result.description is None else check_result.description),
         ]
-        for check_name, check_result in check_results.items()
+        for index, check_name in enumerate(check_results)
     ]
-    criteria_data.insert(0, ["Criteria Name", "Pass/Fail", "Comment"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.33, 0.15, 0.52]]
-    table = Table(criteria_data, colWidths=column_widths)
-    table.setStyle(stylesheet.table)
-    elements.append(table)
+
+    # Add table header
+    criteria_data.insert(0, ["", "", "Pass/Fail"])
+
+    # Set the colors of the pass/fail column
+    for index, check_name in enumerate(check_results):
+        row = index + 1  # +1 to account for header row
+        if check_results[check_name].passed:
+            table_style.add("TEXTCOLOR", (2, row), (2, row), PASS_COLOR)
+        else:
+            table_style.add("TEXTCOLOR", (2, row), (2, row), FAIL_COLOR)
+
+    # Create the table
+    column_widths = [int(fraction * stylesheet.table_width * 0.46) for fraction in [0.1, 0.7, 0.2]]
+    table = Table(criteria_data, colWidths=column_widths, hAlign="RIGHT")
+    table.setStyle(table_style)
+
+    return table
+
+
+def generate_criteria_failure_table(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> Table:
+    table_style = TableStyle(
+        [
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
+            ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]
+    )
+    criteria_explanation_data = [
+        [
+            index + 1,
+            check_name,
+            Paragraph("" if check_results[check_name].description is None else check_results[check_name].description),
+        ]
+        for index, check_name in enumerate(check_results)
+        if not check_results[check_name].passed
+    ]
+
+    criteria_explanation_data.insert(0, ["", "", "Explanation of Failure"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.05, 0.35, 0.6]]
+    table = Table(criteria_explanation_data, colWidths=column_widths)
+    table.setStyle(table_style)
+    return table
+
+
+def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list[Flowable]:
+    # DEBUG Force one of the criteria to have passed
+    check_results["all-steps-complete"].passed = True
+
+    check_values = [check_result.passed for check_result in check_results.values()]
+    num_passed = sum(check_values)
+    num_failed = len(check_values) - num_passed
+
+    elements = []
+    elements.append(Paragraph("Criteria", stylesheet.heading))
+    chart = generate_criteria_summary_chart(num_passed=num_passed, num_failed=num_failed)
+    table = generate_criteria_summary_table(check_results=check_results, stylesheet=stylesheet)
+    elements.append(BalancedColumns([chart, table]))
+
+    # Criteria Failure Table (only shown if there are failures present)
+    if num_failed > 0:
+        elements.append(stylesheet.spacer)
+        elements.append(stylesheet.spacer)
+        elements.append(generate_criteria_failure_table(check_results=check_results, stylesheet=stylesheet))
     elements.append(stylesheet.spacer)
     return elements
 
@@ -279,6 +407,7 @@ def generate_test_progress_chart() -> Image:
 def generate_test_progress_section(stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Test Progress", stylesheet.heading))
+    elements[-1].keepWithNext = True
     elements.append(generate_test_progress_chart())
     elements.append(stylesheet.spacer)
     return elements
