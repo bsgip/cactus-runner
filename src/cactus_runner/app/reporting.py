@@ -8,6 +8,7 @@ import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px
 import plotly.graph_objects as go
+from cactus_test_definitions import __version__ as cactus_test_definitions_version
 from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
@@ -29,7 +30,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from cactus_runner import __version__
+from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app.check import CheckResult
 from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
 
@@ -153,10 +154,13 @@ def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_in
     canvas.setFillColor(TEXT_COLOR)
     canvas.setFont("Helvetica", 6)
     canvas.drawRightString(
-        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.2 * inch, f"Created on {document_creation}"
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.2 * inch, f"Report created on {document_creation}"
     )
     canvas.drawRightString(
-        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.35 * inch, f"by Cactus Runner {__version__}"
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.35 * inch, f"Cactus Test Definitions v{cactus_test_definitions_version}"
+    )
+    canvas.drawRightString(
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.5 * inch, f"Cactus Runner v{cactus_runner_version}"
     )
 
 
