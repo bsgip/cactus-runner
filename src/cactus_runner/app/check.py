@@ -64,7 +64,7 @@ def check_all_steps_complete(
         failing_active_steps.append(active_listener.step)
 
     if failing_active_steps:
-        return CheckResult(False, f"Steps {failing_active_steps} haven't been completed")
+        return CheckResult(False, f"Steps {", ".join(failing_active_steps)} have not been completed.")
     else:
         return CheckResult(True, None)
 
@@ -76,7 +76,7 @@ async def check_connectionpoint_contents(session: AsyncSession) -> CheckResult:
 
     site = await get_active_site(session)
     if site is None:
-        return CheckResult(False, "No EndDevice is currently registered")
+        return CheckResult(False, "No EndDevice is currently registered.")
 
     if not site.nmi:
         return CheckResult(False, f"EndDevice {site.site_id} has no ConnectionPoint id specified.")
@@ -91,14 +91,14 @@ async def check_der_settings_contents(session: AsyncSession) -> CheckResult:
 
     site = await get_active_site(session)
     if site is None:
-        return CheckResult(False, "No EndDevice is currently registered")
+        return CheckResult(False, "No EndDevice is currently registered.")
 
     response = await session.execute(
         select(SiteDERSetting).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
     )
     der_settings = response.scalar_one_or_none()
     if der_settings is None:
-        return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}")
+        return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
 
     return CheckResult(True, None)
 
@@ -110,14 +110,14 @@ async def check_der_capability_contents(session: AsyncSession) -> CheckResult:
 
     site = await get_active_site(session)
     if site is None:
-        return CheckResult(False, "No EndDevice is currently registered")
+        return CheckResult(False, "No EndDevice is currently registered.")
 
     response = await session.execute(
         select(SiteDERRating).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
     )
     der_rating = response.scalar_one_or_none()
     if der_rating is None:
-        return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}")
+        return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}.")
 
     return CheckResult(True, None)
 
@@ -129,28 +129,28 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
 
     site = await get_active_site(session)
     if site is None:
-        return CheckResult(False, "No EndDevice is currently registered")
+        return CheckResult(False, "No EndDevice is currently registered.")
 
     response = await session.execute(
         select(SiteDERStatus).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
     )
     der_status = response.scalar_one_or_none()
     if der_status is None:
-        return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}")
+        return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}.")
 
     # Compare the settings we have against any parameter requirements
     gc_status: int | None = resolved_parameters.get("genConnectStatus", None)
     if gc_status is not None and gc_status != der_status.generator_connect_status:
         return CheckResult(
             False,
-            f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected {gc_status}",
+            f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected {gc_status}.",
         )
 
     om_status: int | None = resolved_parameters.get("operationalModeStatus", None)
     if om_status is not None and om_status != der_status.operational_mode_status:
         return CheckResult(
             False,
-            f"DERStatus.operationalModeStatus has value {der_status.operational_mode_status} but expected {om_status}",
+            f"DERStatus.operationalModeStatus has value {der_status.operational_mode_status} but expected {om_status}.",
         )
 
     return CheckResult(True, None)
@@ -192,7 +192,7 @@ async def do_check_site_readings_and_params(
 ) -> CheckResult:
     average_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, data_qualifier)
     if not average_reading_types:
-        return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice")
+        return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
     srt_ids = [srt.site_reading_type_id for srt in average_reading_types]
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
