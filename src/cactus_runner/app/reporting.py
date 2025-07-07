@@ -351,9 +351,6 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
 
 
 def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> list[Flowable]:
-    # DEBUG Force one of the criteria to have passed
-    check_results["all-steps-complete"].passed = True
-
     check_values = [check_result.passed for check_result in check_results.values()]
     num_passed = sum(check_values)
     num_failed = len(check_values) - num_passed
