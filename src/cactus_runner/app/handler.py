@@ -411,7 +411,9 @@ async def proxied_request_handler(request: web.Request):
 
     # There will only ever be a maximum of 1 entry in this list
     # The request events will only trigger a max of one listener
-    step_name: str = event.UNRECOGNISED_STEP_NAME
+    step_name: str = event.INIT_STAGE_STEP_NAME
+    if active_test_procedure.is_started():
+        step_name = event.UNMATCHED_STEP_NAME
     if trigger_handled:
         handling_listener = trigger_handled[0]
         step_name = handling_listener.step

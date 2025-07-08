@@ -18,7 +18,8 @@ from cactus_runner.models import Listener, RunnerState
 logger = logging.getLogger(__name__)
 
 
-UNRECOGNISED_STEP_NAME = "IGNORED"
+INIT_STAGE_STEP_NAME = "Init"
+UNMATCHED_STEP_NAME = "Unmatched"
 
 
 class WaitEventError(Exception):
