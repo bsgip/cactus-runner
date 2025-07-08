@@ -42,6 +42,10 @@ class ActiveTestProcedure:
         accumulate and any client events should be ignored"""
         return self.finished_zip_data is not None
 
+    def is_started(self) -> bool:
+        """True if any listener has been enabled"""
+        return any([True for listener in self.listeners if listener.enabled_time is not None])
+
 
 @dataclass
 class RequestEntry(JSONWizard):
