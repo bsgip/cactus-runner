@@ -46,10 +46,20 @@ def test_get_zip_contents(mocker):
         )
 
     zip = zipfile.ZipFile(io.BytesIO(zip_contents))
+    filenames = zip.namelist()
+
+    def get_filename(prefix: str, filenames: list[str]) -> str:
+        """Find first filename that starts with 'prefix'"""
+        for filename in filenames:
+            if filename.startswith(prefix):
+                return filename
+        return ""
 
     assert isinstance(zip_contents, bytes)
-    assert zip.read("test_procedure_summary.json") == bytes(json_status_summary, encoding="utf-8")
-    assert zip.read("cactus_runner.jsonl") == contents_of_logfile
+    assert zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=filenames)) == bytes(
+        json_status_summary, encoding="utf-8"
+    )
+    assert zip.read(get_filename(prefix="CactusRunnerLog", filenames=filenames)) == contents_of_logfile
     subprocess_run_mock.assert_called_once()
 
 

@@ -60,7 +60,14 @@ async def test_all_01_full(cactus_runner_client: TestClient):
     zip_data = await result.read()
     zip = zipfile.ZipFile(io.BytesIO(zip_data))
 
-    summary_data = zip.read("test_procedure_summary.json")
+    def get_filename(prefix: str, filenames: list[str]) -> str:
+        """Find first filename that starts with 'prefix'"""
+        for filename in filenames:
+            if filename.startswith(prefix):
+                return filename
+        return ""
+
+    summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))
     assert len(summary_data) > 0
     summary = RunnerStatus.from_json(summary_data.decode())
     for step, resolved in summary.step_status.items():

@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess  # nosec B404
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
@@ -34,7 +35,9 @@ class NoActiveTestProcedure(Exception):
     pass
 
 
-def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfile: str, pdf_data: bytes) -> bytes:
+def get_zip_contents(
+    json_status_summary: str, runner_logfile: str, envoy_logfile: str, pdf_data: bytes, filename_infix: str = ""
+) -> bytes:
     """Returns the contents of the zipped test procedures artifacts in bytes"""
     # Work in a temporary directory
     with tempfile.TemporaryDirectory() as tempdirname:
@@ -45,26 +48,26 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
         os.mkdir(archive_dir)
 
         # Create test summary json file
-        file_path = archive_dir / "test_procedure_summary.json"
+        file_path = archive_dir / f"CactusTestProcedureSummary{filename_infix}.json"
         with open(file_path, "w") as f:
             f.write(json_status_summary)
 
         # Copy Cactus Runner log file into archive
-        destination = archive_dir / "cactus_runner.jsonl"
+        destination = archive_dir / f"CactusRunnerLog{filename_infix}.jsonl"
         try:
             shutil.copyfile(runner_logfile, destination)
         except Exception as exc:
             logger.error(f"Unable to copy {runner_logfile} to {destination}", exc_info=exc)
 
         # Copy Envoy log file into archive
-        destination = archive_dir / "envoy.jsonl"
+        destination = archive_dir / f"EnvoyLog{filename_infix}.jsonl"
         try:
             shutil.copyfile(envoy_logfile, destination)
         except Exception as exc:
             logger.error(f"Unable to copy {envoy_logfile} to {destination}", exc_info=exc)
 
         # Write pdf report
-        file_path = archive_dir / "test_procedure_report.pdf"
+        file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
         with open(file_path, "wb") as f:
             f.write(pdf_data)
 
@@ -73,7 +76,7 @@ def get_zip_contents(json_status_summary: str, runner_logfile: str, envoy_logfil
             connection_string = get_postgres_dsn().replace("+psycopg", "")
         except DatabaseNotInitialisedError:
             raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
-        dump_file = str(archive_dir / "envoy_db.dump")
+        dump_file = str(archive_dir / f"EnvoyDB{filename_infix}.dump")
         exectuable_name = "pg_dump"
         # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
         command = [
@@ -161,10 +164,13 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         sites=list(sites),
     )
 
+    generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
+
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
         runner_logfile="logs/cactus_runner.jsonl",
         envoy_logfile="logs/envoy.jsonl",
         pdf_data=pdf_data,
+        filename_infix=f"_{generation_timestamp.isoformat()}_{active_test_procedure.name}",
     )
     return active_test_procedure.finished_zip_data
