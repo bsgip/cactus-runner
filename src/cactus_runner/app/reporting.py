@@ -31,6 +31,7 @@ from reportlab.platypus import (
 )
 
 from cactus_runner import __version__ as cactus_runner_version
+from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
 from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
 
@@ -55,15 +56,17 @@ FAIL_COLOR = HexColor(0xF1420E)
 
 DEFAULT_TABLE_STYLE = TableStyle(
     [
-        ("BACKGROUND", (0, 0), (-1, 0), TABLE_HEADER_COLOR),
-        ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_TEXT_COLOR),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
+        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-        ("GRID", (0, 0), (-1, -1), 1, TABLE_LINE_COLOR),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
+        ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]
 )
-
 
 # Limit document content to full width of page (minus margins)
 MAX_CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
@@ -157,7 +160,9 @@ def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_in
         PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.2 * inch, f"Report created on {document_creation}"
     )
     canvas.drawRightString(
-        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.35 * inch, f"Cactus Test Definitions v{cactus_test_definitions_version}"
+        PAGE_WIDTH - MARGIN,
+        PAGE_HEIGHT - BANNER_HEIGHT - 0.35 * inch,
+        f"Cactus Test Definitions v{cactus_test_definitions_version}",
     )
     canvas.drawRightString(
         PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.5 * inch, f"Cactus Runner v{cactus_runner_version}"
@@ -183,8 +188,13 @@ def later_pages_template(canvas, doc, test_procedure_name: str, test_procedure_i
     canvas.restoreState()
 
 
-def generate_title(test_procedure_name: str, style: ParagraphStyle) -> list[Flowable]:
-    return [Paragraph(f"{test_procedure_name} Test Procedure Report", style), Spacer(1, 10)]
+def fig_to_image(fig: go.Figure, content_width: float) -> Image:
+    UPSCALE_FACTOR = 4
+    img_bytes = fig.to_image(format="png", scale=UPSCALE_FACTOR)  # Scale up figure so it's high enough resolution
+    pil_image = PilImage.open(io.BytesIO(img_bytes))
+    buffer = io.BytesIO(img_bytes)
+    scale_factor = pil_image.width / content_width  # rescale image to width of page content
+    return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
 
 
 def generate_overview_section(
@@ -236,7 +246,7 @@ def generate_overview_section(
 def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
     labels = ["Pass", "Fail"]
     values = [num_passed, num_failed]
-    total = num_passed+num_failed
+    total = num_passed + num_failed
 
     # Create pie chart
     pie = go.Pie(
@@ -246,9 +256,11 @@ def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
         textinfo="none",  # Hide the % labels on each segment
     )
 
-    # Adds separators between pie segments
-    pie.marker.line.width = 5
-    pie.marker.line.color = "white"
+    # If not all passed or all failed
+    if num_passed > 1 and num_failed > 1:
+        # Adds separators between pie segments
+        pie.marker.line.width = 5
+        pie.marker.line.color = "white"
 
     # Create a figure from the pie chart
     fig = go.Figure(data=[pie])
@@ -270,13 +282,8 @@ def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
     fig.update_traces(marker=dict(colors=[f"#{PASS_COLOR.hexval()[2:]}", f"#{FAIL_COLOR.hexval()[2:]}"]))
 
     # Generate the image from the fig
-    img_bytes = fig.to_image(format="png", scale=4)  # Scale up figure so it's high enough resolution
-    pil_image = PilImage.open(io.BytesIO(img_bytes))
-    buffer = io.BytesIO(img_bytes)
-    scale_factor = pil_image.width / (
-        MAX_CONTENT_WIDTH / 2.5
-    )  # rescale image to width of KeepTogether column (roughly)
-    return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
+    content_width = MAX_CONTENT_WIDTH / 2.5  # rescale image to width of KeepTogether column (roughly)
+    return fig_to_image(fig=fig, content_width=content_width)
 
 
 def generate_criteria_summary_table(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> Table:
@@ -374,64 +381,60 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     return elements
 
 
-def generate_test_progress_chart() -> Image:
-    # gannt/timeline style
-    df = pd.DataFrame(
-        [
-            dict(Stage="Init", Start="2009-01-01", Finish="2009-01-01", Request="/dcap", Method="GET"),
-            dict(Stage="Unmatched", Start="2009-03-05", Finish="2009-04-15", Request="/edev", Method="GET"),
-            dict(Stage="Unmatched", Start="2009-02-20", Finish="2009-05-30", Request="/edev", Method="GET"),
-            dict(Stage="Step 1.", Start="2009-02-20", Finish="2009-05-30", Request="/tm", Method="GET"),
-            dict(Stage="Step 2.", Start="2009-02-21", Finish="2009-05-30", Request="/edev/1", Method="GET"),
-            dict(Stage="Step 3.", Start="2009-02-22", Finish="2009-05-30", Request="/edev/1/der", Method="GET"),
-            dict(Stage="Step 4.", Start="2009-02-23", Finish="2009-05-30", Request="/tm", Method="POST"),
-        ]
-    )
+def generate_test_progress_chart(runner_state: RunnerState) -> Image:
+    requests = []
+    for request_entry in runner_state.request_history:
+        v = dict(
+            Stage=request_entry.step_name,
+            Time=request_entry.timestamp,
+            Request=request_entry.path,
+            Method=str(request_entry.method),
+        )
+        requests.append(v)
+    df = pd.DataFrame(requests)
+
+    all_step_names = [
+        event.INIT_STAGE_STEP_NAME,
+        event.UNMATCHED_STEP_NAME,
+        *runner_state.active_test_procedure.definition.steps.keys(),
+    ]
 
     fig = px.scatter(
         df,
-        x="Start",
+        x="Time",
         y="Stage",
         color="Request",
         symbol="Method",
-        category_orders={"Stage": ["Init", "Unmatched", "Step 1.", "Step 2.", "Step 3.", "Step 4."]},
+        category_orders={"Stage": all_step_names},
+        labels={"Time": "Time (UTC)"},
     )
     fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
-
-    img_bytes = fig.to_image(format="png", scale=4)  # Scale up figure so it's high enough resolution
-    pil_image = PilImage.open(io.BytesIO(img_bytes))
-    buffer = io.BytesIO(img_bytes)
-    scale_factor = pil_image.width / MAX_CONTENT_WIDTH  # rescale image to width of page content
-    return Image(buffer, width=pil_image.width / scale_factor, height=pil_image.height / scale_factor)
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def generate_test_progress_section(stylesheet: StyleSheet) -> list[Flowable]:
+def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Test Progress", stylesheet.heading))
     elements[-1].keepWithNext = True
-    elements.append(generate_test_progress_chart())
+    if runner_state.request_history:
+        elements.append(generate_test_progress_chart(runner_state=runner_state))
+    else:
+        elements.append(Paragraph("No requests were received by utility server during the test procedure."))
     elements.append(stylesheet.spacer)
     return elements
 
 
 def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
-
-    WIDTH = 500
-    HEIGHT = 250
     df = pd.DataFrame({"timestamp": request_timestamps})
-    fig = px.histogram(df, x="timestamp", labels={"timestamp": "Time (UTC)"})
+    fig = px.histogram(
+        df,
+        x="timestamp",
+        labels={"timestamp": "Time (UTC)"},
+        color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
+    )
     fig.update_layout(bargap=0.2)
     fig.update_layout(yaxis_title="Number of requests")
-    fig.update_layout(
-        autosize=False,
-        width=WIDTH,
-        height=HEIGHT,
-        margin=dict(l=30, r=30, b=50, t=50, pad=4),
-    )
-
-    img_bytes = fig.to_image(format="png")
-    buffer = io.BytesIO(img_bytes)
-    return Image(buffer)
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
 def generate_communications_section(
@@ -440,6 +443,7 @@ def generate_communications_section(
 ) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Communications", stylesheet.heading))
+    elements[-1].keepWithNext = True
     if request_timestamps:
         elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
     else:
@@ -489,6 +493,7 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
 def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Devices", stylesheet.heading))
+    elements[-1].keepWithNext = True
     if sites:
         for site in sites:
             elements.extend(generate_site_section(site=site, stylesheet=stylesheet))
@@ -499,25 +504,14 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[
 
 
 def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str) -> Image:
-    WIDTH = 500
-    HEIGHT = 250
+    fig = px.line(readings_df, x="time_period_start", y="scaled_value", markers=True, color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"])
 
-    fig = px.line(readings_df, x="time_period_start", y="scaled_value", markers=True)
-
-    fig.update_layout(
-        autosize=False,
-        width=WIDTH,
-        height=HEIGHT,
-        margin=dict(l=30, r=30, b=50, t=50, pad=4),
-    )
     fig.update_layout(
         xaxis=dict(title=dict(text="Time (UTC)")),
         yaxis=dict(title=dict(text=quantity)),
     )
 
-    img_bytes = fig.to_image(format="png")
-    buffer = io.BytesIO(img_bytes)
-    return Image(buffer)
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
 def reading_quantity(srt: SiteReadingType) -> str:
@@ -526,17 +520,18 @@ def reading_quantity(srt: SiteReadingType) -> str:
     return quantity
 
 
-def reading_description(srt: SiteReadingType) -> str:
+def reading_description(srt: SiteReadingType, exclude_mup: bool = False) -> str:
     mup = srt.site_reading_type_id
     quantity = reading_quantity(srt)
     qualifier = DataQualifierType(srt.data_qualifier).name
     qualifier = qualifier.replace("_", " ").title()
+    mup_text = "" if exclude_mup else f"/mup/{mup}:"
     if srt.phase == 0:
-        description = f"MUP {mup}: {quantity} ({qualifier})"
+        description = f"{mup_text} {quantity} ({qualifier})"
     else:
         phase = PhaseCode(srt.phase).name
         phase = phase.replace("_", " ").title()
-        description = f"MUP {mup}: {quantity} ({qualifier}, {phase})"
+        description = f"{mup_text} {quantity} ({qualifier}, {phase})"
 
     return description
 
@@ -545,10 +540,10 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
     elements = []
 
     table_data = [
-        [reading_type.site_reading_type_id, reading_description(reading_type), count]
+        [reading_type.site_reading_type_id, reading_description(reading_type, exclude_mup=True), count]
         for reading_type, count in reading_counts.items()
     ]
-    table_data.insert(0, ["MUP", "Description", "Number received"])
+    table_data.insert(0, ["/mup", "Description", "Number received"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.13, 0.63, 0.24]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
@@ -564,15 +559,18 @@ def generate_readings_section(
 ) -> list[Flowable]:
     elements = []
     elements.append(Paragraph("Readings", stylesheet.heading))
+    elements[-1].keepWithNext = True
 
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
+        elements.append(stylesheet.spacer)
         elements.extend(generate_reading_count_table(reading_counts=reading_counts, stylesheet=stylesheet))
 
         # Add charts for each of the different reading types
         if readings:
             for reading_type, readings_df in readings.items():
                 elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
+                elements[-1].keepWithNext = True
                 elements.append(
                     generate_readings_timeline(readings_df=readings_df, quantity=reading_quantity(reading_type))
                 )
@@ -610,8 +608,6 @@ def generate_page_elements(
     test_procedure_name = active_test_procedure.name
     test_procedure_description = active_test_procedure.definition.description
 
-    # Document Title
-    # page_elements.extend(generate_title(test_procedure_name, style=stylesheet.title))
     # The title is handles by the first page banner
     # We need a space to skip past the banner
     page_elements.append(Spacer(1, MARGIN))
@@ -650,7 +646,7 @@ def generate_page_elements(
     page_elements.extend(generate_criteria_section(check_results=check_results, stylesheet=stylesheet))
 
     # Test Progress Section
-    page_elements.extend(generate_test_progress_section(stylesheet=stylesheet))
+    page_elements.extend(generate_test_progress_section(runner_state=runner_state, stylesheet=stylesheet))
 
     # Communications Section
     request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
