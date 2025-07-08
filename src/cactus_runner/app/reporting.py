@@ -504,7 +504,13 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[
 
 
 def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str) -> Image:
-    fig = px.line(readings_df, x="time_period_start", y="scaled_value", markers=True, color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"])
+    fig = px.line(
+        readings_df,
+        x="time_period_start",
+        y="scaled_value",
+        markers=True,
+        color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
+    )
 
     fig.update_layout(
         xaxis=dict(title=dict(text="Time (UTC)")),
@@ -663,18 +669,6 @@ def generate_page_elements(
     return page_elements
 
 
-def generate_page_elements_no_active_procedure(stylesheet: StyleSheet) -> list[Flowable]:
-    page_elements = []
-    page_elements.append(Paragraph("Test Procedure Report", stylesheet.title))
-    page_elements.append(DEFAULT_SPACER)
-    page_elements.append(
-        Paragraph(
-            "NO ACTIVE TEST PROCEDURE", ParagraphStyle("red-title", parent=stylesheet.title, textColor=WARNING_COLOR)
-        )
-    )
-    return page_elements
-
-
 def pdf_report_as_bytes(
     runner_state: RunnerState,
     check_results: dict[str, CheckResult],
@@ -686,18 +680,18 @@ def pdf_report_as_bytes(
 
     test_procedure_instance = "cactus.cecs.anu.edu.au/0ab24cce-cd1b-4bfc"
 
-    if runner_state.active_test_procedure is not None:
-        page_elements = generate_page_elements(
-            runner_state=runner_state,
-            test_procedure_instance=test_procedure_instance,
-            check_results=check_results,
-            readings=readings,
-            reading_counts=reading_counts,
-            sites=sites,
-            stylesheet=stylesheet,
-        )
-    else:
-        page_elements = generate_page_elements_no_active_procedure(stylesheet=stylesheet)
+    if runner_state.active_test_procedure is None:
+        raise ValueError("Unable to generate report - no active test procedure")
+
+    page_elements = generate_page_elements(
+        runner_state=runner_state,
+        test_procedure_instance=test_procedure_instance,
+        check_results=check_results,
+        readings=readings,
+        reading_counts=reading_counts,
+        sites=sites,
+        stylesheet=stylesheet,
+    )
 
     test_procedure_name = runner_state.active_test_procedure.name
     first_page = partial(
