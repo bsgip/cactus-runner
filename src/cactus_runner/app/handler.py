@@ -269,11 +269,18 @@ async def finalize_handler(request):
             extra={"test_procedure": finalized_test_procedure_name},
         )
 
+        # Determine zip filename
+        generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
+        zip_filename = (
+            f"CactusTestProcedureArtifacts_{generation_timestamp.isoformat()}_{finalized_test_procedure_name}.zip"
+            # f"CactusTestProcedureArtifacts_{finalized_test_procedure_name}.zip"
+        )
+
         return web.Response(
             body=zip_contents,
             headers={
                 "Content-Type": "application/zip",
-                "Content-Disposition": "attachment; filename=finalize.zip",
+                "Content-Disposition": f'attachment; filename="{zip_filename}"',
             },
         )
     else:
