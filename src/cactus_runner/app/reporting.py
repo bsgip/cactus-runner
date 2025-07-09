@@ -43,14 +43,19 @@ MARGIN = 0.5 * inch
 BANNER_HEIGHT = inch
 
 HIGHLIGHT_COLOR = HexColor(0x09BB71)  # Teal green used on cactus UI
-TABLE_HEADER_COLOR = HexColor(0xF5F5F5)
-TABLE_LINE_COLOR = HexColor(0xE0E0E0)
+MUTED_COLOR = HexColor(0xD7FCEF)  # Light mint green
+WHITE = HexColor(0xFFFFFF)
+
 TABLE_TEXT_COLOR = HexColor(0x262626)
+TABLE_HEADER_TEXT_COLOR = HexColor(0x424242)
+TABLE_ROW_COLOR = WHITE
+TABLE_ALT_ROW_COLOR = MUTED_COLOR
+TABLE_LINE_COLOR = HexColor(0x707070)
+
+OVERVIEW_BACKGROUND = MUTED_COLOR
+
 WARNING_COLOR = HexColor(0xFF4545)
 TEXT_COLOR = HexColor(0x000000)
-WHITE = HexColor(0xFFFFFF)
-# OVERVIEW_BACKGROUND = HexColor(0x96EAC7)
-OVERVIEW_BACKGROUND = HexColor(0xD7FCEF)
 PASS_COLOR = HIGHLIGHT_COLOR
 FAIL_COLOR = HexColor(0xF1420E)
 
@@ -59,11 +64,12 @@ DEFAULT_TABLE_STYLE = TableStyle(
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
-        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [TABLE_ROW_COLOR, TABLE_ALT_ROW_COLOR]),
+        ("TEXTCOLOR", (0, 0), (-1, -1), TABLE_TEXT_COLOR),
+        ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_TEXT_COLOR),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, TABLE_LINE_COLOR),
+        ("LINEBELOW", (0, -1), (-1, -1), 1, TABLE_LINE_COLOR),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]
 )
@@ -292,10 +298,10 @@ def generate_criteria_summary_table(check_results: dict[str, CheckResult], style
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("TOPPADDING", (0, 0), (-1, -1), 8),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
-            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
-            ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
-            ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [TABLE_ROW_COLOR, TABLE_ALT_ROW_COLOR]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_TEXT_COLOR),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, TABLE_LINE_COLOR),
+            ("LINEBELOW", (0, -1), (-1, -1), 1, TABLE_LINE_COLOR),
             ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
         ]
     )
@@ -336,11 +342,11 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("TOPPADDING", (0, 0), (-1, -1), 8),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [WHITE, OVERVIEW_BACKGROUND]),
-            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(0x424242)),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [TABLE_ROW_COLOR, TABLE_ALT_ROW_COLOR]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_TEXT_COLOR),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("LINEBELOW", (0, 0), (-1, 0), 1, HexColor(0x707070)),
-            ("LINEBELOW", (0, -1), (-1, -1), 1, HexColor(0x707070)),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, TABLE_LINE_COLOR),
+            ("LINEBELOW", (0, -1), (-1, -1), 1, TABLE_LINE_COLOR),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]
     )
