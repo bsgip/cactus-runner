@@ -387,12 +387,23 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     return elements
 
 
-def generate_test_progress_chart(runner_state: RunnerState) -> Image:
+def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_test_start: bool = True) -> Image:
+    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
+    alternative_x_axis_label = "Time relative to test start (s)"
+
+    x_axis_label = "Time (UTC)"
+
     requests = []
     for request_entry in runner_state.request_history:
+
+        timestamp = request_entry.timestamp
+        if time_relative_to_test_start and base_timestamp is not None:
+            timestamp = request_entry.timestamp.replace(microsecond=0) - base_timestamp.replace(microsecond=0)
+            x_axis_label = alternative_x_axis_label
+
         v = dict(
             Stage=request_entry.step_name,
-            Time=request_entry.timestamp,
+            Time=timestamp,
             Request=request_entry.path,
             Method=str(request_entry.method),
         )
@@ -412,7 +423,7 @@ def generate_test_progress_chart(runner_state: RunnerState) -> Image:
         color="Request",
         symbol="Method",
         category_orders={"Stage": all_step_names},
-        labels={"Time": "Time (UTC)"},
+        labels={"Time": x_axis_label},
     )
     fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
@@ -430,12 +441,12 @@ def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleS
     return elements
 
 
-def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
+def generate_requests_timeline(request_timestamps: list[datetime] | list[timedelta], x_axis_label: str) -> Image:
     df = pd.DataFrame({"timestamp": request_timestamps})
     fig = px.histogram(
         df,
         x="timestamp",
-        labels={"timestamp": "Time (UTC)"},
+        labels={"timestamp": x_axis_label},
         color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
     )
     fig.update_layout(bargap=0.2)
@@ -444,14 +455,24 @@ def generate_requests_timeline(request_timestamps: list[datetime]) -> Image:
 
 
 def generate_communications_section(
-    request_timestamps: list[datetime],
-    stylesheet: StyleSheet,
+    runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
 ) -> list[Flowable]:
+    request_timestamps: list[datetime] = [request_entry.timestamp for request_entry in runner_state.request_history]
+    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
+    alternative_x_axis_label = "Time relative to test start (s)"
+
+    x_axis_label = "Time (UTC)"
+
+    timestamps = request_timestamps
+    if time_relative_to_test_start and base_timestamp is not None:
+        timestamps = [timestamp - base_timestamp for timestamp in request_timestamps]
+        x_axis_label = alternative_x_axis_label
+
     elements = []
     elements.append(Paragraph("Communications", stylesheet.heading))
     elements[-1].keepWithNext = True
     if request_timestamps:
-        elements.append(generate_requests_timeline(request_timestamps=request_timestamps))
+        elements.append(generate_requests_timeline(request_timestamps=timestamps, x_axis_label=x_axis_label))
     else:
         elements.append(Paragraph("No requests were received by utility server during the test procedure."))
     elements.append(stylesheet.spacer)
@@ -509,17 +530,28 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[
     return elements
 
 
-def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str) -> Image:
+def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str, runner_state: RunnerState, time_relative_to_test_start: bool = True) -> Image:
+    x_axis_column = "time_period_start"
+    x_axis_label = "Time (UTC)"
+
+    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
+    alternative_x_axis_label = "Time relative to test start (s)"
+    if time_relative_to_test_start and base_timestamp is not None:
+        new_x_axis_column = "timedelta_from_start"
+        readings_df[new_x_axis_column] = readings_df[x_axis_column] - base_timestamp
+        x_axis_column = new_x_axis_column
+        x_axis_label = alternative_x_axis_label
+
     fig = px.line(
         readings_df,
-        x="time_period_start",
+        x=x_axis_column,
         y="scaled_value",
         markers=True,
         color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
     )
 
     fig.update_layout(
-        xaxis=dict(title=dict(text="Time (UTC)")),
+        xaxis=dict(title=dict(text=x_axis_label)),
         yaxis=dict(title=dict(text=quantity)),
     )
 
@@ -565,10 +597,12 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
 
 
 def generate_readings_section(
+    runner_state: RunnerState,
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
+
     elements = []
     elements.append(Paragraph("Readings", stylesheet.heading))
     elements[-1].keepWithNext = True
@@ -584,7 +618,7 @@ def generate_readings_section(
                 elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
                 elements[-1].keepWithNext = True
                 elements.append(
-                    generate_readings_timeline(readings_df=readings_df, quantity=reading_quantity(reading_type))
+                    generate_readings_timeline(readings_df=readings_df, quantity=reading_quantity(reading_type), runner_state=runner_state)
                 )
     else:
         elements.append(Paragraph("No readings sent to the utility server during this test procedure."))
@@ -661,15 +695,14 @@ def generate_page_elements(
     page_elements.extend(generate_test_progress_section(runner_state=runner_state, stylesheet=stylesheet))
 
     # Communications Section
-    request_timestamps = [request_entry.timestamp for request_entry in runner_state.request_history]
-    page_elements.extend(generate_communications_section(request_timestamps=request_timestamps, stylesheet=stylesheet))
+    page_elements.extend(generate_communications_section(runner_state=runner_state, stylesheet=stylesheet))
 
     # Devices Section
     page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
     # Readings Section
     page_elements.extend(
-        generate_readings_section(readings=readings, reading_counts=reading_counts, stylesheet=stylesheet)
+        generate_readings_section(runner_state=runner_state, readings=readings, reading_counts=reading_counts, stylesheet=stylesheet)
     )
 
     return page_elements

@@ -114,6 +114,13 @@ class RunnerState:
     def last_client_interaction(self) -> ClientInteraction:
         return self.client_interactions[-1]
 
+    def interaction_timestamp(self, interaction_type: ClientInteractionType) -> datetime | None:
+        """Returns the timestamp of the first client interaction of type 'interaction_type'"""
+        for client_interaction in self.client_interactions:
+            if client_interaction.interaction_type == interaction_type:
+                return client_interaction.timestamp
+        return None
+
 
 @dataclass
 class Aggregator:
