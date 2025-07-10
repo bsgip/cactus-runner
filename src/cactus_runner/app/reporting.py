@@ -398,7 +398,10 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
 
         timestamp = request_entry.timestamp
         if time_relative_to_test_start and base_timestamp is not None:
-            timestamp = request_entry.timestamp.replace(microsecond=0) - base_timestamp.replace(microsecond=0)
+            # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
+            # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
+            # Here convert the timedeltas to total seconds to avoid this problem.
+            timestamp = (request_entry.timestamp - base_timestamp).total_seconds()
             x_axis_label = alternative_x_axis_label
 
         v = dict(
@@ -465,7 +468,10 @@ def generate_communications_section(
 
     timestamps = request_timestamps
     if time_relative_to_test_start and base_timestamp is not None:
-        timestamps = [timestamp - base_timestamp for timestamp in request_timestamps]
+        # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
+        # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
+        # Here convert the timedeltas to total seconds to avoid this problem.
+        timestamps = [(timestamp - base_timestamp).total_seconds() for timestamp in request_timestamps]
         x_axis_label = alternative_x_axis_label
 
     elements = []
@@ -530,7 +536,9 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[
     return elements
 
 
-def generate_readings_timeline(readings_df: pd.DataFrame, quantity: str, runner_state: RunnerState, time_relative_to_test_start: bool = True) -> Image:
+def generate_readings_timeline(
+    readings_df: pd.DataFrame, quantity: str, runner_state: RunnerState, time_relative_to_test_start: bool = True
+) -> Image:
     x_axis_column = "time_period_start"
     x_axis_label = "Time (UTC)"
 
@@ -618,7 +626,9 @@ def generate_readings_section(
                 elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
                 elements[-1].keepWithNext = True
                 elements.append(
-                    generate_readings_timeline(readings_df=readings_df, quantity=reading_quantity(reading_type), runner_state=runner_state)
+                    generate_readings_timeline(
+                        readings_df=readings_df, quantity=reading_quantity(reading_type), runner_state=runner_state
+                    )
                 )
     else:
         elements.append(Paragraph("No readings sent to the utility server during this test procedure."))
@@ -702,7 +712,9 @@ def generate_page_elements(
 
     # Readings Section
     page_elements.extend(
-        generate_readings_section(runner_state=runner_state, readings=readings, reading_counts=reading_counts, stylesheet=stylesheet)
+        generate_readings_section(
+            runner_state=runner_state, readings=readings, reading_counts=reading_counts, stylesheet=stylesheet
+        )
     )
 
     return page_elements
