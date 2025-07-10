@@ -55,6 +55,7 @@ class RequestEntry(JSONWizard):
     status: http.HTTPStatus
     timestamp: datetime
     step_name: str
+    body_xml_errors: list[str]  # Any XML schema errors detected in the incoming body
 
 
 class ClientInteractionType(StrEnum):
@@ -151,8 +152,11 @@ class CriteriaEntry(JSONWizard):
 
 @dataclass
 class RunnerStatus(JSONWizard):
+    timestamp: datetime  # when was this status generated?
     status_summary: str
     last_client_interaction: ClientInteraction
+    log_envoy: str  # Snapshot of the current envoy logs
+    log_cactus_runner: str  # Snapshot of the current cactus-runner logs
     criteria: list[CriteriaEntry] = field(default_factory=list)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)

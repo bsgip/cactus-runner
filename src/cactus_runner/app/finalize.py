@@ -16,6 +16,7 @@ from cactus_runner.app.database import (
     get_postgres_dsn,
 )
 from cactus_runner.app.envoy_common import get_sites
+from cactus_runner.app.log import LOG_FILE_CACTUS_RUNNER, LOG_FILE_ENVOY
 from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_reading_counts,
@@ -168,8 +169,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
-        runner_logfile="logs/cactus_runner.jsonl",
-        envoy_logfile="logs/envoy.jsonl",
+        runner_logfile=LOG_FILE_CACTUS_RUNNER,
+        envoy_logfile=LOG_FILE_ENVOY,
         pdf_data=pdf_data,
         filename_infix=f"_{generation_timestamp.isoformat()}_{active_test_procedure.name}",
     )

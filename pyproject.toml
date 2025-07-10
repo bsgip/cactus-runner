@@ -29,6 +29,7 @@ dependencies = [
   "plotly>=6.1.2,<7",
   "kaleido>=0.2.1,<1",
   "pandas>=2.2.3,<3",
+  "pydantic_xml[lxml]>=2.11.7,<3",
 ]
 
 [project.urls]
@@ -49,6 +50,7 @@ dev = [
   "tox",
   "python-dotenv[cli]",
   "coverage",
+  "lxml-stubs",
 ]
 test = [
   "pytest",
@@ -99,3 +101,6 @@ exclude = ["dist", "tests", "build"]
 [tool.setuptools.dynamic]
 version = { attr = "cactus_runner.__version__" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
+
+[tool.setuptools.package-data]
+"cactus_runner" = ["py.typed", "**/*.xsd"]

@@ -1,4 +1,5 @@
 import unittest.mock as mock
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -7,6 +8,9 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CHECK_PARAMETER_SCHEMA, Event, Step, TestProcedure
 from cactus_test_definitions.checks import Check
+from envoy.server.model.aggregator import Aggregator
+from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     Site,
     SiteDER,
@@ -15,20 +19,31 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy.server.model.subscription import (
+    Subscription,
+    SubscriptionResource,
+    TransmitNotificationLog,
+)
+from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
+from sqlalchemy import select
 
 from cactus_runner.app.check import (
     CheckResult,
     FailedCheckError,
     UnknownCheckError,
     all_checks_passing,
+    check_all_notifications_transmitted,
     check_all_steps_complete,
-    check_connectionpoint_contents,
     check_der_capability_contents,
     check_der_settings_contents,
     check_der_status_contents,
+    check_end_device_contents,
+    check_response_contents,
+    check_subscription_contents,
     do_check_readings_for_types,
     do_check_site_readings_and_params,
+    response_type_to_string,
     run_check,
 )
 from cactus_runner.app.envoy_common import ReadingLocation
@@ -38,7 +53,7 @@ from cactus_runner.models import ActiveTestProcedure, Listener
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
 CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "all-steps-complete": "check_all_steps_complete",
-    "connectionpoint-contents": "check_connectionpoint_contents",
+    "end-device-contents": "check_end_device_contents",
     "der-settings-contents": "check_der_settings_contents",
     "der-capability-contents": "check_der_capability_contents",
     "der-status-contents": "check_der_status_contents",
@@ -48,6 +63,9 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "readings-der-active-power": "check_readings_der_active_power",
     "readings-der-reactive-power": "check_readings_der_reactive_power",
     "readings-der-voltage": "check_readings_der_voltage",
+    "all-notifications-transmitted": "check_all_notifications_transmitted",
+    "subscription-contents": "check_subscription_contents",
+    "response-contents": "check_response_contents",
 }
 
 
@@ -111,33 +129,44 @@ def test_check_all_steps_complete(
 
 
 @pytest.mark.parametrize(
-    "active_site, expected",
+    "active_site, has_connection_point_id, expected",
     [
-        (None, False),
-        (generate_class_instance(Site, nmi=None), False),
-        (generate_class_instance(Site, nmi=""), False),
-        (generate_class_instance(Site, nmi="abc123"), True),
+        (None, True, False),
+        (None, False, False),
+        (None, None, False),
+        (generate_class_instance(Site, nmi=None), True, False),
+        (generate_class_instance(Site, nmi=None), False, True),
+        (generate_class_instance(Site, nmi=None), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(Site, nmi=""), True, False),
+        (generate_class_instance(Site, nmi=""), False, True),
+        (generate_class_instance(Site, nmi=""), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(Site, nmi="abc123"), True, True),
+        (generate_class_instance(Site, nmi="abc123"), False, True),
+        (generate_class_instance(Site, nmi="abc123"), None, True),
     ],
 )
 @mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_connectionpoint_contents(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, expected: bool
+    mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
 ):
 
     mock_get_active_site.return_value = active_site
     mock_session = create_mock_session()
+    resolved_params = {}
+    if has_connection_point_id is not None:
+        resolved_params["has_connection_point_id"] = has_connection_point_id
 
-    result = await check_connectionpoint_contents(mock_session)
+    result = await check_end_device_contents(mock_session, resolved_params)
     assert_check_result(result, expected)
 
     assert_mock_session(mock_session)
 
 
 @pytest.mark.parametrize(
-    "existing_sites, expected",
+    "existing_sites, resolved_params, expected",
     [
-        ([], False),
+        ([], {}, False),
         (
             [
                 generate_class_instance(
@@ -149,8 +178,41 @@ async def test_check_connectionpoint_contents(
                     ],
                 )
             ],
+            {},
             True,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
+                        )
+                    ],
+                )
+            ],
+            {"setGradW": 12345},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
+                        )
+                    ],
+                )
+            ],
+            {"setGradW": 1234},
+            False,
+        ),  # setGradW doesn't match value
         (
             [
                 generate_class_instance(
@@ -162,6 +224,7 @@ async def test_check_connectionpoint_contents(
                     ],
                 )
             ],
+            {},
             False,
         ),  # Is setting DERCapability - not DERSetting
         (
@@ -173,6 +236,7 @@ async def test_check_connectionpoint_contents(
                     site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
+            {},
             False,
         ),
         (
@@ -183,18 +247,21 @@ async def test_check_connectionpoint_contents(
                     aggregator_id=1,
                 )
             ],
+            {},
             False,
         ),
     ],
 )
 @pytest.mark.anyio
-async def test_check_der_settings_contents(pg_base_config, existing_sites: list[Site], expected: bool):
+async def test_check_der_settings_contents(
+    pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
+):
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_settings_contents(session)
+        result = await check_der_settings_contents(session, resolved_params)
         assert_check_result(result, expected)
 
 
@@ -585,6 +652,420 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     ), "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
 
     assert_mock_session(mock_session)
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_no_logs(pg_base_config):
+    """check_all_notifications_transmitted should fail if there are no logs"""
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
+    """check_all_notifications_transmitted should succeed only all logs are OK"""
+
+    # Fill up the DB with successes
+    async with generate_async_session(pg_base_config) as session:
+        for i in range(200, 299):
+            session.add(
+                generate_class_instance(
+                    TransmitNotificationLog, seed=i, transmit_notification_log_id=None, http_status_code=i
+                )
+            )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, True)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_no_site(pg_base_config):
+    """check_subscription_contents should fail if there is no active site"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_no_matches(pg_base_config):
+    """check_subscription_contents should fail if there is no matching subscription"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    # Fill up the DB with subscriptions
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
+        session.add(agg2)
+
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        session.add(site1)
+        session.add(site2)
+        await session.flush()
+
+        # wrong site_id
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=202,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site2,
+            )
+        )
+
+        # Wrong resource type
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=303,
+                resource_type=SubscriptionResource.READING,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong der program
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=404,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=99,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong aggregator
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=505,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg2,
+                scoped_site=site1,
+            )
+        )
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_success(pg_base_config):
+    """check_subscription_contents should succeed if there is at least 1 matching subscription"""
+
+    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+
+    # Fill up the DB with subscriptions
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
+        session.add(agg2)
+
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        session.add(site1)
+        session.add(site2)
+        await session.flush()
+
+        # wrong site_id
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=202,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site2,
+            )
+        )
+
+        # Wrong resource type
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=303,
+                resource_type=SubscriptionResource.READING,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong der program
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=404,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=99,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        # Wrong aggregator
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=505,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg2,
+                scoped_site=site1,
+            )
+        )
+
+        # Will match
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=606,
+                resource_type=SubscriptionResource.DYNAMIC_OPERATING_ENVELOPE,
+                resource_id=2,
+                aggregator=agg1,
+                scoped_site=site1,
+            )
+        )
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        subs = (await session.execute(select(Subscription))).scalars().all()
+        print(subs)
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, True)
+
+
+@pytest.mark.parametrize("failure_code", [-1, 0, 199, 301, 404, 401, 500])
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, failure_code):
+    """check_all_notifications_transmitted should fail if any logs are not success response"""
+
+    # Fill up the DB with successes and one failure
+    async with generate_async_session(pg_base_config) as session:
+        for i in range(200, 210):
+            session.add(
+                generate_class_instance(
+                    TransmitNotificationLog, seed=i, transmit_notification_log_id=None, http_status_code=i
+                )
+            )
+        session.add(
+            generate_class_instance(
+                TransmitNotificationLog, seed=1, transmit_notification_log_id=None, http_status_code=failure_code
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_all_notifications_transmitted(session)
+        assert_check_result(actual, False)
+
+
+@pytest.mark.parametrize("input_val", [-1, {"a": 2}, 99999998, [1, 2, 3], "abc123"])
+def test_response_type_to_string_bad_values(input_val):
+    output = response_type_to_string(input_val)
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+def test_response_type_to_string_unique_values():
+    all_values: list[str] = []
+    for rt in ResponseType:
+        output = response_type_to_string(rt)
+        assert isinstance(output, str)
+        assert len(output) > 0
+        assert output == response_type_to_string(rt.value), "int or enum should be identical"
+
+        all_values.append(output)
+
+    assert len(all_values) > 1
+    assert len(all_values) == len(set(all_values)), "All values should be unique"
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_latest(pg_base_config):
+    """check_response_contents should behave correctly when looking ONLY at the latest Response"""
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        der_control_1 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=303,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+        )
+        session.add(der_control_1)
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=505,
+                response_type=ResponseType.EVENT_CANCELLED,
+                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        # This is the latest
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=606,
+                response_type=ResponseType.EVENT_COMPLETED,
+                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=707,
+                response_type=ResponseType.EVENT_RECEIVED,
+                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is a latest
+        assert_check_result(await check_response_contents({"latest": True}, session), True)
+
+        # This will check that there is a latest and that the status matches the filter
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session), True
+        )
+
+        # This will check that the filter on latest will fail if there is mismatch on the latest record
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, session),
+            False,
+        )
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_any(pg_base_config):
+    """check_response_contents should behave correctly when looking at ANY of the Responses"""
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        der_control_1 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=303,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+        )
+        session.add(der_control_1)
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=505,
+                response_type=ResponseType.EVENT_CANCELLED,
+                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=606,
+                response_type=ResponseType.EVENT_COMPLETED,
+                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=707,
+                response_type=ResponseType.EVENT_RECEIVED,
+                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope=der_control_1,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is any response
+        assert_check_result(await check_response_contents({"latest": False}, session), True)
+        assert_check_result(await check_response_contents({}, session), True)
+
+        # Checks on existing values
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), True
+        )
+        assert_check_result(await check_response_contents({"status": ResponseType.EVENT_RECEIVED.value}, session), True)
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_CANCELLED.value}, session), True
+        )
+
+        # This will check that the filter will fail if a matching record cant be found
+        assert_check_result(
+            await check_response_contents({"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, session),
+            False,
+        )
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_empty(pg_base_config):
+    """check_response_contents should behave correctly when the DB is empty of responses"""
+
+    async with generate_async_session(pg_base_config) as session:
+        # This will check that there is any response
+        assert_check_result(await check_response_contents({"latest": False}, session), False)
+        assert_check_result(await check_response_contents({"latest": True}, session), False)
+        assert_check_result(await check_response_contents({}, session), False)
+        assert_check_result(
+            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), False
+        )
+        assert_check_result(
+            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session),
+            False,
+        )
 
 
 @pytest.mark.anyio

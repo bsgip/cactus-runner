@@ -3,6 +3,12 @@ import json
 import logging
 from typing import override
 
+# Changing these log file paths requires updating cactus-deploy logconf.json files - these are baked into built images.
+# In theory, we could try and make this more dynamic but for practical reasons, moving these around shouldn't be a
+# common use case
+LOG_FILE_ENVOY = "/shared/envoy.jsonl"
+LOG_FILE_CACTUS_RUNNER = "/shared/cactus_runner.jsonl"
+
 LOG_RECORD_BUILTIN_ATTRS = {
     "args",
     "asctime",
@@ -80,3 +86,14 @@ class NonErrorFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool | logging.LogRecord:
         """Logging filter which excludes warnings and errors"""
         return record.levelno <= logging.INFO
+
+
+def read_log_file(log_file_path: str) -> str:
+    """Reads all text at the specified file path. Returns the resulting data or an error string.
+
+    Significantly large log files will be truncated"""
+    try:
+        with open(log_file_path, "r") as file:
+            return file.read(1024 * 1024 * 4)  # Limit to 4MB so we don't over fetch - should be more than enough
+    except Exception as exc:
+        return f"Error extracting {log_file_path}: {exc}"

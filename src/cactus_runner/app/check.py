@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from cactus_test_definitions.checks import Check
+from envoy.server.exception import InvalidMappingError
+from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
+from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     SiteDER,
     SiteDERRating,
@@ -10,6 +13,8 @@ from envoy.server.model.site import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReading
+from envoy.server.model.subscription import Subscription, TransmitNotificationLog
+from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,22 +74,23 @@ def check_all_steps_complete(
         return CheckResult(True, None)
 
 
-async def check_connectionpoint_contents(session: AsyncSession) -> CheckResult:
-    """Implements the connectionpoint-contents
+async def check_end_device_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the end-device-contents check
 
-    Returns pass if the active test site has a connection point"""
+    Returns pass if there is an active test site (an optionally checks the contents of that EndDevice)"""
 
     site = await get_active_site(session)
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    if not site.nmi:
+    has_connection_point_id: bool = resolved_parameters.get("has_connection_point_id", False)
+    if has_connection_point_id and not site.nmi:
         return CheckResult(False, f"EndDevice {site.site_id} has no ConnectionPoint id specified.")
 
     return CheckResult(True, None)
 
 
-async def check_der_settings_contents(session: AsyncSession) -> CheckResult:
+async def check_der_settings_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the der-settings-contents check
 
     Returns pass if DERSettings has been submitted for the active site"""
@@ -99,6 +105,12 @@ async def check_der_settings_contents(session: AsyncSession) -> CheckResult:
     der_settings = response.scalar_one_or_none()
     if der_settings is None:
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
+
+    set_grad_w_value: int | None = resolved_parameters.get("setGradW", None)
+    if set_grad_w_value is not None and der_settings.grad_w != set_grad_w_value:
+        return CheckResult(
+            False, f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {set_grad_w_value}"
+        )
 
     return CheckResult(True, None)
 
@@ -273,6 +285,117 @@ async def check_readings_der_voltage(session: AsyncSession, resolved_parameters:
     )
 
 
+async def check_all_notifications_transmitted(session: AsyncSession) -> CheckResult:
+    """Implements the all-notifications-transmitted check.
+
+    Will assume that 0 transmission logs is a failure to avoid long running timeouts from being overlooked"""
+
+    all_logs = (await session.execute(select(TransmitNotificationLog))).scalars().all()
+    if len(all_logs) == 0:
+        return CheckResult(False, "No TransmitNotificationLog entries found. Are there active subscriptions?")
+
+    for log in all_logs:
+        if log.http_status_code < 200 or log.http_status_code >= 300:
+            sub_id = log.subscription_id_snapshot
+            return CheckResult(
+                False,
+                f"/sub/{sub_id} received a HTTP {log.http_status_code} when sending a notification",
+            )
+
+    return CheckResult(True, f"All {len(all_logs)} notifications yielded HTTP success codes")
+
+
+async def check_subscription_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
+    """Implements the subscription-contents check"""
+
+    subscribed_resource: str = resolved_parameters["subscribed_resource"]  # mandatory param
+    active_site = await get_active_site(session)
+    if active_site is None:
+        return CheckResult(False, "No EndDevice is currently registered")
+
+    # Decode the href so we know what to look for in the DB
+    try:
+        resource_type, _, resource_id = SubscriptionMapper.parse_resource_href(subscribed_resource)
+    except InvalidMappingError as exc:
+        logger.error(f"check_subscription_contents: Caught InvalidMappingError for {subscribed_resource}", exc_info=exc)
+        return CheckResult(False, f"Unable to interpret resource {subscribed_resource}: {exc.message}")
+
+    matching_sub = (
+        await session.execute(
+            select(Subscription).where(
+                (Subscription.aggregator_id == active_site.aggregator_id)
+                & (Subscription.scoped_site_id == active_site.site_id)
+                & (Subscription.resource_type == resource_type)
+                & (Subscription.resource_id == resource_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if matching_sub is None:
+        return CheckResult(False, f"Couldn't find a subscription for {subscribed_resource}")
+
+    return CheckResult(True, f"Matched {subscribed_resource} to /sub/{matching_sub.subscription_id}")
+
+
+def response_type_to_string(t: int | ResponseType | None) -> str:
+    if t is None:
+        return "N/A"
+    elif isinstance(t, ResponseType):
+        return f"{t} ({t.value})"
+    elif isinstance(t, int):
+        try:
+            return response_type_to_string(ResponseType(t))
+        except Exception:
+            return f"({t})"
+    else:
+        return f"{t}"
+
+
+async def check_response_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
+    """Implements the response-contents check by inspecting the response table for site controls"""
+
+    is_latest: bool = resolved_parameters.get("latest", False)
+    status_filter: int | None = resolved_parameters.get("status", None)
+    status_filter_string = response_type_to_string(status_filter)
+
+    # Latest queries require evaluating ONLY the latest response object
+    if is_latest:
+        latest_response = (
+            await session.execute(
+                (
+                    select(DynamicOperatingEnvelopeResponse)
+                    .order_by(DynamicOperatingEnvelopeResponse.created_time.desc())
+                    .limit(1)
+                )
+            )
+        ).scalar_one_or_none()
+        if latest_response is None:
+            return CheckResult(False, "No responses have been recorded for any DERControls")
+
+        rt_string = response_type_to_string(latest_response.response_type)
+        if status_filter is not None and latest_response.response_type != status_filter:
+            return CheckResult(
+                False,
+                f"Latest response expected a response_type of {status_filter_string} but got {rt_string}",
+            )
+
+        return CheckResult(True, f"Latest DERControl response of type {rt_string} matches check.")
+    else:
+        # Otherwise we look for ANY responses that match our request
+        any_query = (
+            select(DynamicOperatingEnvelopeResponse)
+            .order_by(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id)
+            .limit(1)
+        )
+        if status_filter is not None:
+            any_query = any_query.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
+
+        matching_response = (await session.execute(any_query)).scalar_one_or_none()
+        if matching_response is None:
+            return CheckResult(False, f"No DERControl response of type {status_filter_string} was found.")
+
+        return CheckResult(True, f"At least one DERControl response of type {status_filter_string} was found")
+
+
 async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -294,11 +417,11 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
             case "all-steps-complete":
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 
-            case "connectionpoint-contents":
-                check_result = await check_connectionpoint_contents(session)
+            case "end-device-contents":
+                check_result = await check_end_device_contents(session, resolved_parameters)
 
             case "der-settings-contents":
-                check_result = await check_der_settings_contents(session)
+                check_result = await check_der_settings_contents(session, resolved_parameters)
 
             case "der-capability-contents":
                 check_result = await check_der_capability_contents(session)
@@ -323,6 +446,15 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
             case "readings-der-voltage":
                 check_result = await check_readings_der_voltage(session, resolved_parameters)
+
+            case "all-notifications-transmitted":
+                check_result = await check_all_notifications_transmitted(session)
+
+            case "subscription-contents":
+                check_result = await check_subscription_contents(resolved_parameters, session)
+
+            case "response-contents":
+                check_result = await check_response_contents(resolved_parameters, session)
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)

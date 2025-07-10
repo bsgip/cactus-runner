@@ -15,6 +15,9 @@ from cactus_runner.models import (
 @pytest.fixture
 def runner_status_fixture():
     return RunnerStatus(
+        timestamp=datetime(2022, 4, 5, tzinfo=timezone.utc),
+        log_envoy="log for\nenvoy",
+        log_cactus_runner="log for\ncactus runner",
         status_summary="status summery here",
         last_client_interaction=ClientInteraction(
             interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(timezone.utc)
@@ -34,6 +37,7 @@ def runner_status_fixture():
                 status=http.HTTPStatus.OK,
                 timestamp=datetime.now(timezone.utc),
                 step_name="ALL-01-001",
+                body_xml_errors=[],
             )
         ],
     )

@@ -125,8 +125,8 @@ def create_app() -> web.Application:
     }
 
     # App events
-    app.on_startup.append(app_on_startup_handler)
-    app.on_cleanup.append(app_on_cleanup_handler)
+    app.on_startup.append(app_on_startup_handler)  # type: ignore # Something has broken with type defs
+    app.on_cleanup.append(app_on_cleanup_handler)  # type: ignore # Something has broken with type defs
 
     DEFAULT_PERIOD_SEC = 10  # seconds
     app[APPKEY_PERIOD_SEC] = DEFAULT_PERIOD_SEC  # Frequency of periodic task

@@ -10,11 +10,11 @@ from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
     UpdateDefaultValue,
 )
+from envoy_schema.admin.schema.site import SiteUpdateRequest
 from envoy_schema.admin.schema.site_control import (
     SiteControlGroupRequest,
     SiteControlRequest,
 )
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -115,16 +115,36 @@ async def action_set_default_der_control(
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
     setGradW = resolved_parameters.get("setGradW", None)
+    cancelled = resolved_parameters.get("cancelled", False)
+
+    default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
     await envoy_client.post_site_control_default(
         active_site.site_id,
         ControlDefaultRequest(
-            import_limit_watts=UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else None,
-            export_limit_watts=UpdateDefaultValue(value=export_limit_watts) if export_limit_watts is not None else None,
-            generation_limit_watts=UpdateDefaultValue(value=gen_limit_watts) if gen_limit_watts is not None else None,
-            load_limit_watts=UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else None,
-            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else None,
+            import_limit_watts=(
+                UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else default_val
+            ),
+            export_limit_watts=(
+                UpdateDefaultValue(value=export_limit_watts) if export_limit_watts is not None else default_val
+            ),
+            generation_limit_watts=(
+                UpdateDefaultValue(value=gen_limit_watts) if gen_limit_watts is not None else default_val
+            ),
+            load_limit_watts=(
+                UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else default_val
+            ),
+            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else default_val,
         ),
+    )
+
+
+async def action_create_der_program(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+    primacy: int = int(resolved_parameters["primacy"])  # mandatory param
+    fsa_id: int = int(resolved_parameters.get("fsa_id", 1))
+
+    await envoy_client.post_site_control_group(
+        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id)
     )
 
 
@@ -132,7 +152,9 @@ async def action_create_der_control(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
     # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
-    active_site = (await session.execute(select(Site).order_by(Site.changed_time).limit(1))).scalar_one()
+    active_site = await get_active_site(session)
+    if active_site is None:
+        raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
 
     start_time: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
@@ -142,20 +164,23 @@ async def action_create_der_control(
     if pow_10mult is not None:
         await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=pow_10mult))
 
-    # For primacy - we need to find the site_control_group with the specified primacy (creating one if required)
+    # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
     primacy: int = resolved_parameters.get("primacy", 0)
+    fsa_id: int | None = resolved_parameters.get("fsa_id", None)
     site_control_group_id: int | None = None
     control_groups_response = await envoy_client.get_all_site_control_groups()
     if control_groups_response.site_control_groups:
         for g in control_groups_response.site_control_groups:
-            if g.primacy == primacy:
+            if g.primacy == primacy and (fsa_id is None or fsa_id == g.fsa_id):
                 site_control_group_id = g.site_control_group_id
                 break
 
     # Create our site control group if we don't have an existing one
     if site_control_group_id is None:
         site_control_group_id = await envoy_client.post_site_control_group(
-            SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy)
+            SiteControlGroupRequest(
+                description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id if fsa_id is not None else 1
+            )
         )
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
@@ -200,22 +225,49 @@ async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
             )
 
 
-async def action_set_poll_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
-    rate_seconds: int = resolved_parameters["rate_seconds"]
-    await envoy_client.update_runtime_config(
-        RuntimeServerConfigRequest(
-            dcap_pollrate_seconds=rate_seconds,
-            edevl_pollrate_seconds=rate_seconds,
-            fsal_pollrate_seconds=rate_seconds,
-            derl_pollrate_seconds=rate_seconds,
-            derpl_pollrate_seconds=rate_seconds,
+async def action_set_comms_rate(
+    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+):
+    dcap_poll_seconds: int | None = resolved_parameters.get("dcap_poll_seconds", None)
+    edev_list_poll_seconds: int | None = resolved_parameters.get("edev_list_poll_seconds", None)
+    fsa_list_poll_seconds: int | None = resolved_parameters.get("fsa_list_poll_seconds", None)
+    derp_list_poll_seconds: int | None = resolved_parameters.get("derp_list_poll_seconds", None)
+    der_list_poll_seconds: int | None = resolved_parameters.get("der_list_poll_seconds", None)
+    mup_post_seconds: int | None = resolved_parameters.get("mup_post_seconds", None)
+    edev_post_seconds: int | None = resolved_parameters.get("edev_post_seconds", None)
+
+    # If we have any of the server config values set - send that request
+    if any(
+        [
+            dcap_poll_seconds,
+            edev_list_poll_seconds,
+            der_list_poll_seconds,
+            derp_list_poll_seconds,
+            fsa_list_poll_seconds,
+            mup_post_seconds,
+        ]
+    ):
+        await envoy_client.update_runtime_config(
+            RuntimeServerConfigRequest(
+                dcap_pollrate_seconds=dcap_poll_seconds,
+                edevl_pollrate_seconds=edev_list_poll_seconds,
+                derl_pollrate_seconds=der_list_poll_seconds,
+                derpl_pollrate_seconds=derp_list_poll_seconds,
+                fsal_pollrate_seconds=fsa_list_poll_seconds,
+                mup_postrate_seconds=mup_post_seconds,
+            )
         )
-    )
 
+    # If we are updating the active EndDevice postRate - send that request
+    if edev_post_seconds is not None:
+        active_site = await get_active_site(session)
+        if active_site is None:
+            raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
 
-async def action_set_post_rate(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
-    rate_seconds: int = resolved_parameters["rate_seconds"]
-    await envoy_client.update_runtime_config(RuntimeServerConfigRequest(mup_postrate_seconds=rate_seconds))
+        await envoy_client.update_single_site(
+            active_site.site_id,
+            SiteUpdateRequest(nmi=None, timezone_id=None, device_category=None, post_rate_seconds=edev_post_seconds),
+        )
 
 
 async def action_register_end_device(
@@ -292,14 +344,14 @@ async def apply_action(
             case "create-der-control":
                 await action_create_der_control(resolved_parameters, session, envoy_client)
                 return
+            case "create-der-program":
+                await action_create_der_program(resolved_parameters, envoy_client)
+                return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)
                 return
-            case "set-poll-rate":
-                await action_set_poll_rate(resolved_parameters, envoy_client)
-                return
-            case "set-post-rate":
-                await action_set_post_rate(resolved_parameters, envoy_client)
+            case "set-comms-rate":
+                await action_set_comms_rate(resolved_parameters, session, envoy_client)
                 return
             case "register-end-device":
                 await action_register_end_device(active_test_procedure, resolved_parameters, session)
