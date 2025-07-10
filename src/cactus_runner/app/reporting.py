@@ -138,11 +138,7 @@ def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_in
     canvas.setFont("Helvetica-Bold", 16)
     canvas.drawString(MARGIN, PAGE_HEIGHT - 0.6 * inch, DOCUMENT_TITLE)
 
-    # Logo (Banner)
-    size = 40
-    # canvas.drawInlineImage(
-    #     "/home/mike/Downloads/cactus.png", PAGE_WIDTH - PAGE_WIDTH / 3.0, PAGE_HEIGHT - size, width=size, height=size
-    # )
+    # Report author details
     canvas.setFillColor(WHITE)
     canvas.setFont("Helvetica-Bold", 10)
     canvas.drawRightString(PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 0.5 * inch, AUTHOR)
@@ -263,7 +259,7 @@ def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
     pie = go.Pie(
         labels=labels,
         values=values,
-        hole=0.6,  #  Adds a hole to centre of pie chart (for annotation)
+        hole=0.6,  # Adds a hole to centre of pie chart (for annotation)
         textinfo="none",  # Hide the % labels on each segment
     )
 

@@ -1,7 +1,6 @@
 import http
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from aiohttp import web
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends

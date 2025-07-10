@@ -5,7 +5,6 @@ import tempfile
 import zipfile
 
 import pytest
-from aiohttp.web import Response
 
 from cactus_runner.app import finalize
 
