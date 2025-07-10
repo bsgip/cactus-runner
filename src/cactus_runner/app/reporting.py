@@ -82,6 +82,11 @@ AUTHOR = "Cactus Test Harness"
 AUTHOR_URL = "https://cactus.cecs.anu.edu.au"
 
 
+def rl_to_plotly_color(reportlab_color) -> str:
+    """Converts a reportlab color to plotly color (as hexstring)"""
+    return f"#{reportlab_color.hexval()[2:]}"
+
+
 @dataclass
 class StyleSheet:
     """A collection of all the styles used in the PDF report"""
@@ -285,7 +290,7 @@ def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
     )
 
     # Set the colors of the segments
-    fig.update_traces(marker=dict(colors=[f"#{PASS_COLOR.hexval()[2:]}", f"#{FAIL_COLOR.hexval()[2:]}"]))
+    fig.update_traces(marker=dict(colors=[rl_to_plotly_color(PASS_COLOR), rl_to_plotly_color(FAIL_COLOR)]))
 
     # Generate the image from the fig
     content_width = MAX_CONTENT_WIDTH / 2.5  # rescale image to width of KeepTogether column (roughly)
@@ -389,7 +394,7 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
 
 def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_test_start: bool = True) -> Image:
     base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
-    alternative_x_axis_label = "Time relative to test start (s)"
+    alternative_x_axis_label = "Time relative to start of test (s)"
 
     x_axis_label = "Time (UTC)"
 
@@ -413,7 +418,7 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
         requests.append(v)
     df = pd.DataFrame(requests)
 
-    all_step_names = [
+    all_stage_names = [
         event.INIT_STAGE_STEP_NAME,
         event.UNMATCHED_STEP_NAME,
         *runner_state.active_test_procedure.definition.steps.keys(),
@@ -423,12 +428,44 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
         df,
         x="Time",
         y="Stage",
+        range_y=[-1, len(all_stage_names)],  # Force showing all stages on y-axis
         color="Request",
         symbol="Method",
-        category_orders={"Stage": all_step_names},
-        labels={"Time": x_axis_label},
+        category_orders={"Stage": all_stage_names},  # Make y-axis a category axis
+        labels={"Stage": "Stage/Step", "Time": x_axis_label},
     )
-    fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
+
+    # Show large markers for each request.
+    # The marker color is determined by the request e.g. /dcap
+    # The marker shape is determiend by the method e.g. GET, POST etc.
+    # fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
+    fig.update_traces(marker=dict(size=10), selector=dict(mode="markers"))
+
+    # Hide the background and grid lines
+    fig.update_layout(paper_bgcolor="#fff", plot_bgcolor="#fff")
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+
+    # Style the legend
+    fig.update_layout(
+        legend_title_text=None,
+        legend=dict(entrywidth=120, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.15),
+    )
+
+    # Add horizontal bands delineating each stage
+    init_and_match_color = "#e0e0e0"
+    step_color = rl_to_plotly_color(MUTED_COLOR)
+    stage_band_colors = [*[step_color] * (len(all_stage_names) - 2), *[init_and_match_color] * 2]
+    for index, color in enumerate(stage_band_colors):
+        fig.add_hrect(
+            y0=index - 0.4,
+            y1=index + 0.4,
+            line_width=0,
+            fillcolor=color,
+            opacity=0.5,
+            layer="below",
+        )
+
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
@@ -450,7 +487,7 @@ def generate_requests_timeline(request_timestamps: list[datetime] | list[timedel
         df,
         x="timestamp",
         labels={"timestamp": x_axis_label},
-        color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
+        color_discrete_sequence=[rl_to_plotly_color(HIGHLIGHT_COLOR)],
     )
     fig.update_layout(bargap=0.2)
     fig.update_layout(yaxis_title="Number of requests")
@@ -462,7 +499,7 @@ def generate_communications_section(
 ) -> list[Flowable]:
     request_timestamps: list[datetime] = [request_entry.timestamp for request_entry in runner_state.request_history]
     base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
-    alternative_x_axis_label = "Time relative to test start (s)"
+    alternative_x_axis_label = "Time relative to start of test (s)"
 
     x_axis_label = "Time (UTC)"
 
@@ -555,7 +592,7 @@ def generate_readings_timeline(
         x=x_axis_column,
         y="scaled_value",
         markers=True,
-        color_discrete_sequence=[f"#{HIGHLIGHT_COLOR.hexval()[2:]}"],
+        color_discrete_sequence=[rl_to_plotly_color(HIGHLIGHT_COLOR)],
     )
 
     fig.update_layout(
