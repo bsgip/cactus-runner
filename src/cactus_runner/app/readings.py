@@ -175,7 +175,7 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
 
     # Calculate value with proper scaling applied (power_10)
     scale_factor = Decimal(10**reading_type.power_of_ten_multiplier)
-    df["scaled_value"] = df["value"] * scale_factor
+    df["scaled_value"] = df["value"] * scale_factor  # type: ignore
 
     return df
 

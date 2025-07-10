@@ -6,21 +6,23 @@ from functools import partial
 
 import pandas as pd
 import PIL.Image as PilImage
-import plotly.express as px
-import plotly.graph_objects as go
+import plotly.express as px  # type: ignore
+import plotly.graph_objects as go  # type: ignore
 from cactus_test_definitions import __version__ as cactus_test_definitions_version
 from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
-from reportlab.lib.colors import HexColor
+from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
     ParagraphStyle,
     getSampleStyleSheet,
 )
 from reportlab.lib.units import inch
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     BalancedColumns,
+    BaseDocTemplate,
     Flowable,
     Image,
     Paragraph,
@@ -82,7 +84,7 @@ AUTHOR = "Cactus Test Harness"
 AUTHOR_URL = "https://cactus.cecs.anu.edu.au"
 
 
-def rl_to_plotly_color(reportlab_color) -> str:
+def rl_to_plotly_color(reportlab_color: Color) -> str:
     """Converts a reportlab color to plotly color (as hexstring)"""
     return f"#{reportlab_color.hexval()[2:]}"
 
@@ -111,8 +113,8 @@ def get_stylesheet() -> StyleSheet:
             leading=22,
             spaceAfter=3,
         ),
-        heading=sample_style_sheet.get("Heading2"),
-        subheading=sample_style_sheet.get("Heading3"),
+        heading=sample_style_sheet.get("Heading2"),  # type: ignore
+        subheading=sample_style_sheet.get("Heading3"),  # type: ignore
         table=DEFAULT_TABLE_STYLE,
         table_width=MAX_CONTENT_WIDTH,
         spacer=DEFAULT_SPACER,
@@ -120,7 +122,9 @@ def get_stylesheet() -> StyleSheet:
     )
 
 
-def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_instance: str):
+def first_page_template(
+    canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_procedure_instance: str
+) -> None:
     """Template for the first/front/title page of the report"""
 
     # test_procedure_name = "ALL-01"
@@ -176,7 +180,9 @@ def first_page_template(canvas, doc, test_procedure_name: str, test_procedure_in
     )
 
 
-def later_pages_template(canvas, doc, test_procedure_name: str, test_procedure_instance: str):
+def later_pages_template(
+    canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_procedure_instance: str
+) -> None:
     """Template for subsequent pages"""
     canvas.saveState()
     # Footer
@@ -214,7 +220,7 @@ def generate_overview_section(
     duration: timedelta,
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph(test_procedure_name, style=stylesheet.title))
     elements.append(Paragraph(test_procedure_description, style=stylesheet.subheading))
     elements.append(stylesheet.spacer)
@@ -250,7 +256,7 @@ def generate_overview_section(
     return elements
 
 
-def generate_criteria_summary_chart(num_passed: int, num_failed) -> Image:
+def generate_criteria_summary_chart(num_passed: int, num_failed: int) -> Image:
     labels = ["Pass", "Fail"]
     values = [num_passed, num_failed]
     total = num_passed + num_failed
@@ -354,11 +360,13 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
     criteria_explanation_data = [
         [
             index + 1,
-            check_name,
-            Paragraph("" if check_results[check_name].description is None else check_results[check_name].description),
+            name,
+            Paragraph(
+                "" if check_results[name].description is None else check_results[name].description  # type: ignore
+            ),
         ]
-        for index, check_name in enumerate(check_results)
-        if not check_results[check_name].passed
+        for index, name in enumerate(check_results)
+        if not check_results[name].passed
     ]
 
     criteria_explanation_data.insert(0, ["", "", "Explanation of Failure"])
@@ -373,7 +381,7 @@ def generate_criteria_section(check_results: dict[str, CheckResult], stylesheet:
     num_passed = sum(check_values)
     num_failed = len(check_values) - num_passed
 
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph("Criteria", stylesheet.heading))
     chart = generate_criteria_summary_chart(num_passed=num_passed, num_failed=num_failed)
     table = generate_criteria_summary_table(check_results=check_results, stylesheet=stylesheet)
@@ -397,27 +405,35 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
     requests = []
     for request_entry in runner_state.request_history:
 
-        timestamp = request_entry.timestamp
         if time_relative_to_test_start and base_timestamp is not None:
             # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
             # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
             # Here convert the timedeltas to total seconds to avoid this problem.
-            timestamp = (request_entry.timestamp - base_timestamp).total_seconds()
+            total_seconds = (request_entry.timestamp - base_timestamp).total_seconds()
             x_axis_label = alternative_x_axis_label
 
-        v = dict(
-            Stage=request_entry.step_name,
-            Time=timestamp,
-            Request=request_entry.path,
-            Method=str(request_entry.method),
-        )
+            v = dict(
+                Stage=request_entry.step_name,
+                Time=total_seconds,
+                Request=request_entry.path,
+                Method=str(request_entry.method),
+            )
+        else:
+            timestamp = request_entry.timestamp
+            v = dict(
+                Stage=request_entry.step_name,
+                Time=timestamp,
+                Request=request_entry.path,
+                Method=str(request_entry.method),
+            )
+
         requests.append(v)
     df = pd.DataFrame(requests)
 
     all_stage_names = [
         event.INIT_STAGE_STEP_NAME,
         event.UNMATCHED_STEP_NAME,
-        *runner_state.active_test_procedure.definition.steps.keys(),
+        *runner_state.active_test_procedure.definition.steps.keys(),  # type: ignore
     ]
 
     fig = px.scatter(
@@ -466,7 +482,7 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
 
 
 def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph("Test Progress", stylesheet.heading))
     elements[-1].keepWithNext = True
     if runner_state.request_history:
@@ -477,7 +493,7 @@ def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleS
     return elements
 
 
-def generate_requests_timeline(request_timestamps: list[datetime] | list[timedelta], x_axis_label: str) -> Image:
+def generate_requests_timeline(request_timestamps: list[datetime] | list[float], x_axis_label: str) -> Image:
     df = pd.DataFrame({"timestamp": request_timestamps})
     fig = px.histogram(
         df,
@@ -499,7 +515,7 @@ def generate_communications_section(
 
     x_axis_label = "Time (UTC)"
 
-    timestamps = request_timestamps
+    timestamps: list[datetime] | list[float] = request_timestamps
     if time_relative_to_test_start and base_timestamp is not None:
         # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
         # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
@@ -507,7 +523,7 @@ def generate_communications_section(
         timestamps = [(timestamp - base_timestamp).total_seconds() for timestamp in request_timestamps]
         x_axis_label = alternative_x_axis_label
 
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph("Communications", stylesheet.heading))
     elements[-1].keepWithNext = True
     if request_timestamps:
@@ -519,13 +535,13 @@ def generate_communications_section(
 
 
 def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
     table_data = [
         [
-            Paragraph(site_der.site_der_rating.model_dump()),
-            Paragraph(site_der.site_der_setting.model_dump()),
-            Paragraph(site_der.site_der_availability.model_dump()),
-            Paragraph(site_der.site_der_status.model_dump()),
+            Paragraph(site_der.site_der_rating.model_dump()),  # type: ignore
+            Paragraph(site_der.site_der_setting.model_dump()),  # type: ignore
+            Paragraph(site_der.site_der_availability.model_dump()),  # type: ignore
+            Paragraph(site_der.site_der_status.model_dump()),  # type: ignore
         ]
         for site_der in site.site_ders
     ]
@@ -538,7 +554,7 @@ def generate_site_der_table(site: Site, stylesheet: StyleSheet) -> list[Flowable
 
 
 def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
 
     if site.nmi:
         section_title = f"Site {site.site_id} (nmi: {site.nmi})"
@@ -557,7 +573,7 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
 
 
 def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph("Devices", stylesheet.heading))
     elements[-1].keepWithNext = True
     if sites:
@@ -622,7 +638,7 @@ def reading_description(srt: SiteReadingType, exclude_mup: bool = False) -> str:
 
 
 def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list[Flowable]:
-    elements = []
+    elements: list[Flowable] = []
 
     table_data = [
         [reading_type.site_reading_type_id, reading_description(reading_type, exclude_mup=True), count]
@@ -644,7 +660,7 @@ def generate_readings_section(
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
 
-    elements = []
+    elements: list[Flowable] = []
     elements.append(Paragraph("Readings", stylesheet.heading))
     elements[-1].keepWithNext = True
 
@@ -692,7 +708,7 @@ def generate_page_elements(
     if active_test_procedure is None:
         raise ValueError("'active_test_procedure' attribute of 'runner_state' cannot be None")
 
-    page_elements = []
+    page_elements: list[Flowable] = []
 
     test_procedure_name = active_test_procedure.name
     test_procedure_description = active_test_procedure.definition.description

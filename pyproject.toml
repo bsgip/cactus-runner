@@ -51,6 +51,8 @@ dev = [
   "python-dotenv[cli]",
   "coverage",
   "lxml-stubs",
+  "pandas-stubs",
+  "types-reportlab",
 ]
 test = [
   "pytest",
