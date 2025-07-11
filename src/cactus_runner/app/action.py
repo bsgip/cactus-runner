@@ -190,6 +190,7 @@ async def action_create_der_control(
     export_limit_watts: Decimal | None = resolved_parameters.get("opModExpLimW", None)
     gen_limit_watts: Decimal | None = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts: Decimal | None = resolved_parameters.get("opModLoadLimW", None)
+    set_point_percent: Decimal | None = resolved_parameters.get("opModFixedW", None)
 
     await envoy_client.create_site_controls(
         site_control_group_id,
@@ -206,6 +207,7 @@ async def action_create_der_control(
                 export_limit_watts=export_limit_watts,
                 generation_limit_watts=gen_limit_watts,
                 load_limit_watts=load_limit_watts,
+                set_point_percentage=set_point_percent,
             )
         ],
     )
