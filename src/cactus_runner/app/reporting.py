@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from http import HTTPStatus
 
 import pandas as pd
 import PIL.Image as PilImage
@@ -35,7 +36,12 @@ from reportlab.platypus import (
 from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
-from cactus_runner.models import ClientInteraction, ClientInteractionType, RunnerState
+from cactus_runner.models import (
+    ClientInteraction,
+    ClientInteractionType,
+    RequestEntry,
+    RunnerState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -344,19 +350,6 @@ def generate_criteria_summary_table(check_results: dict[str, CheckResult], style
 
 
 def generate_criteria_failure_table(check_results: dict[str, CheckResult], stylesheet: StyleSheet) -> Table:
-    table_style = TableStyle(
-        [
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [TABLE_ROW_COLOR, TABLE_ALT_ROW_COLOR]),
-            ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_TEXT_COLOR),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("LINEBELOW", (0, 0), (-1, 0), 1, TABLE_LINE_COLOR),
-            ("LINEBELOW", (0, -1), (-1, -1), 1, TABLE_LINE_COLOR),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]
-    )
     criteria_explanation_data = [
         [
             index + 1,
@@ -372,7 +365,7 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
     criteria_explanation_data.insert(0, ["", "", "Explanation of Failure"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.05, 0.35, 0.6]]
     table = Table(criteria_explanation_data, colWidths=column_widths)
-    table.setStyle(table_style)
+    table.setStyle(stylesheet.table)
     return table
 
 
@@ -526,6 +519,27 @@ def get_request_timestamps(
     return timestamps, description
 
 
+def get_requests_with_errors(runner_state: RunnerState) -> list[RequestEntry]:
+    return [request_entry for request_entry in runner_state.request_history if request_entry.status >= HTTPStatus(400)]
+
+
+def generate_requests_with_errors_table(requests_with_errors: list[RequestEntry], stylesheet: StyleSheet) -> Table:
+    data = [
+        [
+            req.timestamp,
+            f"{str(req.method)} {req.path} {req.status}",
+            Paragraph("\n".join(req.body_xml_errors)),
+        ]
+        for req in requests_with_errors
+    ]
+
+    data.insert(0, ["Time (UTC)", "Request", "Validation Errors (if present)"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
+    table = Table(data, colWidths=column_widths)
+    table.setStyle(stylesheet.table)
+    return table
+
+
 def generate_communications_section(
     runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
 ) -> list[Flowable]:
@@ -539,6 +553,13 @@ def generate_communications_section(
             runner_state=runner_state, time_relative_to_test_start=time_relative_to_test_start
         )
         elements.append(generate_requests_histogram(request_timestamps=timestamps, x_axis_label=description))
+
+        requests_with_errors = get_requests_with_errors(runner_state=runner_state)
+        if requests_with_errors:
+            elements.append(stylesheet.spacer)
+            elements.append(
+                generate_requests_with_errors_table(requests_with_errors=requests_with_errors, stylesheet=stylesheet)
+            )
     else:
         elements.append(Paragraph("No requests were received by utility server during the test procedure."))
     elements.append(stylesheet.spacer)
