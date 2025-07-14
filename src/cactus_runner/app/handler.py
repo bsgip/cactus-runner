@@ -101,6 +101,12 @@ async def init_handler(request: web.Request):
     else:
         logger.info(f"Subscriptions will restricted to the FQDN '{subscription_domain}'")
 
+    run_id = request.query.get("run_id", None)
+    if run_id is None:
+        logger.info("No run ID has been assigned to this test.")
+    else:
+        logger.info(f"run ID {run_id} has been assigned to this test.")
+
     # Get the lfdi of the aggregator to register
     aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
     await precondition.register_aggregator(lfdi=aggregator_lfdi, subscription_domain=subscription_domain)
@@ -134,6 +140,7 @@ async def init_handler(request: web.Request):
         step_status={step: StepStatus.PENDING for step in definition.steps.keys()},
         client_lfdi=aggregator_lfdi,
         client_sfdi=convert_lfdi_to_sfdi(aggregator_lfdi),
+        run_id=run_id,
     )
 
     logger.info(

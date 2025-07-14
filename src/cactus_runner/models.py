@@ -32,6 +32,7 @@ class ActiveTestProcedure:
     step_status: dict[str, StepStatus]
     client_lfdi: str  # The LFDI of the client certificate expected for the test
     client_sfdi: int  # The SFDI of the client certificate expected for the test
+    run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any
     communications_disabled: bool = False
     finished_zip_data: bytes | None = (
         None  # Finalised ZIP file. If not None - this test is "done" and shouldn't update any events/state

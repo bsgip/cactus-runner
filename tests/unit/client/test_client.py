@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from itertools import product
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,9 +15,9 @@ from cactus_runner.models import (
 )
 
 
-@pytest.mark.parametrize("subscription_domain", [None, "my.fq.dn"])
+@pytest.mark.parametrize("subscription_domain, run_id", product([None, "my.fq.dn"], [None, "abc 123"]))
 @pytest.mark.asyncio
-async def test_init(subscription_domain: str | None):
+async def test_init(subscription_domain: str | None, run_id: str | None):
     # Arrange
     expected_start_result = InitResponseBody(
         status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
@@ -36,9 +37,22 @@ async def test_init(subscription_domain: str | None):
     )
 
     # Assert
-    if subscription_domain is None:
+    if subscription_domain is None and run_id is None:
         mock_session.post_assert_called_once_with(
             url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
+        )
+    elif subscription_domain is None:
+        mock_session.post_assert_called_once_with(
+            url="/init", params={"test": test_id.value, "certificate": aggregator_certificate, "run_id": run_id}
+        )
+    elif run_id is None:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "certificate": aggregator_certificate,
+                "subscription_domain": subscription_domain,
+            },
         )
     else:
         mock_session.post_assert_called_once_with(
@@ -47,6 +61,7 @@ async def test_init(subscription_domain: str | None):
                 "test": test_id.value,
                 "certificate": aggregator_certificate,
                 "subscription_domain": subscription_domain,
+                "run_id": run_id,
             },
         )
     assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1

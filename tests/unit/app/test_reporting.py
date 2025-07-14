@@ -27,6 +27,7 @@ def test_pdf_report_as_bytes():
         step_status={"1": StepStatus.PENDING},
         client_lfdi="123",
         client_sfdi=123,
+        run_id=None,
     )
     NUM_REQUESTS = 3
     runner_state = RunnerState(
