@@ -493,7 +493,7 @@ def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleS
     return elements
 
 
-def generate_requests_timeline(request_timestamps: list[datetime] | list[float], x_axis_label: str) -> Image:
+def generate_requests_histogram(request_timestamps: list[datetime] | list[float], x_axis_label: str) -> Image:
     df = pd.DataFrame({"timestamp": request_timestamps})
     fig = px.histogram(
         df,
@@ -506,28 +506,39 @@ def generate_requests_timeline(request_timestamps: list[datetime] | list[float],
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def generate_communications_section(
-    runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
-) -> list[Flowable]:
+def get_request_timestamps(
+    runner_state: RunnerState, time_relative_to_test_start: bool
+) -> tuple[list[datetime] | list[float], str]:
     request_timestamps: list[datetime] = [request_entry.timestamp for request_entry in runner_state.request_history]
     base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
-    alternative_x_axis_label = "Time relative to start of test (s)"
+    timestamps: list[datetime] | list[float]
 
-    x_axis_label = "Time (UTC)"
-
-    timestamps: list[datetime] | list[float] = request_timestamps
     if time_relative_to_test_start and base_timestamp is not None:
         # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
         # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
         # Here convert the timedeltas to total seconds to avoid this problem.
         timestamps = [(timestamp - base_timestamp).total_seconds() for timestamp in request_timestamps]
-        x_axis_label = alternative_x_axis_label
+        description = "Time relative to start of test (s)"
+    else:
+        timestamps = request_timestamps
+        description = "Time (UTC)"
+
+    return timestamps, description
+
+
+def generate_communications_section(
+    runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
+) -> list[Flowable]:
+    have_requests = len(runner_state.request_history) > 0
 
     elements: list[Flowable] = []
     elements.append(Paragraph("Communications", stylesheet.heading))
     elements[-1].keepWithNext = True
-    if request_timestamps:
-        elements.append(generate_requests_timeline(request_timestamps=timestamps, x_axis_label=x_axis_label))
+    if have_requests:
+        timestamps, description = get_request_timestamps(
+            runner_state=runner_state, time_relative_to_test_start=time_relative_to_test_start
+        )
+        elements.append(generate_requests_histogram(request_timestamps=timestamps, x_axis_label=description))
     else:
         elements.append(Paragraph("No requests were received by utility server during the test procedure."))
     elements.append(stylesheet.spacer)
