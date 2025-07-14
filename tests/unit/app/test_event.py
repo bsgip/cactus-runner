@@ -378,7 +378,7 @@ async def test_handle_event_trigger_normal_operation(
     mock_envoy_client = MagicMock()
     input_trigger = generate_class_instance(event.EventTrigger, single_listener=single_listener)
     input_runner_state = RunnerState(
-        ActiveTestProcedure("", None, listeners, {}, "", 0, finished_zip_data=None),
+        ActiveTestProcedure("", None, listeners, {}, "", 0, None, finished_zip_data=None),
         [],
         None,
     )
