@@ -513,26 +513,45 @@ def get_request_timestamps(
     return timestamps, description
 
 
-def get_requests_with_errors(runner_state: RunnerState) -> list[RequestEntry]:
-    return [request_entry for request_entry in runner_state.request_history if request_entry.status >= HTTPStatus(400)]
 
+def get_requests_with_errors(runner_state: RunnerState) -> dict[int,RequestEntry]:
+    return {index: request_entry for index, request_entry in enumerate(runner_state.request_history) if request_entry.status >= HTTPStatus(400)}
 
-def generate_requests_with_errors_table(requests_with_errors: list[RequestEntry], stylesheet: StyleSheet) -> Table:
+def get_requests_with_validation_errors(runner_state: RunnerState) -> dict[int,RequestEntry]:
+    return {index: request_entry for index, request_entry in enumerate(runner_state.request_history) if len(request_entry.body_xml_errors) > 0}
+
+def generate_requests_with_errors_table(requests_with_errors: dict[int,RequestEntry], stylesheet: StyleSheet) -> Table:
     data = [
         [
+            i,
             req.timestamp,
-            f"{str(req.method)} {req.path} {req.status}",
-            Paragraph("\n".join(req.body_xml_errors)),
+            f"{str(req.method)} {req.path}",
+            f"{req.status.name.replace("_", " ").title()} ({req.status.value})",
         ]
-        for req in requests_with_errors
+        for i,req in requests_with_errors.items()
     ]
 
-    data.insert(0, ["Time (UTC)", "Request", "Validation Errors (if present)"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
+    data.insert(0, ["#", "Time (UTC)", "Request", "Error Status"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.45, 0.2,0.25]]
     table = Table(data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     return table
 
+def generate_requests_with_validation_errors_table(requests_with_validation_errors: dict[int,RequestEntry], stylesheet: StyleSheet) -> Table:
+    data = [
+        [
+            i,
+            f"{str(req.method)} {req.path} {req.status}",
+            Paragraph("\n".join(req.body_xml_errors)),
+        ]
+        for i,req in requests_with_validation_errors.items()
+    ]
+
+    data.insert(0, ["", "", "Validation Errors"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
+    table = Table(data, colWidths=column_widths)
+    table.setStyle(stylesheet.table)
+    return table
 
 def generate_communications_section(
     runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
@@ -551,8 +570,16 @@ def generate_communications_section(
         requests_with_errors = get_requests_with_errors(runner_state=runner_state)
         if requests_with_errors:
             elements.append(stylesheet.spacer)
+            elements.append(Paragraph("Requests with errors", stylesheet.subheading))
             elements.append(
                 generate_requests_with_errors_table(requests_with_errors=requests_with_errors, stylesheet=stylesheet)
+            )
+
+        requests_with_validation_errors = get_requests_with_validation_errors(runner_state=runner_state)
+        if requests_with_validation_errors:
+            elements.append(stylesheet.spacer)
+            elements.append(
+                generate_requests_with_validation_errors_table(requests_with_validation_errors=requests_with_validation_errors, stylesheet=stylesheet)
             )
     else:
         elements.append(Paragraph("No requests were received by utility server during the test procedure."))
