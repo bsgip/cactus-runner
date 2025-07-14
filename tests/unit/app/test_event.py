@@ -314,7 +314,7 @@ async def test_is_listener_triggerable(
         (RunnerState(None, [], None)),  # This is when we have no active test procedure
         (
             RunnerState(
-                ActiveTestProcedure("", None, [], {}, "", 0, finished_zip_data=bytes([0, 1])),
+                ActiveTestProcedure("", None, [], {}, "", 0, None, finished_zip_data=bytes([0, 1])),
                 [generate_class_instance(Listener, actions=[])],
                 None,
             )
