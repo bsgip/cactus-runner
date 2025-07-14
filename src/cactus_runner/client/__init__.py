@@ -40,16 +40,21 @@ class RunnerClient:
         test_id: TestProcedureId,
         aggregator_certificate: str,
         subscription_domain: str | None = None,
+        run_id: str | None = None,
     ) -> InitResponseBody:
         """
         Args:
             test_id: The TestProcedureId to initialise the runner with
             aggregator_certificate: The PEM encoded public certificate to be installed as the "aggregator" cert
-            subscription_domain: The FQDN that will be added to the allow list for subscription notifications"""
+            subscription_domain: The FQDN that will be added to the allow list for subscription notifications
+            run_id: The upstream identifier for this run (to be used in report metadata)"""
+
         try:
             params = {"test": test_id.value, "certificate": aggregator_certificate}
             if subscription_domain is not None:
                 params["subscription_domain"] = subscription_domain
+            if run_id is not None:
+                params["run_id"] = run_id
 
             async with session.post(url="/init", params=params) as response:
                 await ensure_success_response(response)
