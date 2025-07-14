@@ -60,6 +60,7 @@ async def test_client_interactions(
     assert status_response.test_procedure_name == test_procedure_id.value
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
     assert_dict_type(str, StepStatus, status_response.step_status)
+    assert_nowish(status_response.timestamp_status)
 
     # Interrogate a finalize response (assume we don't fire off any CSIP requests)
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:

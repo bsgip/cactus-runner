@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
-from cactus_runner.app.log import LOG_FILE_CACTUS_RUNNER, LOG_FILE_ENVOY, read_log_file
+from cactus_runner.app.log import LOG_FILE_ENVOY, read_log_file
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
@@ -53,9 +53,10 @@ async def get_active_runner_status(
     step_status = active_test_procedure.step_status
 
     return RunnerStatus(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp_status=datetime.now(tz=timezone.utc),
+        timestamp_initialise=active_test_procedure.initialised_at,
+        timestamp_start=active_test_procedure.started_at,
         log_envoy=read_log_file(LOG_FILE_ENVOY),
-        log_cactus_runner=read_log_file(LOG_FILE_CACTUS_RUNNER),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
         criteria=await get_criteria_summary(session, active_test_procedure),
@@ -67,9 +68,10 @@ async def get_active_runner_status(
 
 def get_runner_status(last_client_interaction: ClientInteraction) -> RunnerStatus:
     return RunnerStatus(
-        timestamp=datetime.now(tz=timezone.utc),
+        timestamp_status=datetime.now(tz=timezone.utc),
+        timestamp_start=None,
+        timestamp_initialise=None,
         status_summary="No test procedure running",
         last_client_interaction=last_client_interaction,
         log_envoy=read_log_file(LOG_FILE_ENVOY),
-        log_cactus_runner=read_log_file(LOG_FILE_CACTUS_RUNNER),
     )

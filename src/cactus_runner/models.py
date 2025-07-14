@@ -28,6 +28,8 @@ class StepStatus(Enum):
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
+    initialised_at: datetime  # When did the test initialise - timezone aware
+    started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
     listeners: list[Listener]
     step_status: dict[str, StepStatus]
     client_lfdi: str  # The LFDI of the client certificate expected for the test
@@ -153,11 +155,12 @@ class CriteriaEntry(JSONWizard):
 
 @dataclass
 class RunnerStatus(JSONWizard):
-    timestamp: datetime  # when was this status generated?
+    timestamp_status: datetime  # when was this status generated?
+    timestamp_initialise: datetime | None  # When did the test initialise
+    timestamp_start: datetime | None  # When did the test start
     status_summary: str
     last_client_interaction: ClientInteraction
     log_envoy: str  # Snapshot of the current envoy logs
-    log_cactus_runner: str  # Snapshot of the current cactus-runner logs
     criteria: list[CriteriaEntry] = field(default_factory=list)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)

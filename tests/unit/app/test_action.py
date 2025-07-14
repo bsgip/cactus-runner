@@ -68,7 +68,11 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
 
 
 def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
-    return RunnerState(ActiveTestProcedure("test", None, listeners, {}, "", "", None), [], None)
+    return RunnerState(
+        generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None, listeners=listeners),
+        [],
+        None,
+    )
 
 
 @pytest.mark.anyio

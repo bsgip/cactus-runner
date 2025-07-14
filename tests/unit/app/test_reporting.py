@@ -20,13 +20,12 @@ def test_pdf_report_as_bytes():
     # Arrange
     definitions = TestProcedureConfig.from_resource()
     test_name = "ALL-01"
-    active_test_procedure = ActiveTestProcedure(
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
         name=test_name,
         definition=definitions.test_procedures[test_name],
-        listeners=[],
         step_status={"1": StepStatus.PENDING},
-        client_lfdi="123",
-        client_sfdi=123,
+        finished_zip_data=None,
         run_id=None,
     )
     NUM_REQUESTS = 3

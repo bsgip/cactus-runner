@@ -136,6 +136,8 @@ async def init_handler(request: web.Request):
     active_test_procedure = ActiveTestProcedure(
         name=requested_test_procedure,
         definition=definition,
+        initialised_at=datetime.now(tz=timezone.utc),
+        started_at=None,  # Test hasn't started yet
         listeners=listeners,
         step_status={step: StepStatus.PENDING for step in definition.steps.keys()},
         client_lfdi=aggregator_lfdi,
@@ -204,11 +206,11 @@ async def start_handler(request: web.Request):
         )
 
     # Update last client interaction
+    now = datetime.now(timezone.utc)
     request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=datetime.now(timezone.utc)
-        )
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=now)
     )
+    active_test_procedure.started_at = now
 
     # Fire any precondition actions
     if active_test_procedure.definition.preconditions and active_test_procedure.definition.preconditions.actions:
