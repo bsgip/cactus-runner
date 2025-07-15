@@ -89,7 +89,9 @@ async def is_listener_triggerable(
         endpoint = resolved_params.get("endpoint", "")
         serve_request_first = resolved_params.get("serve_request_first", False)
 
-        if endpoint != trigger.client_request.path:
+        # We want to support requests with a HREF_PREFIX to match. Eg incoming request is /envoy-svc-1221421/edev/1 but
+        # we want it to match to /edev/1
+        if not trigger.client_request.path.endswith(endpoint):
             return False
 
         # Make sure that we are listening to the correct before/after serving event

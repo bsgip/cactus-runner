@@ -210,6 +210,21 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
         ),
         (
             event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/some/prefix/my/endppoint/1"),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": "/my/endppoint/1"}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,  # The HREF_PREFIX on the incoming should be ignored
+        ),
+        (
+            event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_AFTER,
                 datetime(2022, 11, 10, tzinfo=timezone.utc),
                 False,
