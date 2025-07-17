@@ -43,6 +43,7 @@ from cactus_runner.app.check import (
     check_subscription_contents,
     do_check_readings_for_types,
     do_check_site_readings_and_params,
+    is_nth_bit_set_properly,
     response_type_to_string,
     run_check,
 )
@@ -107,6 +108,31 @@ def assert_check_result(cr: CheckResult, expected: bool):
     assert isinstance(cr.passed, bool)
     assert cr.description is None or isinstance(cr.description, str)
     assert cr.passed == expected
+
+
+@pytest.mark.parametrize(
+    "value, n, expected, expected_output",
+    [
+        (0, 0, True, False),
+        (0, 0, False, True),
+        (1, 0, True, True),
+        (1, 0, False, False),
+        (0, 4, True, False),
+        (0, 4, False, True),
+        (8, 3, False, False),
+        (8, 3, True, True),
+        (8, 4, False, True),
+        (8, 4, True, False),
+        (6, 0, False, True),
+        (6, 1, True, True),
+        (6, 2, True, True),
+        (6, 3, False, True),
+    ],
+)
+def test_is_nth_bit_set_properly(value: int, n: int, expected: bool, expected_output: bool):
+    actual_output = is_nth_bit_set_properly(value, n, expected)
+    assert isinstance(actual_output, bool)
+    assert actual_output is expected_output
 
 
 @pytest.mark.parametrize(
@@ -346,6 +372,139 @@ async def test_check_der_capability_contents(pg_base_config, existing_sites: lis
             ],
             {},
             True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit0": True, "genConnectStatus_bit1": False, "genConnectStatus_bit2": True},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit0": False},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit1": False},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit2": False},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit0": False, "genConnectStatus_bit1": False, "genConnectStatus_bit2": True},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit0": True, "genConnectStatus_bit1": True, "genConnectStatus_bit2": True},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"genConnectStatus_bit0": True, "genConnectStatus_bit1": False, "genConnectStatus_bit2": False},
+            False,
         ),
         (
             [

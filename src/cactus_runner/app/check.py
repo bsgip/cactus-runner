@@ -134,6 +134,11 @@ async def check_der_capability_contents(session: AsyncSession) -> CheckResult:
     return CheckResult(True, None)
 
 
+def is_nth_bit_set_properly(value: int, nth_bit: int, expected: bool) -> bool:
+    """Returns true if the n'th bit of value is set (if expected = true) or unset (if expected = false)"""
+    return bool(value & (1 << nth_bit)) is expected
+
+
 async def check_der_status_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the der-status-contents check
 
@@ -151,12 +156,49 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
         return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}.")
 
     # Compare the settings we have against any parameter requirements
-    gc_status: int | None = resolved_parameters.get("genConnectStatus", None)
-    if gc_status is not None and gc_status != der_status.generator_connect_status:
+    gc_status_val = der_status.generator_connect_status
+    gc_status_expected: int | None = resolved_parameters.get("genConnectStatus", None)
+    if gc_status_expected is not None and gc_status_expected != gc_status_val:
         return CheckResult(
             False,
-            f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected {gc_status}.",
+            f"DERStatus.genConnectStatus has value {gc_status_val} but expected {gc_status_expected}.",
         )
+
+    gc_status_bit0: bool | None = resolved_parameters.get("genConnectStatus_bit0", None)
+    gc_status_bit1: bool | None = resolved_parameters.get("genConnectStatus_bit1", None)
+    gc_status_bit2: bool | None = resolved_parameters.get("genConnectStatus_bit2", None)
+    if gc_status_val is None:
+        if gc_status_bit0 is not None:
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has no value is expecting bit 0 to be {gc_status_bit0}.",
+            )
+        if gc_status_bit1 is not None:
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has no value is expecting bit 1 to be {gc_status_bit1}.",
+            )
+        if gc_status_bit2 is not None:
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has no value is expecting bit 2 to be {gc_status_bit2}.",
+            )
+    else:
+        if gc_status_bit0 is not None and not is_nth_bit_set_properly(int(gc_status_val), 0, gc_status_bit0):
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected bit 0 to be {gc_status_bit0}.",  # noqa: E501
+            )
+        if gc_status_bit1 is not None and not is_nth_bit_set_properly(int(gc_status_val), 1, gc_status_bit1):
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected bit 1 to be {gc_status_bit1}.",  # noqa: E501
+            )
+        if gc_status_bit2 is not None and not is_nth_bit_set_properly(int(gc_status_val), 2, gc_status_bit2):
+            return CheckResult(
+                False,
+                f"DERStatus.genConnectStatus has value {der_status.generator_connect_status} but expected bit 2 to be {gc_status_bit2}.",  # noqa: E501
+            )
 
     om_status: int | None = resolved_parameters.get("operationalModeStatus", None)
     if om_status is not None and om_status != der_status.operational_mode_status:
