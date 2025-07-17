@@ -41,6 +41,21 @@ from cactus_runner.models import Aggregator, RunnerState
 logger = logging.getLogger(__name__)
 
 
+@web.middleware
+async def log_error_middleware(request, handler):
+    try:
+        response = await handler(request)
+        return response
+    except web.HTTPException as exc:
+        # Handle HTTP exceptions gracefully
+        logger.warning(f"HTTP exception: {exc.status} - {exc.reason}")
+        raise
+    except Exception as exc:
+        # Handle uncaught exceptions
+        logger.error(f"Uncaught exception: {exc}", exc_info=exc)
+        return web.json_response({"error": "Internal Server Error"}, status=500)
+
+
 async def periodic_task(app: web.Application):
     """Periodic task called app[APPKEY_PERIOD_SEC]
 
@@ -102,7 +117,7 @@ def create_app() -> web.Application:
         raise Exception("DATABASE_URL environment variable is not specified")
     initialise_database_connection(postgres_dsn)
 
-    app = web.Application()
+    app = web.Application(middlewares=[log_error_middleware])
 
     # Add routes for Test Runner
     app.router.add_route("GET", MOUNT_POINT + "status", handler.status_handler)

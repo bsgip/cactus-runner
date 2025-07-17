@@ -37,9 +37,17 @@ class NoActiveTestProcedure(Exception):
 
 
 def get_zip_contents(
-    json_status_summary: str, runner_logfile: str, envoy_logfile: str, pdf_data: bytes, filename_infix: str = ""
+    json_status_summary: str | None,
+    runner_logfile: str,
+    envoy_logfile: str,
+    pdf_data: bytes | None,
+    errors: list[str],
+    filename_infix: str = "",
 ) -> bytes:
-    """Returns the contents of the zipped test procedures artifacts in bytes"""
+    """Returns the contents of the zipped test procedures artifacts in bytes."""
+
+    writeable_errors = errors.copy()
+
     # Work in a temporary directory
     with tempfile.TemporaryDirectory() as tempdirname:
         base_path = Path(tempdirname)
@@ -49,9 +57,10 @@ def get_zip_contents(
         os.mkdir(archive_dir)
 
         # Create test summary json file
-        file_path = archive_dir / f"CactusTestProcedureSummary{filename_infix}.json"
-        with open(file_path, "w") as f:
-            f.write(json_status_summary)
+        if json_status_summary is not None:
+            file_path = archive_dir / f"CactusTestProcedureSummary{filename_infix}.json"
+            with open(file_path, "w") as f:
+                f.write(json_status_summary)
 
         # Copy Cactus Runner log file into archive
         destination = archive_dir / f"CactusRunnerLog{filename_infix}.jsonl"
@@ -59,6 +68,7 @@ def get_zip_contents(
             shutil.copyfile(runner_logfile, destination)
         except Exception as exc:
             logger.error(f"Unable to copy {runner_logfile} to {destination}", exc_info=exc)
+            writeable_errors.append(f"Error fetching cactus runner logs: {exc}")
 
         # Copy Envoy log file into archive
         destination = archive_dir / f"EnvoyLog{filename_infix}.jsonl"
@@ -66,11 +76,13 @@ def get_zip_contents(
             shutil.copyfile(envoy_logfile, destination)
         except Exception as exc:
             logger.error(f"Unable to copy {envoy_logfile} to {destination}", exc_info=exc)
+            writeable_errors.append(f"Error fetching envoy logs: {exc}")
 
         # Write pdf report
-        file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
-        with open(file_path, "wb") as f:
-            f.write(pdf_data)
+        if pdf_data is not None:
+            file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
+            with open(file_path, "wb") as f:
+                f.write(pdf_data)
 
         # Create db dump
         try:
@@ -91,10 +103,18 @@ def get_zip_contents(
         ]
         try:
             subprocess.run(command)  # nosec B603
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             logger.error(
-                f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?"  # noqa: E501
+                f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?",  # noqa: E501
+                exc_info=exc,
             )
+            writeable_errors.append(f"Error generating database dump: {exc}")
+
+        # If we have some errors in generating PDF/other outputs - log them in the zip
+        if writeable_errors:
+            file_path = archive_dir / "generation-errors.txt"
+            with open(file_path, "w") as f:
+                f.write("\n".join(writeable_errors))
 
         # Create the temporary zip file
         ARCHIVE_BASEFILENAME = "finalize"
@@ -116,6 +136,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     Populates and then returns the finished_zip_data for the active test procedure"""
 
+    errors: list[str] = []  # For capturing basic error information to encode in the zip to alert about missing content
+
     active_test_procedure = runner_state.active_test_procedure
     if not active_test_procedure:
         raise NoActiveTestProcedure()
@@ -128,14 +150,19 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
-    json_status_summary = (
-        await get_active_runner_status(
-            session=session,
-            active_test_procedure=active_test_procedure,
-            request_history=runner_state.request_history,
-            last_client_interaction=runner_state.last_client_interaction,
-        )
-    ).to_json()
+    try:
+        json_status_summary = (
+            await get_active_runner_status(
+                session=session,
+                active_test_procedure=active_test_procedure,
+                request_history=runner_state.request_history,
+                last_client_interaction=runner_state.last_client_interaction,
+            )
+        ).to_json()
+    except Exception as exc:
+        logger.error("Failure generating active runner status", exc_info=exc)
+        errors.append(f"Failure generating active runner status: {exc}")
+        json_status_summary = None
 
     # Determine all criteria check results
     check_results = {}
@@ -157,13 +184,18 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         sites = []
 
     # Generate the pdf (as bytes)
-    pdf_data = reporting.pdf_report_as_bytes(
-        runner_state=runner_state,
-        check_results=check_results,
-        readings=readings,
-        reading_counts=reading_counts,
-        sites=list(sites),
-    )
+    try:
+        pdf_data = reporting.pdf_report_as_bytes(
+            runner_state=runner_state,
+            check_results=check_results,
+            readings=readings,
+            reading_counts=reading_counts,
+            sites=list(sites),
+        )
+    except Exception as exc:
+        logger.error("Error generating PDF report. Omitting report from final zip.", exc_info=exc)
+        errors.append(f"Error generating PDF report: {exc}")
+        pdf_data = None
 
     generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -173,5 +205,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         envoy_logfile=LOG_FILE_ENVOY,
         pdf_data=pdf_data,
         filename_infix=f"_{generation_timestamp.isoformat()}_{active_test_procedure.name}",
+        errors=errors,
     )
     return active_test_procedure.finished_zip_data
