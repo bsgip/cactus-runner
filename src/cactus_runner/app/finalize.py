@@ -10,18 +10,19 @@ from typing import cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting
+from cactus_runner.app.controls import get_controls
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     begin_session,
     get_postgres_dsn,
 )
-from cactus_runner.app.envoy_common import get_sites
 from cactus_runner.app.log import LOG_FILE_CACTUS_RUNNER, LOG_FILE_ENVOY
 from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_reading_counts,
     get_readings,
 )
+from cactus_runner.app.sites import get_sites
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -179,9 +180,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     reading_counts = await get_reading_counts()
 
     # Determine sites
-    sites = await get_sites(session=session)
-    if not sites:
-        sites = []
+    sites = await get_sites()
+
+    # Determine controls
+    controls = await get_controls()
 
     # Generate the pdf (as bytes)
     try:
@@ -190,7 +192,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             check_results=check_results,
             readings=readings,
             reading_counts=reading_counts,
-            sites=list(sites),
+            sites=sites,
+            controls=controls,
         )
     except Exception as exc:
         logger.error("Error generating PDF report. Omitting report from final zip.", exc_info=exc)

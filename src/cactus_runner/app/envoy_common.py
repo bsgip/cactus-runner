@@ -2,6 +2,7 @@ import logging
 from enum import IntEnum
 from typing import Sequence
 
+from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
@@ -146,6 +147,20 @@ async def get_sites(session: AsyncSession) -> Sequence[Site] | None:
             selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
             selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
         )
+    )
+    response = await session.execute(statement)
+    return response.scalars().all()
+
+
+async def get_csip_aus_site_controls(session: AsyncSession) -> Sequence[DynamicOperatingEnvelope] | None:
+    site = await get_active_site(session)
+    if not site:
+        return []
+
+    statement = (
+        select(DynamicOperatingEnvelope)
+        .order_by(DynamicOperatingEnvelope.start_time.asc())
+        .where(DynamicOperatingEnvelope.site_id == site.site_id)
     )
     response = await session.execute(statement)
     return response.scalars().all()

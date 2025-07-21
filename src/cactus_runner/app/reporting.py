@@ -10,7 +10,7 @@ import PIL.Image as PilImage
 import plotly.express as px  # type: ignore
 import plotly.graph_objects as go  # type: ignore
 from cactus_test_definitions import __version__ as cactus_test_definitions_version
-from envoy.server.model.site import Site
+from envoy.server.model import DynamicOperatingEnvelope, Site
 from envoy.server.model.site_reading import SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, UomType
 from reportlab.lib.colors import Color, HexColor
@@ -653,6 +653,42 @@ def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[
     return elements
 
 
+def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
+    data = [
+        dict(Control=f"{i}", Start=control.start_time, Finish=control.end_time)
+        for i, control in enumerate(controls, start=1)
+    ]
+    df = pd.DataFrame(data)
+    fig = px.timeline(df, x_start="Start", x_end="Finish", y="Control")
+    fig.update_yaxes(autorange="reversed")
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
+
+
+def generate_controls_table(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
+    elements: list[Flowable] = []
+
+    table_data = [[f"{i}", control.start_time, control.duration_seconds] for i, control in enumerate(controls)]
+    table_data.insert(0, ["", "Start (UTC)", "Duration (s)"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.13, 0.63, 0.24]]
+    table = Table(table_data, colWidths=column_widths)
+    table.setStyle(stylesheet.table)
+    elements.append(table)
+    elements.append(stylesheet.spacer)
+    return elements
+
+
+def generate_controls_section(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
+    elements: list[Flowable] = []
+    elements.append(Paragraph("Controls", stylesheet.heading))
+    elements[-1].keepWithNext = True
+    if controls:
+        elements.append(generate_controls_chart(controls=controls))
+    else:
+        elements.append(Paragraph("No controls active during this test procedure."))
+    elements.append(stylesheet.spacer)
+    return elements
+
+
 def generate_readings_timeline(
     readings_df: pd.DataFrame, quantity: str, runner_state: RunnerState, time_relative_to_test_start: bool = True
 ) -> Image:
@@ -770,6 +806,7 @@ def generate_page_elements(
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
     sites: list[Site],
+    controls: list[DynamicOperatingEnvelope],
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
     active_test_procedure = runner_state.active_test_procedure
@@ -827,6 +864,9 @@ def generate_page_elements(
     # Devices Section
     page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
+    # Controls Section
+    page_elements.extend(generate_controls_section(controls=controls, stylesheet=stylesheet))
+
     # Readings Section
     page_elements.extend(
         generate_readings_section(
@@ -843,6 +883,7 @@ def pdf_report_as_bytes(
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
     sites: list[Site],
+    controls: list[DynamicOperatingEnvelope],
 ) -> bytes:
     stylesheet = get_stylesheet()
 
@@ -859,6 +900,7 @@ def pdf_report_as_bytes(
         readings=readings,
         reading_counts=reading_counts,
         sites=sites,
+        controls=controls,
         stylesheet=stylesheet,
     )
 

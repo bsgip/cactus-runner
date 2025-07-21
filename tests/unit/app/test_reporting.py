@@ -4,7 +4,7 @@ from decimal import Decimal
 import pandas as pd
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import TestProcedureConfig
-from envoy.server.model import Site, SiteReadingType
+from envoy.server.model import DynamicOperatingEnvelope, Site, SiteReadingType
 
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.reporting import pdf_report_as_bytes
@@ -51,6 +51,9 @@ def test_pdf_report_as_bytes():
     NUM_SITES = 2
     sites = [generate_class_instance(Site) for _ in range(NUM_SITES)]
 
+    NUM_CONTROLS = 3
+    controls = [generate_class_instance(DynamicOperatingEnvelope) for _ in range(NUM_CONTROLS)]
+
     # Act
     report_bytes = pdf_report_as_bytes(
         runner_state=runner_state,
@@ -58,6 +61,7 @@ def test_pdf_report_as_bytes():
         readings=readings,
         reading_counts=reading_counts,
         sites=sites,
+        controls=controls,
     )
 
     # Assert - we are mainly checking that no uncaught exceptions are raised generating the pdf report
