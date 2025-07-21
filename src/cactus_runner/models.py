@@ -127,9 +127,15 @@ class RunnerState:
 
 
 @dataclass
-class Aggregator:
-    certificate: str | None = None
-    lfdi: str | None = None
+class InitialisedCertificates:
+    """Certificates shared with the runner during initialisation. These certs should be the ONLY certificates that can
+    interact with the runner/underlying envoy instance"""
+
+    aggregator_certificate: str | None = None
+    aggregator_lfdi: str | None = None
+
+    device_certificate: str | None = None
+    device_lfdi: str | None = None
 
 
 @dataclass

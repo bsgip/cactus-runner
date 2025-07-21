@@ -38,7 +38,8 @@ class RunnerClient:
     async def init(
         session: ClientSession,
         test_id: TestProcedureId,
-        aggregator_certificate: str,
+        aggregator_certificate: str | None,
+        device_certificate: str | None,
         subscription_domain: str | None = None,
         run_id: str | None = None,
     ) -> InitResponseBody:
@@ -46,11 +47,16 @@ class RunnerClient:
         Args:
             test_id: The TestProcedureId to initialise the runner with
             aggregator_certificate: The PEM encoded public certificate to be installed as the "aggregator" cert
+            device_certificate: The PEM encoded public certificate to be reserved for use by a "device"
             subscription_domain: The FQDN that will be added to the allow list for subscription notifications
             run_id: The upstream identifier for this run (to be used in report metadata)"""
 
         try:
-            params = {"test": test_id.value, "certificate": aggregator_certificate}
+            params = {"test": test_id.value}
+            if aggregator_certificate is not None:
+                params["aggregator_certificate"] = aggregator_certificate
+            if device_certificate is not None:
+                params["device_certificate"] = device_certificate
             if subscription_domain is not None:
                 params["subscription_domain"] = subscription_domain
             if run_id is not None:

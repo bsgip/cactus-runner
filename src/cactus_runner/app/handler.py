@@ -91,9 +91,22 @@ async def init_handler(request: web.Request):
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'test' query parameter.")
 
     # Get the certificate of the aggregator to register
-    aggregator_certificate = request.query["certificate"]
+    aggregator_certificate = request.query.get("aggregator_certificate", None)
     if aggregator_certificate is None:
-        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'certificate' query parameter.")
+        aggregator_lfdi = None
+        logger.info("No aggregator certificate is loaded. All EndDevice's must be registered via a device certificate")
+    else:
+        aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
+        logger.info(f"Aggregator will created with certificate lfdi {aggregator_lfdi}.")
+
+    # Get the device certificate to register
+    device_certificate = request.query.get("device_certificate", None)
+    if device_certificate is None:
+        device_lfdi = None
+        logger.info("No device certificate is loaded. All EndDevice's must be registered via aggregator certificate")
+    else:
+        device_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(device_certificate)
+        logger.info(f"Device certificates will only be supported with certificate lfdi {device_lfdi}.")
 
     subscription_domain = request.query.get("subscription_domain", None)
     if subscription_domain is None:
@@ -107,16 +120,18 @@ async def init_handler(request: web.Request):
     else:
         logger.info(f"run ID {run_id} has been assigned to this test.")
 
-    # Get the lfdi of the aggregator to register
-    aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
     await precondition.register_aggregator(lfdi=aggregator_lfdi, subscription_domain=subscription_domain)
 
     # Save the aggregator details for later request validation
-    request.app[APPKEY_AGGREGATOR].certificate = aggregator_certificate
-    request.app[APPKEY_AGGREGATOR].lfdi = aggregator_lfdi
+    request.app[APPKEY_AGGREGATOR].aggregator_certificate = aggregator_certificate
+    request.app[APPKEY_AGGREGATOR].aggregator_lfdi = aggregator_lfdi
+    request.app[APPKEY_AGGREGATOR].device_certificate = device_certificate
+    request.app[APPKEY_AGGREGATOR].device_lfdi = device_lfdi
 
     logger.debug(f"{aggregator_certificate=}")
     logger.debug(f"{aggregator_lfdi=}")
+    logger.debug(f"{device_certificate=}")
+    logger.debug(f"{device_lfdi=}")
 
     # Get the definition of the test procedure
     try:

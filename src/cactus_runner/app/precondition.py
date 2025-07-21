@@ -30,34 +30,36 @@ async def execute_sql_file_for_connection(connection: AsyncConnection, path_to_s
         await txn.commit()
 
 
-async def register_aggregator(lfdi: str, subscription_domain: str | None) -> None:
+async def register_aggregator(lfdi: str | None, subscription_domain: str | None) -> None:
     async with begin_session() as session:
         now = datetime.now(tz=ZoneInfo("UTC"))
         expiry = now + timedelta(hours=48)
-        certificate = Certificate(lfdi=lfdi, created=now, expiry=expiry)
-        aggregator = Aggregator(name="Cactus", created_time=now, changed_time=now)
 
-        if subscription_domain is not None:
-            aggregator.domains = [
-                AggregatorDomain(
-                    changed_time=now,
-                    domain=subscription_domain,
-                )
-            ]
-
-        session.add(aggregator)
-        session.add(certificate)
-
+        # Always insert a NULL aggregator (for device certs)
         await session.execute(
             insert(Aggregator).values(name="NULL AGGREGATOR", created_time=now, changed_time=now, aggregator_id=0)
         )
-        await session.flush()
 
-        certificate_assignment = AggregatorCertificateAssignment(
-            certificate_id=certificate.certificate_id, aggregator_id=aggregator.aggregator_id
-        )
+        # Next install the aggregator lfdi (if there is one)
+        if lfdi is not None:
+            certificate = Certificate(lfdi=lfdi, created=now, expiry=expiry)
+            aggregator = Aggregator(name="Cactus", created_time=now, changed_time=now)
 
-        session.add(certificate_assignment)
+            if subscription_domain is not None:
+                aggregator.domains = [
+                    AggregatorDomain(
+                        changed_time=now,
+                        domain=subscription_domain,
+                    )
+                ]
+
+            session.add(aggregator)
+            session.add(certificate)
+            await session.flush()
+            certificate_assignment = AggregatorCertificateAssignment(
+                certificate_id=certificate.certificate_id, aggregator_id=aggregator.aggregator_id
+            )
+            session.add(certificate_assignment)
         await session.commit()
 
 
