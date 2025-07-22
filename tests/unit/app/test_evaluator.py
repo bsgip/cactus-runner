@@ -30,7 +30,6 @@ class MyTestingClass:
     field2: int
 
 
-
 @pytest.mark.parametrize(
     "input, expected",
     [
