@@ -189,6 +189,34 @@ async def test_check_connectionpoint_contents(
     assert_mock_session(mock_session)
 
 
+def der_setting_bool_param_scenario(param: str, expected: bool) -> tuple[list, dict[str, bool], bool]:
+    """Convenience for generating scenarios for testing the settings boolean param checks"""
+    return (
+        [
+            generate_class_instance(
+                Site,
+                seed=101,
+                aggregator_id=1,
+                site_ders=[
+                    generate_class_instance(
+                        SiteDER,
+                        site_der_setting=generate_class_instance(SiteDERSetting),
+                    )
+                ],
+            )
+        ],
+        {param: expected},
+        expected,
+    )
+
+
+DERSETTING_BOOL_PARAM_SCENARIOS = [
+    der_setting_bool_param_scenario(p, e)
+    for p in ["setMaxW", "setMaxVA", "setMaxVar", "setMaxChargeRateW", "setMaxDischargeRateW", "setMaxWh"]
+    for e in [True, False]
+]
+
+
 @pytest.mark.parametrize(
     "existing_sites, resolved_params, expected",
     [
@@ -276,6 +304,75 @@ async def test_check_connectionpoint_contents(
             {},
             False,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled": "03"},
+            False,
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled": "03"},
+            False,
+        ),  # Bit flag 1 not set on actual value
+        *DERSETTING_BOOL_PARAM_SCENARIOS,
     ],
 )
 @pytest.mark.anyio
@@ -291,10 +388,38 @@ async def test_check_der_settings_contents(
         assert_check_result(result, expected)
 
 
+def der_rating_bool_param_scenario(param: str, expected: bool) -> tuple[list, dict[str, bool], bool]:
+    """Convenience for generating scenarios for testing the ratings boolean param checks"""
+    return (
+        [
+            generate_class_instance(
+                Site,
+                seed=101,
+                aggregator_id=1,
+                site_ders=[
+                    generate_class_instance(
+                        SiteDER,
+                        site_der_rating=generate_class_instance(SiteDERRating),
+                    )
+                ],
+            )
+        ],
+        {param: expected},
+        expected,
+    )
+
+
+DERRATING_BOOL_PARAM_SCENARIOS = [
+    der_rating_bool_param_scenario(p, e)
+    for p in ["rtgMaxW", "rtgMaxVA", "rtgMaxVar", "rtgMaxChargeRateW", "rtgMaxDischargeRateW", "rtgMaxWh"]
+    for e in [True, False]
+]
+
+
 @pytest.mark.parametrize(
-    "existing_sites, expected",
+    "existing_sites, resolved_params, expected",
     [
-        ([], False),
+        ([], {}, False),
         (
             [
                 generate_class_instance(
@@ -306,6 +431,7 @@ async def test_check_der_settings_contents(
                     ],
                 )
             ],
+            {},
             True,
         ),
         (
@@ -319,6 +445,7 @@ async def test_check_der_settings_contents(
                     ],
                 )
             ],
+            {},
             False,
         ),  # Is setting DERSetting not DERCapability
         (
@@ -330,6 +457,7 @@ async def test_check_der_settings_contents(
                     site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
+            {},
             False,
         ),
         (
@@ -340,18 +468,90 @@ async def test_check_der_settings_contents(
                     aggregator_id=1,
                 )
             ],
+            {},
             False,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": "03"},
+            False,
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported": "03"},
+            False,
+        ),  # Bit flag 1 not set on actual value
+        *DERRATING_BOOL_PARAM_SCENARIOS,
     ],
 )
 @pytest.mark.anyio
-async def test_check_der_capability_contents(pg_base_config, existing_sites: list[Site], expected: bool):
+async def test_check_der_capability_contents(
+    pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
+):
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_capability_contents(session)
+        result = await check_der_capability_contents(session, resolved_params)
         assert_check_result(result, expected)
 
 
