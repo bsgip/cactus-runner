@@ -283,7 +283,7 @@ async def action_register_end_device(
     session.add(
         Site(
             nmi=nmi,
-            aggregator_id=1,
+            aggregator_id=active_test_procedure.client_aggregator_id,
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,

@@ -28,15 +28,15 @@ from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClientAuthParams,
 )
 from cactus_runner.app.shared import (
-    APPKEY_AGGREGATOR,
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_ENVOY_ADMIN_INIT_KWARGS,
+    APPKEY_INITIALISED_CERTS,
     APPKEY_PERIOD_SEC,
     APPKEY_PERIODIC_TASK,
     APPKEY_RUNNER_STATE,
     APPKEY_TEST_PROCEDURES,
 )
-from cactus_runner.models import Aggregator, RunnerState
+from cactus_runner.models import InitialisedCertificates, RunnerState
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ def create_app() -> web.Application:
     app.router.add_route("*", MOUNT_POINT + "{proxyPath:.*}", handler.proxied_request_handler)
 
     # Set up shared state
-    app[APPKEY_AGGREGATOR] = Aggregator()
+    app[APPKEY_INITIALISED_CERTS] = InitialisedCertificates()
     app[APPKEY_RUNNER_STATE] = RunnerState()
     app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
     app[APPKEY_ENVOY_ADMIN_INIT_KWARGS] = {

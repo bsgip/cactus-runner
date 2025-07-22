@@ -558,11 +558,12 @@ async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_clien
         assert site.post_rate_seconds == 123, "This value shouldn't have changed"
 
 
+@pytest.mark.parametrize("agg_id", [0, 1])
 @pytest.mark.anyio
-async def test_action_register_end_device(pg_base_config):
+async def test_action_register_aggregator_end_device(pg_base_config, agg_id: int):
     # Arrange
     active_test_procedure = generate_class_instance(
-        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None
+        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None, client_aggregator_id=agg_id
     )
     resolved_params = {
         "nmi": "abc",
@@ -574,7 +575,7 @@ async def test_action_register_end_device(pg_base_config):
         await action_register_end_device(active_test_procedure, resolved_params, session)
 
     # Assert
-    assert pg_base_config.execute("select count(*) from site;").fetchone()[0] == 1
+    assert pg_base_config.execute(f"select count(*) from site where aggregator_id = {agg_id};").fetchone()[0] == 1
 
 
 @pytest.mark.parametrize(

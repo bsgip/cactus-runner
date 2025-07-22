@@ -18,13 +18,14 @@ async def assert_success_response(response: ClientResponse):
         assert False, f"{response.status}: {body}"
 
 
+@pytest.mark.parametrize("certificate_type", ["aggregator_certificate", "device_certificate"])
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_01_full(cactus_runner_client: TestClient):
+async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: str):
     """This is a full integration test of the entire ALL-01 workflow"""
 
     # Init
-    result = await cactus_runner_client.post(f"/init?test=ALL-01&certificate={URI_ENCODED_CERT}")
+    result = await cactus_runner_client.post(f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}")
     await assert_success_response(result)
 
     # Start
@@ -72,3 +73,7 @@ async def test_all_01_full(cactus_runner_client: TestClient):
     summary = RunnerStatus.from_json(summary_data.decode())
     for step, resolved in summary.step_status.items():
         assert resolved == StepStatus.RESOLVED, step
+
+    # Ensure PDF generated ok
+    pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))
+    assert len(pdf_data) > 1024

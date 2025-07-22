@@ -32,8 +32,10 @@ class ActiveTestProcedure:
     started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
     listeners: list[Listener]
     step_status: dict[str, StepStatus]
-    client_lfdi: str  # The LFDI of the client certificate expected for the test
-    client_sfdi: int  # The SFDI of the client certificate expected for the test
+    client_certificate_type: str  # Either "Aggregator" or "Device". Human text to identify source of cert
+    client_aggregator_id: int  # What aggregator ID will be the client operating as? (0 for device certs)
+    client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
+    client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)
     run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any
     communications_disabled: bool = False
     finished_zip_data: bytes | None = (
@@ -131,11 +133,9 @@ class InitialisedCertificates:
     """Certificates shared with the runner during initialisation. These certs should be the ONLY certificates that can
     interact with the runner/underlying envoy instance"""
 
-    aggregator_certificate: str | None = None
-    aggregator_lfdi: str | None = None
-
-    device_certificate: str | None = None
-    device_lfdi: str | None = None
+    client_certificate_type: str | None = None  # Will read as either "aggregator" or "device"
+    client_certificate: str | None = None
+    client_lfdi: str | None = None
 
 
 @dataclass

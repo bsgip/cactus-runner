@@ -112,6 +112,10 @@ def ensure_logs_dir():
 @pytest.fixture(scope="function")
 async def envoy_server_client(pg_empty_config: Connection):
     """Creates an AsyncClient for a test that is configured to talk to the envoy server app"""
+
+    # We want our tests to operate under the assumption that device registration is enabled
+    os.environ["ALLOW_DEVICE_REGISTRATION"] = "true"
+
     settings = envoy_gen_settings()
     settings.cert_header = "ssl-client-cert"
 

@@ -17,13 +17,14 @@ from cactus_runner.models import (
 
 @pytest.mark.parametrize("subscription_domain, run_id", product([None, "my.fq.dn"], [None, "abc 123"]))
 @pytest.mark.asyncio
-async def test_init(subscription_domain: str | None, run_id: str | None):
+async def test_init_varying_domain_run_id(subscription_domain: str | None, run_id: str | None):
     # Arrange
     expected_start_result = InitResponseBody(
         status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
     )
     test_id = TestProcedureId.ALL_01
     aggregator_certificate = """asdf"""
+    device_certificate = """zxcv"""
     mock_session = MagicMock()
     mock_session.post.return_value.__aenter__.return_value.status = 200
     mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_start_result.to_json()
@@ -33,24 +34,37 @@ async def test_init(subscription_domain: str | None, run_id: str | None):
         session=mock_session,
         test_id=test_id,
         aggregator_certificate=aggregator_certificate,
+        device_certificate=device_certificate,
         subscription_domain=subscription_domain,
     )
 
     # Assert
     if subscription_domain is None and run_id is None:
         mock_session.post_assert_called_once_with(
-            url="/init", params={"test": test_id.value, "certificate": aggregator_certificate}
+            url="/init",
+            params={
+                "test": test_id.value,
+                "aggregator_certificate": aggregator_certificate,
+                "device_certificate": device_certificate,
+            },
         )
     elif subscription_domain is None:
         mock_session.post_assert_called_once_with(
-            url="/init", params={"test": test_id.value, "certificate": aggregator_certificate, "run_id": run_id}
+            url="/init",
+            params={
+                "test": test_id.value,
+                "aggregator_certificate": aggregator_certificate,
+                "device_certificate": device_certificate,
+                "run_id": run_id,
+            },
         )
     elif run_id is None:
         mock_session.post_assert_called_once_with(
             url="/init",
             params={
                 "test": test_id.value,
-                "certificate": aggregator_certificate,
+                "aggregator_certificate": aggregator_certificate,
+                "device_certificate": device_certificate,
                 "subscription_domain": subscription_domain,
             },
         )
@@ -59,7 +73,77 @@ async def test_init(subscription_domain: str | None, run_id: str | None):
             url="/init",
             params={
                 "test": test_id.value,
-                "certificate": aggregator_certificate,
+                "aggregator_certificate": aggregator_certificate,
+                "device_certificate": device_certificate,
+                "subscription_domain": subscription_domain,
+                "run_id": run_id,
+            },
+        )
+    assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
+    assert isinstance(start_result, InitResponseBody)
+    assert start_result == expected_start_result
+
+
+@pytest.mark.parametrize("aggregator_certificate, device_certificate", product([None, "cert123"], [None, "cert456"]))
+@pytest.mark.asyncio
+async def test_init_varying_certificates(aggregator_certificate: str | None, device_certificate: str | None):
+    # Arrange
+    expected_start_result = InitResponseBody(
+        status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
+    )
+    test_id = TestProcedureId.ALL_01
+    subscription_domain = "fq.dn"
+    run_id = "ALL-01"
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value.status = 200
+    mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_start_result.to_json()
+
+    # Act
+    start_result = await RunnerClient.init(
+        session=mock_session,
+        test_id=test_id,
+        aggregator_certificate=aggregator_certificate,
+        device_certificate=device_certificate,
+        subscription_domain=subscription_domain,
+    )
+
+    # Assert
+    if aggregator_certificate is None and device_certificate is None:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "subscription_domain": subscription_domain,
+                "run_id": run_id,
+            },
+        )
+    elif aggregator_certificate is None:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "device_certificate": device_certificate,
+                "subscription_domain": subscription_domain,
+                "run_id": run_id,
+            },
+        )
+    elif device_certificate is None:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "aggregator_certificate": aggregator_certificate,
+                "subscription_domain": subscription_domain,
+                "run_id": run_id,
+            },
+        )
+    else:
+        mock_session.post_assert_called_once_with(
+            url="/init",
+            params={
+                "test": test_id.value,
+                "aggregator_certificate": aggregator_certificate,
+                "device_certificate": device_certificate,
                 "subscription_domain": subscription_domain,
                 "run_id": run_id,
             },
@@ -78,7 +162,10 @@ async def test_init_connectionerror():
     # Act/Assert
     with pytest.raises(RunnerClientException, match="Unexpected failure while initialising test."):
         _ = await RunnerClient.init(
-            session=mock_session, test_id=TestProcedureId.ALL_01, aggregator_certificate="FAKE_AGGREGATOR_CERT"
+            session=mock_session,
+            test_id=TestProcedureId.ALL_01,
+            aggregator_certificate="FAKE_AGGREGATOR_CERT",
+            device_certificate=None,
         )
 
 

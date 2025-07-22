@@ -216,6 +216,7 @@ def generate_overview_section(
     test_run_id: str,
     init_timestamp: datetime,
     start_timestamp: datetime,
+    client_cert_type: str,
     client_lfdi: str,
     duration: timedelta,
     stylesheet: StyleSheet,
@@ -224,6 +225,7 @@ def generate_overview_section(
     elements.append(Paragraph(test_procedure_name, style=stylesheet.title))
     elements.append(Paragraph(test_procedure_description, style=stylesheet.subheading))
     elements.append(stylesheet.spacer)
+
     doe_data = [
         [
             "Run ID",
@@ -232,7 +234,13 @@ def generate_overview_section(
             "Initialisation time (UTC)",
             init_timestamp.strftime(stylesheet.date_format),
         ],
-        ["Client LFDI", client_lfdi, "", "Start time (UTC)", start_timestamp.strftime(stylesheet.date_format)],
+        [
+            f"{client_cert_type} LFDI",
+            client_lfdi,
+            "",
+            "Start time (UTC)",
+            start_timestamp.strftime(stylesheet.date_format),
+        ],
         ["", "", "", "Duration", str(duration).split(".")[0]],  # remove microseconds from output
     ]
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.15, 0.4, 0.05, 0.2, 0.2]]
@@ -805,6 +813,7 @@ def generate_page_elements(
                 init_timestamp=init_timestamp,
                 start_timestamp=start_timestamp,
                 client_lfdi=active_test_procedure.client_lfdi,
+                client_cert_type=active_test_procedure.client_certificate_type,
                 duration=duration,
                 stylesheet=stylesheet,
             )

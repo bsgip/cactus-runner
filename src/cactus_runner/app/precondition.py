@@ -30,10 +30,12 @@ async def execute_sql_file_for_connection(connection: AsyncConnection, path_to_s
         await txn.commit()
 
 
-async def register_aggregator(lfdi: str | None, subscription_domain: str | None) -> None:
+async def register_aggregator(lfdi: str | None, subscription_domain: str | None) -> int:
+    """returns the aggregator ID that should be used for registering devices"""
     async with begin_session() as session:
         now = datetime.now(tz=ZoneInfo("UTC"))
         expiry = now + timedelta(hours=48)
+        aggregator_id = 0
 
         # Always insert a NULL aggregator (for device certs)
         await session.execute(
@@ -56,11 +58,13 @@ async def register_aggregator(lfdi: str | None, subscription_domain: str | None)
             session.add(aggregator)
             session.add(certificate)
             await session.flush()
+            aggregator_id = aggregator.aggregator_id
             certificate_assignment = AggregatorCertificateAssignment(
                 certificate_id=certificate.certificate_id, aggregator_id=aggregator.aggregator_id
             )
             session.add(certificate_assignment)
         await session.commit()
+    return aggregator_id
 
 
 async def reset_db() -> None:

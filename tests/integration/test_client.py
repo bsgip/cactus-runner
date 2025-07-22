@@ -18,25 +18,41 @@ from cactus_runner.models import (
     StartResponseBody,
     StepStatus,
 )
-from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
+from tests.integration.certificate1 import (
+    TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
+)
+from tests.integration.certificate2 import (
+    TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_2_PEM,
+)
 
-RAW_CERT = TEST_CERTIFICATE_PEM.decode()
-URI_ENCODED_CERT = quote(RAW_CERT)
+RAW_CERT_1 = TEST_CERTIFICATE_1_PEM.decode()
+URI_ENCODED_CERT_1 = quote(RAW_CERT_1)
+
+RAW_CERT_2 = TEST_CERTIFICATE_2_PEM.decode()
+URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
 
 
 @pytest.mark.parametrize(
-    "test_procedure_id, sub_domain", [(TestProcedureId.ALL_01, None), (TestProcedureId.ALL_02, "my.example.domain")]
+    "test_procedure_id, sub_domain, aggregator_cert, device_cert",
+    [
+        (TestProcedureId.ALL_01, None, RAW_CERT_1, None),
+        (TestProcedureId.ALL_02, "my.example.domain", None, RAW_CERT_2),
+    ],
 )
 @pytest.mark.slow
 @pytest.mark.anyio
 async def test_client_interactions(
-    cactus_runner_client: TestClient, test_procedure_id: TestProcedureId, sub_domain: str | None
+    cactus_runner_client: TestClient,
+    test_procedure_id: TestProcedureId,
+    sub_domain: str | None,
+    aggregator_cert: str | None,
+    device_cert: str | None,
 ):
     """Tests that the embedded client can interact with a full test stack"""
 
     # Interrogate the init response
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        init_response = await RunnerClient.init(session, test_procedure_id, RAW_CERT, sub_domain)
+        init_response = await RunnerClient.init(session, test_procedure_id, aggregator_cert, device_cert, sub_domain)
     assert isinstance(init_response, InitResponseBody)
     assert init_response.test_procedure == test_procedure_id.value
     assert isinstance(init_response.status, str)
