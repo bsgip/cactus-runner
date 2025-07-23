@@ -787,19 +787,27 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
     elements.append(stylesheet.spacer)
     if site.site_ders:
         site_der = site.site_ders[0]
-        elements.extend(generate_site_der_rating_table(site_der_rating=site_der.site_der_rating, stylesheet=stylesheet))
-        elements.append(stylesheet.spacer)
-        elements.extend(
-            generate_site_der_setting_table(site_der_setting=site_der.site_der_setting, stylesheet=stylesheet)
-        )
-        elements.append(stylesheet.spacer)
-        elements.extend(
-            generate_site_der_availability_table(
-                site_der_availability=site_der.site_der_availability, stylesheet=stylesheet
+        if site_der.site_der_rating is not None:
+            elements.extend(
+                generate_site_der_rating_table(site_der_rating=site_der.site_der_rating, stylesheet=stylesheet)
             )
-        )
-        elements.append(stylesheet.spacer)
-        elements.extend(generate_site_der_status_table(site_der_status=site_der.site_der_status, stylesheet=stylesheet))
+            elements.append(stylesheet.spacer)
+        if site_der.site_der_setting is not None:
+            elements.extend(
+                generate_site_der_setting_table(site_der_setting=site_der.site_der_setting, stylesheet=stylesheet)
+            )
+            elements.append(stylesheet.spacer)
+        if site_der.site_der_availability is not None:
+            elements.extend(
+                generate_site_der_availability_table(
+                    site_der_availability=site_der.site_der_availability, stylesheet=stylesheet
+                )
+            )
+            elements.append(stylesheet.spacer)
+        if site_der.site_der_status is not None:
+            elements.extend(
+                generate_site_der_status_table(site_der_status=site_der.site_der_status, stylesheet=stylesheet)
+            )
     else:
         elements.append(Paragraph("No Site DER registered for this site."))
     return elements
