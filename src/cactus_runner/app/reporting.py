@@ -621,7 +621,7 @@ def generate_der_table_data(obj: object, attributes_to_include: list[str]) -> li
         multiplier_attribute = attribute_short_form(attribute) + multiplier_suffix
         if hasattr(obj, multiplier_attribute):
             return Paragraph(f"{getattr(obj, attribute)} x 10<super>{getattr(obj, multiplier_attribute)}</super>")
-        return f"{getattr(obj,attribute)}"
+        return f"{getattr(obj, attribute)}"
 
     table_data = [
         [attribute_short_form(attribute), attribute_value(obj, attribute)] for attribute in attributes_to_include
