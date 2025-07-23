@@ -318,6 +318,7 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
         "pow_10_multipliers": -1,
         "primacy": 2,
         "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
         "opModEnergize": 0,
         "opModConnect": 0,
         "opModImpLimW": 0,
@@ -387,6 +388,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
         "pow_10_multipliers": -1,
         "primacy": 2,
         "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
         "opModEnergize": 0,
         "opModConnect": 0,
         "opModImpLimW": 0,
@@ -446,6 +448,7 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
         "opModGenLimW": gen_float(value_seed, 5),
         "opModLoadLimW": gen_float(value_seed, 6),
         "opModFixedW": gen_float(value_seed, 7),
+        "ramp_time_seconds": gen_float(value_seed, 8),
     }
     for k in list(resolved_params.keys()):
         if resolved_params[k] is None:
@@ -466,6 +469,7 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
         assert doe.generation_limit_active_watts == gen_float(value_seed, 5)
         assert doe.load_limit_active_watts == gen_float(value_seed, 6)
         assert doe.set_point_percentage == gen_float(value_seed, 7)
+        assert doe.ramp_time_seconds == gen_float(value_seed, 8)
 
 
 @pytest.mark.anyio

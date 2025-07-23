@@ -184,6 +184,7 @@ async def action_create_der_control(
         )
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
+    ramp_time_seconds: float | None = resolved_parameters.get("ramp_time_seconds", None)
     energize: bool | None = resolved_parameters.get("opModEnergize", None)
     connect: bool | None = resolved_parameters.get("opModConnect", None)
     import_limit_watts: Decimal | None = resolved_parameters.get("opModImpLimW", None)
@@ -208,6 +209,7 @@ async def action_create_der_control(
                 generation_limit_watts=gen_limit_watts,
                 load_limit_watts=load_limit_watts,
                 set_point_percentage=set_point_percent,
+                ramp_time_seconds=ramp_time_seconds,
             )
         ],
     )
