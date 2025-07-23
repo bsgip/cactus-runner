@@ -840,9 +840,19 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
 def generate_controls_table(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
 
-    table_data = [[f"{i}", control.start_time, control.duration_seconds] for i, control in enumerate(controls)]
-    table_data.insert(0, ["", "Start (UTC)", "Duration (s)"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.13, 0.63, 0.24]]
+    table_data = [
+        [
+            f"{i}",
+            control.start_time,
+            control.duration_seconds,
+            "-" if control.import_limit_active_watts is None else control.import_limit_active_watts,
+            "-" if control.export_limit_watts is None else control.export_limit_watts,
+            "-" if control.load_limit_active_watts is None else control.load_limit_active_watts,
+        ]
+        for i, control in enumerate(controls, start=1)
+    ]
+    table_data.insert(0, ["", "Start (UTC)", "Duration (s)", "Import Limit (W)", "Export Limit (W)", "Load Limit (W)"])
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.06, 0.35, 0.11, 0.16, 0.16, 0.16]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
@@ -856,6 +866,8 @@ def generate_controls_section(controls: list[DynamicOperatingEnvelope], styleshe
     elements[-1].keepWithNext = True
     if controls:
         elements.append(generate_controls_chart(controls=controls))
+        elements.append(stylesheet.spacer)
+        elements.extend(generate_controls_table(controls=controls, stylesheet=stylesheet))
     else:
         elements.append(Paragraph("No controls active during this test procedure."))
     elements.append(stylesheet.spacer)
