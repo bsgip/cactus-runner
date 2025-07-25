@@ -47,10 +47,10 @@ class ParamsDERSettingsContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
-    doe_modes_enabled_set: str | None = None
-    doe_modes_enabled_unset: str | None = None
-    modes_enabled_set: str | None = None
-    modes_enabled_unset: str | None = None
+    doe_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_set")] = None
+    doe_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_unset")] = None
+    modes_enabled_set: Annotated[str | None, pydantic.Field(alias="modesEnabled_set")] = None
+    modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="modesEnabled_unset")] = None
     set_grad_w: int | None = None
     set_max_w: bool | None = None
     set_max_va: Annotated[bool | None, pydantic.Field(alias="setMaxVA")] = None
@@ -65,10 +65,10 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
-    doe_modes_supported_set: str | None = None
-    doe_modes_supported_unset: str | None = None
-    modes_supported_set: str | None = None
-    modes_supported_unset: str | None = None
+    doe_modes_supported_set: Annotated[str | None, pydantic.Field(alias="doeModesSupported_set")] = None
+    doe_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="doeModesSupported_unset")] = None
+    modes_supported_set: Annotated[str | None, pydantic.Field(alias="modesSupported_set")] = None
+    modes_supported_unset: Annotated[str | None, pydantic.Field(alias="modesSupported_unset")] = None
     rtg_max_va: Annotated[bool | None, pydantic.Field(alias="rtgMaxVA")] = None
     rtg_max_var: bool | None = None
     rtg_max_w: bool | None = None
@@ -175,7 +175,7 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
             soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
 
         elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
-            # Bitwise assert high (==1) checks
+            # Bitwise assert hi (==1) checks
             params_val = int(getattr(params, k), 16)
             if (getattr(der_settings, k.rstrip("_set")) & params_val) != params_val:
                 field = params.__pydantic_fields__[k]

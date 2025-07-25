@@ -32,6 +32,8 @@ from cactus_runner.app.check import (
     CheckResult,
     FailedCheckError,
     UnknownCheckError,
+    ParamsDERSettingsContents,
+    ParamsDERCapabilityContents,
     all_checks_passing,
     check_all_notifications_transmitted,
     check_all_steps_complete,
@@ -313,9 +315,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(
-                                SiteDERSetting, doe_modes_enabled_set=int("ff", 16)
-                            ),
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
                         )
                     ],
                 )
@@ -332,9 +332,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(
-                                SiteDERSetting, doe_modes_enabled_set=int("fe", 16)
-                            ),
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
                         )
                     ],
                 )
@@ -351,7 +349,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_set=int("ff", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
                         )
                     ],
                 )
@@ -368,7 +366,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_set=int("fe", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
                         )
                     ],
                 )
@@ -385,9 +383,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(
-                                SiteDERSetting, doe_modes_enabled_unset=int("ff", 16)
-                            ),
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fc", 16)),
                         )
                     ],
                 )
@@ -404,9 +400,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(
-                                SiteDERSetting, doe_modes_enabled_unset=int("fc", 16)
-                            ),
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
                         )
                     ],
                 )
@@ -423,7 +417,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_unset=int("ff", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fc", 16)),
                         )
                     ],
                 )
@@ -440,7 +434,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_unset=int("fc", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
                         )
                     ],
                 )
@@ -556,9 +550,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(
-                                SiteDERRating, doe_modes_supported_set=int("ff", 16)
-                            ),
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
                         )
                     ],
                 )
@@ -575,9 +567,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(
-                                SiteDERRating, doe_modes_supported_set=int("fe", 16)
-                            ),
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
                         )
                     ],
                 )
@@ -594,7 +584,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_set=int("ff", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
                         )
                     ],
                 )
@@ -611,7 +601,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_set=int("fe", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
                         )
                     ],
                 )
@@ -628,9 +618,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(
-                                SiteDERRating, doe_modes_supported_set=int("fc", 16)
-                            ),
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
                         )
                     ],
                 )
@@ -647,9 +635,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(
-                                SiteDERRating, doe_modes_supported_unset=int("fd", 16)
-                            ),
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
                         )
                     ],
                 )
@@ -666,7 +652,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_unset=int("fc", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fc", 16)),
                         )
                     ],
                 )
@@ -683,7 +669,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_unset=int("fd", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
                         )
                     ],
                 )
@@ -1637,3 +1623,21 @@ async def test_all_checks_passing(
 
     # Assert
     assert_mock_session(mock_session)
+
+
+def test_params_der_settings_contents_model_has_correct_fields():
+    """Ensures aliases for fields matches expected in the param definitions"""
+    dscm = ParamsDERSettingsContents()
+
+    assert sorted([f.alias for f in dscm.__pydantic_fields__.values()]) == sorted(
+        [f for f in CHECK_PARAMETER_SCHEMA["der-settings-contents"]]
+    )
+
+
+def test_params_der_capability_contents_model_has_correct_fields():
+    """Ensures aliases for fields matches expected in the param definitions"""
+    dccm = ParamsDERCapabilityContents()
+
+    assert sorted([f.alias for f in dccm.__pydantic_fields__.values()]) == sorted(
+        [f for f in CHECK_PARAMETER_SCHEMA["der-capability-contents"]]
+    )
