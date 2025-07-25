@@ -1,7 +1,9 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Annotated
 
+import pydantic
+import pydantic.alias_generators
 from cactus_test_definitions.checks import Check
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
@@ -24,7 +26,7 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_csip_aus_site_reading_types,
 )
-from cactus_runner.app.variable_resolver import (
+from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.models import ActiveTestProcedure
@@ -40,12 +42,67 @@ class FailedCheckError(Exception):
     """Check failed to run (raised an exception)"""
 
 
+class ParamsDERSettingsContents(pydantic.BaseModel):
+    """Represents all parameters that could be provided as part of the DERSettings contents check"""
+
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
+
+    doe_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_set")] = None
+    doe_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_unset")] = None
+    modes_enabled_set: Annotated[str | None, pydantic.Field(alias="modesEnabled_set")] = None
+    modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="modesEnabled_unset")] = None
+    set_grad_w: int | None = None
+    set_max_w: bool | None = None
+    set_max_va: Annotated[bool | None, pydantic.Field(alias="setMaxVA")] = None
+    set_max_var: bool | None = None
+    set_max_charge_rate_w: bool | None = None
+    set_max_discharge_rate_w: bool | None = None
+    set_max_wh: bool | None = None
+
+
+class ParamsDERCapabilityContents(pydantic.BaseModel):
+    """Represents all parameters that could be provided as part of the DERCapability contents check"""
+
+    model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
+
+    doe_modes_supported_set: Annotated[str | None, pydantic.Field(alias="doeModesSupported_set")] = None
+    doe_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="doeModesSupported_unset")] = None
+    modes_supported_set: Annotated[str | None, pydantic.Field(alias="modesSupported_set")] = None
+    modes_supported_unset: Annotated[str | None, pydantic.Field(alias="modesSupported_unset")] = None
+    rtg_max_va: Annotated[bool | None, pydantic.Field(alias="rtgMaxVA")] = None
+    rtg_max_var: bool | None = None
+    rtg_max_w: bool | None = None
+    rtg_max_charge_rate_w: bool | None = None
+    rtg_max_discharge_rate_w: bool | None = None
+    rtg_max_wh: bool | None = None
+
+
 @dataclass
 class CheckResult:
     """Represents the results of a running a single check"""
 
     passed: bool  # True if the check is considered passed or successful. False otherwise
     description: Optional[str]  # Human readable description of what the check "considered" or wants to elaborate about
+
+
+class SoftChecker:
+    """Collects all failed results suppressing them until finalized"""
+
+    _failures: list[CheckResult]
+
+    def __init__(self):
+        self._failures = []
+
+    def add(self, msg: str) -> None:
+        """Adds a new CheckResult to list of failures"""
+        self._failures.append(CheckResult(False, msg))
+
+    def finalize(self) -> CheckResult:
+        """Finalizes the state of the soft checker and returns a corresponding check result"""
+        if len(self._failures) == 0:
+            return CheckResult(True, None)
+        msg = "; ".join([f.description for f in self._failures if f.description is not None])
+        return CheckResult(False, msg)
 
 
 def check_all_steps_complete(
@@ -106,16 +163,40 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
     if der_settings is None:
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
 
-    set_grad_w_value: int | None = resolved_parameters.get("setGradW", None)
-    if set_grad_w_value is not None and der_settings.grad_w != set_grad_w_value:
-        return CheckResult(
-            False, f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {set_grad_w_value}"
-        )
+    # Validate and return model instance
+    params = ParamsDERSettingsContents.model_validate(resolved_parameters)
 
-    return CheckResult(True, None)
+    # Create soft checker for parameter checks
+    soft_checker = SoftChecker()
+
+    # Perform parameter checks
+    for k in params.model_fields_set:
+        if k == "set_grad_w" and der_settings.grad_w != params.set_grad_w:
+            soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
+
+        elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
+            # Bitwise assert hi (==1) checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_settings, k.rstrip("_set")) & params_val) != params_val:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check hi (==1) failed")
+
+        elif k in ["doe_modes_enabled_unset", "modes_enabled_unset"]:
+            # Bitwise assert lo (==0) checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_settings, k.rstrip("_unset")) & params_val) != 0:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check lo (==0) failed")
+
+        elif getattr(params, k) is False:
+            # Boolean param checks
+            field = params.__pydantic_fields__[k]
+            soft_checker.add(f"DERSetting.{field.alias} boolean expression failed")
+
+    return soft_checker.finalize()
 
 
-async def check_der_capability_contents(session: AsyncSession) -> CheckResult:
+async def check_der_capability_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the der-capability-contents check
 
     Returns pass if DERCapability has been submitted for the active site"""
@@ -131,7 +212,34 @@ async def check_der_capability_contents(session: AsyncSession) -> CheckResult:
     if der_rating is None:
         return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}.")
 
-    return CheckResult(True, None)
+    # Validate and return model instance
+    params = ParamsDERCapabilityContents.model_validate(resolved_parameters)
+
+    # Create soft checker for parameter checks
+    soft_checker = SoftChecker()
+
+    # Perform parameter checks
+    for k in params.model_fields_set:
+        if k in ["doe_modes_supported_set", "modes_supported_set"]:
+            # Bitwise-and checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_rating, k.rstrip("_set")) & params_val) != params_val:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check hi (==1) failed")
+
+        if k in ["doe_modes_supported_unset", "modes_supported_unset"]:
+            # Bitwise-and checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_rating, k.rstrip("_unset")) & params_val) != 0:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check lo (==0) failed")
+
+        elif getattr(params, k) is False:
+            # Boolean param checks
+            field = params.__pydantic_fields__[k]
+            soft_checker.add(f"DERCapability.{field.alias} boolean expression failed")
+
+    return soft_checker.finalize()
 
 
 def is_nth_bit_set_properly(value: int, nth_bit: int, expected: bool) -> bool:
@@ -466,7 +574,7 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
                 check_result = await check_der_settings_contents(session, resolved_parameters)
 
             case "der-capability-contents":
-                check_result = await check_der_capability_contents(session)
+                check_result = await check_der_capability_contents(session, resolved_parameters)
 
             case "der-status-contents":
                 check_result = await check_der_status_contents(session, resolved_parameters)
@@ -526,8 +634,6 @@ async def all_checks_passing(
     checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
 ) -> bool:
     """Returns True if every specified check is passing. An empty/unspecified list will return True.
-
-
 
     Raises:
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.finalize import finish_active_test
-from cactus_runner.app.variable_resolver import (
+from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.models import (

@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
 from typing import Any
+
+from cactus_runner.app import resolvers
 
 from cactus_test_definitions.variable_expressions import (
     Constant,
@@ -9,33 +10,7 @@ from cactus_test_definitions.variable_expressions import (
     OperationType,
 )
 from cactus_test_definitions.errors import UnresolvableVariableError
-from envoy.server.mapper.common import pow10_to_decimal_value
-from envoy.server.model import SiteDERSetting
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
-def resolve_named_variable_now() -> datetime:
-    return datetime.now(tz=timezone.utc)
-
-
-async def resolve_named_variable_der_setting_max_w(session: AsyncSession) -> float:
-    # Fetch the most recently edited SiteDERSetting
-
-    try:
-        response = await session.execute(select(SiteDERSetting).order_by(SiteDERSetting.changed_time.desc()).limit(1))
-        site_der_setting = response.scalar_one_or_none()
-    except Exception as exc:
-        raise UnresolvableVariableError(f"Unable to fetch DERSetting from database: {exc}")
-
-    if site_der_setting is None:
-        raise UnresolvableVariableError("Unable to find a suitable DERSetting to resolve setMaxW")
-
-    set_max_w = pow10_to_decimal_value(site_der_setting.max_w_value, site_der_setting.max_w_multiplier)
-    if set_max_w is None:
-        raise UnresolvableVariableError("Unable to extract setMaxW from DERSetting")
-
-    return float(set_max_w)
 
 
 def is_resolvable_variable(v: Any) -> bool:
@@ -56,9 +31,31 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
         match v.variable:
             case NamedVariableType.NOW:
                 # Return the tz aware datetime "now"
-                return resolve_named_variable_now()
+                return resolvers.resolve_named_variable_now()
             case NamedVariableType.DERSETTING_SET_MAX_W:
-                return await resolve_named_variable_der_setting_max_w(session)
+                return await resolvers.resolve_named_variable_der_setting_max_w(session)
+            case NamedVariableType.DERSETTING_SET_MAX_VA:
+                return await resolvers.resolve_named_variable_der_setting_max_va(session)
+            case NamedVariableType.DERSETTING_SET_MAX_VAR:
+                return await resolvers.resolve_named_variable_der_setting_max_var(session)
+            case NamedVariableType.DERSETTING_SET_MAX_CHARGE_RATE_W:
+                return await resolvers.resolve_named_variable_der_setting_max_charge_rate_w(session)
+            case NamedVariableType.DERSETTING_SET_MAX_DISCHARGE_RATE_W:
+                return await resolvers.resolve_named_variable_der_setting_max_discharge_rate_w(session)
+            case NamedVariableType.DERSETTING_SET_MAX_WH:
+                return await resolvers.resolve_named_variable_der_setting_max_wh(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_W:
+                return await resolvers.resolve_named_variable_der_rating_max_w(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_VA:
+                return await resolvers.resolve_named_variable_der_rating_max_va(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_VAR:
+                return await resolvers.resolve_named_variable_der_rating_max_var(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_CHARGE_RATE_W:
+                return await resolvers.resolve_named_variable_der_rating_max_charge_rate_w(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_DISCHARGE_RATE_W:
+                return await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_WH:
+                return await resolvers.resolve_named_variable_der_rating_max_wh(session)
         raise UnresolvableVariableError(f"Unable to resolve NamedVariable of type {v.variable} ({int(v.variable)})")
     elif isinstance(v, Expression):
         lhs = await resolve_variable(session, v.lhs_operand)
@@ -74,7 +71,20 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                     return lhs * rhs
                 case OperationType.DIVIDE:
                     return lhs / rhs
+                case OperationType.EQ:
+                    return lhs == rhs
+                case OperationType.NE:
+                    return lhs != rhs
+                case OperationType.LT:
+                    return lhs < rhs
+                case OperationType.LTE:
+                    return lhs <= rhs
+                case OperationType.GT:
+                    return lhs > rhs
+                case OperationType.GTE:
+                    return lhs >= rhs
             raise ValueError(f"Unsupported operation {v.operation} ({int(v.operation)})")
+
         except Exception as exc:
             raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {exc}")
     else:

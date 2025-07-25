@@ -4,7 +4,6 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions.variable_expressions import (
@@ -19,10 +18,8 @@ from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from freezegun import freeze_time
 
 from cactus_runner.app.database import begin_session
-from cactus_runner.app.variable_resolver import (
+from cactus_runner.app.evaluator import (
     is_resolvable_variable,
-    resolve_named_variable_der_setting_max_w,
-    resolve_named_variable_now,
     resolve_variable,
     resolve_variable_expressions_from_parameters,
 )
@@ -31,12 +28,6 @@ from cactus_runner.app.variable_resolver import (
 class MyTestingClass:
     field1: str
     field2: int
-
-
-def test_resolve_named_variable_now():
-    actual = resolve_named_variable_now()
-    assert actual.tzinfo
-    assert_nowish(actual)
 
 
 @pytest.mark.parametrize(
@@ -62,133 +53,6 @@ def test_is_resolvable_variable(input: Any, expected: bool):
     result = is_resolvable_variable(input)
     assert isinstance(result, bool)
     assert result == expected
-
-
-@pytest.mark.asyncio
-async def test_resolve_named_variable_der_setting_max_w_empty(pg_empty_config):
-    """If there is nothing in the DB - fail in a predictable way"""
-    async with begin_session() as session:
-        with pytest.raises(UnresolvableVariableError):
-            await resolve_named_variable_der_setting_max_w(session)
-
-
-@pytest.mark.asyncio
-async def test_resolve_named_variable_der_setting_max_w_no_setting(pg_base_config):
-    """If there is everything up to (but not including) a DERSetting in the db  - fail in a predictable way"""
-    async with begin_session() as session:
-        session.add(
-            generate_class_instance(
-                Site, site_id=None, aggregator_id=1, site_ders=[generate_class_instance(SiteDER, site_id=None)]
-            )
-        )
-        await session.commit()
-
-    async with begin_session() as session:
-        with pytest.raises(UnresolvableVariableError):
-            await resolve_named_variable_der_setting_max_w(session)
-
-
-@pytest.mark.asyncio
-async def test_resolve_named_variable_der_setting_max_w_single_setting(pg_base_config):
-    """If there is a single DERSetting in the db  - return it"""
-    max_w_value = 12345
-    max_w_multiplier = -2
-    async with begin_session() as session:
-        session.add(
-            generate_class_instance(
-                Site,
-                site_id=None,
-                aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        site_id=None,
-                        site_der_setting=generate_class_instance(
-                            SiteDERSetting,
-                            site_der_setting_id=None,
-                            site_der_id=None,
-                            max_w_value=max_w_value,
-                            max_w_multiplier=max_w_multiplier,
-                        ),
-                    )
-                ],
-            )
-        )
-        await session.commit()
-
-    async with begin_session() as session:
-        result = await resolve_named_variable_der_setting_max_w(session)
-        assert isinstance(result, float)
-        assert result == 123.45
-
-
-@pytest.mark.asyncio
-async def test_resolve_named_variable_der_setting_max_w_many_settings(pg_base_config):
-    """If there are multiple DERSettings - return the most recent DERSetting"""
-    max_w_value = 123
-    max_w_multiplier = 2
-    async with begin_session() as session:
-        session.add(
-            generate_class_instance(
-                Site,
-                seed=1001,
-                site_id=None,
-                aggregator_id=1,
-            )
-        )
-
-        session.add(
-            generate_class_instance(
-                Site,
-                seed=2002,
-                site_id=None,
-                aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        seed=2102,
-                        site_id=None,
-                        site_der_setting=generate_class_instance(
-                            SiteDERSetting,
-                            seed=2202,
-                            site_der_setting_id=None,
-                            site_der_id=None,
-                        ),
-                    )
-                ],
-            )
-        )
-
-        # This site's SiteDERSetting should be returned as it's change_time will be the most recent
-        session.add(
-            generate_class_instance(
-                Site,
-                seed=3003,
-                site_id=None,
-                aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        seed=3103,
-                        site_id=None,
-                        site_der_setting=generate_class_instance(
-                            SiteDERSetting,
-                            seed=3203,
-                            site_der_setting_id=None,
-                            site_der_id=None,
-                            max_w_value=max_w_value,
-                            max_w_multiplier=max_w_multiplier,
-                        ),
-                    )
-                ],
-            )
-        )
-        await session.commit()
-
-    async with begin_session() as session:
-        result = await resolve_named_variable_der_setting_max_w(session)
-        assert isinstance(result, float)
-        assert result == 12300
 
 
 @pytest.mark.parametrize("bad_type", [(None), ("string"), (datetime(2022, 3, 4)), (MyTestingClass())])
@@ -272,7 +136,7 @@ async def test_resolve_variable_expected_use(
             assert result == expected
 
 
-@mock.patch("cactus_runner.app.variable_resolver.resolve_variable")
+@mock.patch("cactus_runner.app.evaluator.resolve_variable")
 @pytest.mark.parametrize(
     "input_dict, variable_keys",
     [
