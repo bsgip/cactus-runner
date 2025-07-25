@@ -313,12 +313,14 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
+                            site_der_setting=generate_class_instance(
+                                SiteDERSetting, doe_modes_enabled_set=int("ff", 16)
+                            ),
                         )
                     ],
                 )
             ],
-            {"doeModesEnabled": "03"},
+            {"doeModesEnabled_set": "03"},
             True,
         ),
         (
@@ -330,12 +332,14 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
+                            site_der_setting=generate_class_instance(
+                                SiteDERSetting, doe_modes_enabled_set=int("fe", 16)
+                            ),
                         )
                     ],
                 )
             ],
-            {"doeModesEnabled": "03"},
+            {"doeModesEnabled_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -347,12 +351,12 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_set=int("ff", 16)),
                         )
                     ],
                 )
             ],
-            {"modesEnabled": "03"},
+            {"modesEnabled_set": "03"},
             True,
         ),
         (
@@ -364,14 +368,86 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_set=int("fe", 16)),
                         )
                     ],
                 )
             ],
-            {"modesEnabled": "03"},
+            {"modesEnabled_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(
+                                SiteDERSetting, doe_modes_enabled_unset=int("ff", 16)
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled_unset": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(
+                                SiteDERSetting, doe_modes_enabled_unset=int("fc", 16)
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled_unset": "03"},
+            False,
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_unset=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled_unset": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled_unset=int("fc", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled_unset": "03"},
+            False,
+        ),  # Bit flag 1 set on actual value
         *DERSETTING_BOOL_PARAM_SCENARIOS,
     ],
 )
@@ -480,12 +556,14 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
+                            site_der_rating=generate_class_instance(
+                                SiteDERRating, doe_modes_supported_set=int("ff", 16)
+                            ),
                         )
                     ],
                 )
             ],
-            {"doeModesSupported": "03"},
+            {"doeModesSupported_set": "03"},
             True,
         ),
         (
@@ -497,12 +575,14 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
+                            site_der_rating=generate_class_instance(
+                                SiteDERRating, doe_modes_supported_set=int("fe", 16)
+                            ),
                         )
                     ],
                 )
             ],
-            {"doeModesSupported": "03"},
+            {"doeModesSupported_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -514,12 +594,12 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_set=int("ff", 16)),
                         )
                     ],
                 )
             ],
-            {"modesSupported": "03"},
+            {"modesSupported_set": "03"},
             True,
         ),
         (
@@ -531,14 +611,86 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     site_ders=[
                         generate_class_instance(
                             SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_set=int("fe", 16)),
                         )
                     ],
                 )
             ],
-            {"modesSupported": "03"},
+            {"modesSupported_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(
+                                SiteDERRating, doe_modes_supported_set=int("fc", 16)
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported_unset": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(
+                                SiteDERRating, doe_modes_supported_unset=int("fd", 16)
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported_unset": "03"},
+            False,
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_unset=int("fc", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported_unset": "03"},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported_unset=int("fd", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported_unset": "03"},
+            False,
+        ),  # Bit flag 1 set on actual value
         *DERRATING_BOOL_PARAM_SCENARIOS,
     ],
 )

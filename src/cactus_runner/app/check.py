@@ -47,8 +47,10 @@ class ParamsDERSettingsContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
-    doe_modes_enabled: str | None = None
-    modes_enabled: str | None = None
+    doe_modes_enabled_set: str | None = None
+    doe_modes_enabled_unset: str | None = None
+    modes_enabled_set: str | None = None
+    modes_enabled_unset: str | None = None
     set_grad_w: int | None = None
     set_max_w: bool | None = None
     set_max_va: Annotated[bool | None, pydantic.Field(alias="setMaxVA")] = None
@@ -63,8 +65,10 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
-    doe_modes_supported: str | None = None
-    modes_supported: str | None = None
+    doe_modes_supported_set: str | None = None
+    doe_modes_supported_unset: str | None = None
+    modes_supported_set: str | None = None
+    modes_supported_unset: str | None = None
     rtg_max_va: Annotated[bool | None, pydantic.Field(alias="rtgMaxVA")] = None
     rtg_max_var: bool | None = None
     rtg_max_w: bool | None = None
@@ -170,12 +174,19 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
         if k == "set_grad_w" and der_settings.grad_w != params.set_grad_w:
             soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
 
-        elif k in ["doe_modes_enabled", "modes_enabled"]:
-            # Bitwise-and checks
+        elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
+            # Bitwise assert high (==1) checks
             params_val = int(getattr(params, k), 16)
-            if (getattr(der_settings, k) & params_val) != params_val:
+            if (getattr(der_settings, k.rstrip("_set")) & params_val) != params_val:
                 field = params.__pydantic_fields__[k]
-                soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check failed")
+                soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check hi (==1) failed")
+
+        elif k in ["doe_modes_enabled_unset", "modes_enabled_unset"]:
+            # Bitwise assert lo (==0) checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_settings, k.rstrip("_unset")) & params_val) != 0:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check lo (==0) failed")
 
         elif getattr(params, k) is False:
             # Boolean param checks
@@ -209,12 +220,19 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
 
     # Perform parameter checks
     for k in params.model_fields_set:
-        if k in ["doe_modes_supported", "modes_supported"]:
+        if k in ["doe_modes_supported_set", "modes_supported_set"]:
             # Bitwise-and checks
             params_val = int(getattr(params, k), 16)
-            if (getattr(der_rating, k) & params_val) != params_val:
+            if (getattr(der_rating, k.rstrip("_set")) & params_val) != params_val:
                 field = params.__pydantic_fields__[k]
-                soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check failed")
+                soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check hi (==1) failed")
+
+        if k in ["doe_modes_supported_unset", "modes_supported_unset"]:
+            # Bitwise-and checks
+            params_val = int(getattr(params, k), 16)
+            if (getattr(der_rating, k.rstrip("_unset")) & params_val) != 0:
+                field = params.__pydantic_fields__[k]
+                soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check lo (==0) failed")
 
         elif getattr(params, k) is False:
             # Boolean param checks
