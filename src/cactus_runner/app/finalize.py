@@ -1,8 +1,10 @@
+import io
 import logging
 import os
 import shutil
 import subprocess  # nosec B404
 import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
@@ -129,6 +131,26 @@ def get_zip_contents(
     return zip_contents
 
 
+def safely_get_error_zip(errors: list[str]) -> bytes:
+    """Generates a ZIP file containing a single text file with the specified errors being encoded. Use this as a
+    last result failover if unable to generate the output data.
+
+    In the event that this fails - no exception will be raised - instead a plaintext error message will encode"""
+    try:
+        zip_buffer = io.BytesIO()
+
+        # Create a new zip file in write mode
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.writestr("errors.txt", "\n".join(errors))
+
+        return zip_buffer.getvalue()
+    except Exception as exc:
+        # What else can we do here? It'd still be good to have a "corrupt" ZIP file that can be passed back to us
+        # for analysis
+        logger.error("Failure to safely generate an error zip.", exc_info=exc)
+        return f"Complete failure to generate output zip with data {errors}\nException to follow\n{exc}".encode()
+
+
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
     """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
     contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState
@@ -173,20 +195,14 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure.definition.criteria.checks, active_test_procedure, session
             )
 
-    # Determine readings for the CSIP-AUS mandatory reading types
-    readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
-
-    # Determine reading counts
-    reading_counts = await get_reading_counts()
-
-    # Determine sites
-    sites = await get_sites()
-
-    # Determine controls
-    controls = await get_controls()
-
-    # Generate the pdf (as bytes)
     try:
+        # Fetch PDF input data
+        readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
+        reading_counts = await get_reading_counts()
+        sites = await get_sites()
+        controls = await get_controls()
+
+        # Generate the pdf (as bytes)
         pdf_data = reporting.pdf_report_as_bytes(
             runner_state=runner_state,
             check_results=check_results,

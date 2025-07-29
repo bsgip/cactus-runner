@@ -61,7 +61,18 @@ async def test_get_readings(mocker, pg_base_config):
             kind=KindType.POWER,
             role_flags=ReadingLocation.SITE_READING,
         )
-        session.add_all([power, voltage])
+        reactive = generate_class_instance(
+            SiteReadingType,
+            seed=404,
+            aggregator_id=1,
+            site_reading_type_id=3,
+            site=site1,
+            uom=UomType.REACTIVE_POWER_VAR,
+            data_qualifier=DataQualifierType.AVERAGE,
+            kind=KindType.POWER,
+            role_flags=ReadingLocation.SITE_READING,
+        )
+        session.add_all([power, voltage, reactive])
 
         # Add readings
         def gen_sr(seed: int, srt: SiteReadingType) -> SiteReading:
@@ -85,6 +96,7 @@ async def test_get_readings(mocker, pg_base_config):
     reading_specifiers = [
         ReadingSpecifier(uom=UomType.REAL_POWER_WATT, location=ReadingLocation.DEVICE_READING),
         ReadingSpecifier(uom=UomType.VOLTAGE, location=ReadingLocation.SITE_READING),
+        ReadingSpecifier(uom=UomType.REACTIVE_POWER_VAR, location=ReadingLocation.SITE_READING),
     ]
 
     # Act
@@ -92,7 +104,7 @@ async def test_get_readings(mocker, pg_base_config):
     readings_map = await get_readings(reading_specifiers=reading_specifiers)
 
     # Assert
-    assert_dict_type(SiteReadingType, DataFrame, readings_map, count=2)  # two reading types (voltage and power)
+    assert_dict_type(SiteReadingType, DataFrame, readings_map, count=2)  # two reading types with data (voltage, power)
     assert sorted([num_power_readings, num_voltage_readings]) == sorted(
         [len(readings) for readings in readings_map.values()]
     )
@@ -149,6 +161,8 @@ def test_merge_readings():
             [0, 1, 5, 12, 72, 159, 428, 1057, 5012, 92384],
             [0, 0.1, 0.5, 1.2, 7.2, 15.9, 42.8, 105.7, 501.2, 9238.4],
         ),
+        (0, [], ValueError),
+        (1, [], ValueError),
     ],
 )
 def test_scale_readings(power_of_ten_multiplier, values, expected_scaled_values):
@@ -156,16 +170,19 @@ def test_scale_readings(power_of_ten_multiplier, values, expected_scaled_values)
     reading_type = generate_class_instance(SiteReadingType, power_of_ten_multiplier=power_of_ten_multiplier)
     readings = [generate_class_instance(SiteReading, value=v) for v in values]
 
-    expected_scaled_values = [Decimal(i) for i in expected_scaled_values]
-
     # Act
-    df = scale_readings(reading_type=reading_type, readings=readings)
+    if isinstance(expected_scaled_values, type):
+        with pytest.raises(expected_scaled_values):
+            scale_readings(reading_type=reading_type, readings=readings)
+    else:
+        df = scale_readings(reading_type=reading_type, readings=readings)
 
-    # Assert
-    assert "scaled_value" in df
-    TOLERANCE = 1e-5
-    for v1, v2 in zip(df["scaled_value"].tolist(), expected_scaled_values):
-        assert abs(v1 - v2) < TOLERANCE
+        # Assert
+        expected_scaled_values = [Decimal(i) for i in expected_scaled_values]
+        assert "scaled_value" in df
+        TOLERANCE = 1e-5
+        for v1, v2 in zip(df["scaled_value"].tolist(), expected_scaled_values):
+            assert abs(v1 - v2) < TOLERANCE
 
 
 @pytest.mark.parametrize(

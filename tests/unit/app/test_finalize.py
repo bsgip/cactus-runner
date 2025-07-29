@@ -63,6 +63,41 @@ def test_get_zip_contents(mocker):
     assert len(errors) == 0, "This shouldn't have been mutated"
 
 
+def test_safely_get_error_zip():
+    errors = ["my first error", "my second error"]
+
+    # Act
+    zip_contents = finalize.safely_get_error_zip(errors)
+
+    # Assert
+    assert isinstance(zip_contents, bytes)
+    assert len(zip_contents) > 0
+    zip = zipfile.ZipFile(io.BytesIO(zip_contents))
+    filenames = zip.namelist()
+    assert len(filenames) == 1, "There should only be a single filename"
+
+    unzipped_errors = zip.read(filenames[0]).decode()
+    for e in errors:
+        assert e in unzipped_errors
+
+
+def test_safely_get_error_with_error(mocker):
+    """If we hit an error generating the zip file - return a plaintext stream of bytes as a failover"""
+    errors = ["my first error", "my second error"]
+
+    zipfile_mock = mocker.patch("cactus_runner.app.finalize.zipfile.ZipFile")
+    exception_msg = "mock exception 123 abc"
+    zipfile_mock.side_effect = Exception(exception_msg)
+
+    # Act
+    zip_contents = finalize.safely_get_error_zip(errors)
+
+    # Assert
+    assert isinstance(zip_contents, bytes)
+    assert len(zip_contents) > 0
+    assert exception_msg in zip_contents.decode(), "Its ugly - but what else can we do?"
+
+
 def test_get_zip_contents_with_errors(mocker):
     """
     NOTE: This test uses a mock to disable the database dump and so doesn't

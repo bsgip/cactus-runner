@@ -35,6 +35,9 @@ async def test_finalize_handler(mocker):
     zip_data = bytes([99, 55])
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.return_value = zip_data
+
+    mock_safely_get_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_get_error_zip")
+
     mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
@@ -42,6 +45,31 @@ async def test_finalize_handler(mocker):
     assert isinstance(response, Response)
     assert response.body == zip_data
     mock_finish_active_test.assert_called_once()
+    mock_safely_get_error_zip.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_finalize_handler_finish_error(mocker):
+    """
+    `mocker` is a fixture provided by the `pytest-mock` plugin
+    """
+
+    request = MagicMock()
+    safe_error_data = bytes([0, 4, 1, 1])
+    mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
+    mock_finish_active_test.side_effect = Exception("mock exception")
+
+    mock_safely_get_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_get_error_zip")
+    mock_safely_get_error_zip.return_value = safe_error_data
+
+    mocker.patch("cactus_runner.app.handler.begin_session")
+
+    response = await handler.finalize_handler(request=request)
+
+    assert isinstance(response, Response)
+    assert response.body == safe_error_data
+    mock_finish_active_test.assert_called_once()
+    mock_safely_get_error_zip.assert_called_once()
 
 
 @pytest.mark.asyncio

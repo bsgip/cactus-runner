@@ -302,7 +302,11 @@ async def finalize_handler(request):
         async with begin_session() as session:
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
-            zip_contents = await finalize.finish_active_test(runner_state, session)
+            try:
+                zip_contents = await finalize.finish_active_test(runner_state, session)
+            except Exception as exc:
+                logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
+                zip_contents = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
 
         # Clear the active test procedure and request history
         runner_state.active_test_procedure = None
