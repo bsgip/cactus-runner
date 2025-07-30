@@ -92,6 +92,9 @@ DEFAULT_TABLE_STYLE = TableStyle(
 # Limit document content to full width of page (minus margins)
 MAX_CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
+# The maximum length of a string that can appear in a single table cell
+MAX_CELL_LENGTH_CHARS = 500
+
 DOCUMENT_TITLE = "CSIP-AUS Client Test Procedure"
 AUTHOR = "Cactus Test Harness"
 AUTHOR_URL = "https://cactus.cecs.anu.edu.au"
@@ -113,6 +116,8 @@ class StyleSheet:
     table_width: float
     spacer: Spacer
     date_format: str
+    max_cell_length_chars: int
+    truncation_marker: str
 
 
 def get_stylesheet() -> StyleSheet:
@@ -132,6 +137,8 @@ def get_stylesheet() -> StyleSheet:
         table_width=MAX_CONTENT_WIDTH,
         spacer=DEFAULT_SPACER,
         date_format="%Y-%m-%d %H:%M:%S",
+        max_cell_length_chars=MAX_CELL_LENGTH_CHARS,
+        truncation_marker=" … ",
     )
 
 
@@ -565,14 +572,22 @@ def generate_requests_with_errors_table(requests_with_errors: dict[int, RequestE
 def generate_requests_with_validation_errors_table(
     requests_with_validation_errors: dict[int, RequestEntry], stylesheet: StyleSheet
 ) -> Table:
-    data = [
-        [
-            i,
-            f"{str(req.method)} {req.path} {req.status}",
-            Paragraph("\n".join(req.body_xml_errors)),
-        ]
-        for i, req in requests_with_validation_errors.items()
-    ]
+    data = []
+    for i, req in requests_with_validation_errors.items():
+        request_description = f"{str(req.method)} {req.path} {req.status}"
+        validation_errors = "\n".join(req.body_xml_errors)
+
+        # Limit to a reason size the validation error information
+        if len(validation_errors) > stylesheet.max_cell_length_chars:
+            validation_errors = validation_errors[: stylesheet.max_cell_length_chars] + stylesheet.truncation_marker
+
+        data.append(
+            [
+                i,
+                request_description,
+                Paragraph(validation_errors),
+            ]
+        )
 
     data.insert(0, ["", "", "Validation Errors"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
