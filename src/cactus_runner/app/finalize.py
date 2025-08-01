@@ -195,6 +195,16 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure.definition.criteria.checks, active_test_procedure, session
             )
 
+    # Add a "virtual" check covering XSD errors in incoming requests
+    xsd_error_counts = [len(rh.body_xml_errors) for rh in runner_state.request_history if rh.body_xml_errors]
+    if xsd_error_counts:
+        xsd_check = check.CheckResult(
+            False, f"Detected {sum(xsd_error_counts)} xsd errors over {len(xsd_error_counts)} request(s)."
+        )
+    else:
+        xsd_check = check.CheckResult(True, "No XSD errors detected in any requests.")
+    check_results["all-requests-xsd-valid"] = xsd_check
+
     try:
         # Fetch PDF input data
         readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
