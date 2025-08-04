@@ -6,7 +6,7 @@ import pytest
 from aiohttp import ClientResponse
 from pytest_aiohttp.plugin import TestClient
 
-from cactus_runner.models import RunnerStatus, StepStatus
+from cactus_runner.models import RunnerStatus, StepState
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
@@ -71,8 +71,8 @@ async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: s
     summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))
     assert len(summary_data) > 0
     summary = RunnerStatus.from_json(summary_data.decode())
-    for step, resolved in summary.step_status.items():
-        assert resolved == StepStatus.RESOLVED, step
+    for status in summary.step_status.values():
+        assert status.state == StepState.RESOLVED
 
     # Ensure PDF generated ok
     pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))

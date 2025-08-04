@@ -8,6 +8,7 @@ from cactus_runner.models import (
     ClientInteractionType,
     RequestEntry,
     RunnerStatus,
+    StepState,
     StepStatus,
 )
 
@@ -25,10 +26,10 @@ def runner_status_fixture():
         ),
         test_procedure_name="ALL-01",
         step_status={
-            "ALL-01-001": StepStatus.RESOLVED,
-            "ALL-01-002": StepStatus.PENDING,
-            "ALL-01-003": StepStatus.PENDING,
-            "ALL-01-004": StepStatus.PENDING,
+            "ALL-01-001": StepStatus(StepState.RESOLVED),
+            "ALL-01-002": StepStatus(StepState.PENDING),
+            "ALL-01-003": StepStatus(StepState.PENDING),
+            "ALL-01-004": StepStatus(StepState.PENDING),
         },
         request_history=[
             RequestEntry(

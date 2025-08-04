@@ -19,9 +19,15 @@ class Listener:
     enabled_time: datetime | None = None  # Set to the TZ aware datetime when this Listener was enabled. None = disabled
 
 
-class StepStatus(Enum):
+class StepState(Enum):
     PENDING = 0
     RESOLVED = auto()
+
+
+@dataclass
+class StepStatus:
+    state: StepState
+    instructions: list[str] | None = None
 
 
 @dataclass

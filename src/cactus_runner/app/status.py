@@ -10,12 +10,13 @@ from cactus_runner.models import (
     CriteriaEntry,
     RequestEntry,
     RunnerStatus,
+    StepState,
     StepStatus,
 )
 
 
 def get_runner_status_summary(step_status: dict[str, StepStatus]):
-    completed_steps = sum(s == StepStatus.RESOLVED for s in step_status.values())
+    completed_steps = sum(s.state == StepState.RESOLVED for s in step_status.values())
     steps = len(step_status)
     return f"{completed_steps}/{steps} steps complete."
 

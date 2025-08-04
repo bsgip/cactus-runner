@@ -17,6 +17,7 @@ from cactus_runner.models import (
     RequestEntry,
     RunnerState,
     RunnerStatus,
+    StepState,
     StepStatus,
 )
 
@@ -168,7 +169,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
         ActiveTestProcedure,
         communications_disabled=False,
         finished_zip_data=None,
-        step_status={"1": StepStatus.PENDING},
+        step_status={"1": StepStatus(StepState.PENDING)},
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
@@ -255,7 +256,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
         ActiveTestProcedure,
         communications_disabled=False,
         finished_zip_data=None,
-        step_status={"1": StepStatus.PENDING},
+        step_status={"1": StepStatus(StepState.PENDING)},
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
@@ -351,7 +352,7 @@ async def test_proxied_request_handler_logs_error_with_finished_test(mocker):
         ActiveTestProcedure,
         communications_disabled=False,
         finished_zip_data=bytes([0, 1]),
-        step_status={"1": StepStatus.PENDING},
+        step_status={"1": StepStatus(StepState.PENDING)},
     )
     mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")
 

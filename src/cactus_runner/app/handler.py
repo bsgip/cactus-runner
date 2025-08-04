@@ -31,6 +31,7 @@ from cactus_runner.models import (
     RequestEntry,
     RunnerState,
     StartResponseBody,
+    StepState,
     StepStatus,
 )
 
@@ -172,7 +173,7 @@ async def init_handler(request: web.Request):
         initialised_at=datetime.now(tz=timezone.utc),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
-        step_status={step: StepStatus.PENDING for step in definition.steps.keys()},
+        step_status={step: StepStatus(StepState.PENDING) for step in definition.steps.keys()},
         client_lfdi=client_lfdi,
         client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
         client_aggregator_id=client_aggregator_id,

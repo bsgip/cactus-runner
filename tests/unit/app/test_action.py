@@ -28,7 +28,13 @@ from cactus_runner.app.action import (
     apply_action,
     apply_actions,
 )
-from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState, StepStatus
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    Listener,
+    RunnerState,
+    StepState,
+    StepStatus,
+)
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
 # the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
@@ -69,7 +75,12 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
 
 def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
     return RunnerState(
-        generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None, listeners=listeners),
+        generate_class_instance(
+            ActiveTestProcedure,
+            step_status={listener.step: StepStatus(StepState.PENDING) for listener in listeners},
+            finished_zip_data=None,
+            listeners=listeners,
+        ),
         [],
         None,
     )
@@ -150,7 +161,7 @@ async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[
     assert steps_to_disable == original_steps_to_disable  # check we are mutating 'steps_to_diable'
     for step in steps_to_disable:
         assert (
-            runner_state.active_test_procedure.step_status[step] == StepStatus.RESOLVED
+            runner_state.active_test_procedure.step_status[step].state == StepState.RESOLVED
         ), "Check we update step_status"
 
 
@@ -567,7 +578,10 @@ async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_clien
 async def test_action_register_aggregator_end_device(pg_base_config, agg_id: int):
     # Arrange
     active_test_procedure = generate_class_instance(
-        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None, client_aggregator_id=agg_id
+        ActiveTestProcedure,
+        step_status={"1": StepStatus(StepState.PENDING)},
+        finished_zip_data=None,
+        client_aggregator_id=agg_id,
     )
     resolved_params = {
         "nmi": "abc",

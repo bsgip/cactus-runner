@@ -10,6 +10,7 @@ from cactus_runner.models import (
     ClientInteraction,
     CriteriaEntry,
     RunnerStatus,
+    StepState,
     StepStatus,
 )
 
@@ -18,10 +19,14 @@ from cactus_runner.models import (
     "step_status,expected",
     [
         ({}, "0/0 steps complete."),
-        ({"step_name": StepStatus.PENDING}, "0/1 steps complete."),
-        ({"step_name": StepStatus.RESOLVED}, "1/1 steps complete."),
+        ({"step_name": StepStatus(StepState.PENDING)}, "0/1 steps complete."),
+        ({"step_name": StepStatus(StepState.RESOLVED)}, "1/1 steps complete."),
         (
-            {"step_1": StepStatus.RESOLVED, "step_2": StepStatus.RESOLVED, "step_3": StepStatus.PENDING},
+            {
+                "step_1": StepStatus(StepState.RESOLVED),
+                "step_2": StepStatus(StepState.RESOLVED),
+                "step_3": StepStatus(StepState.PENDING),
+            },
             "2/3 steps complete.",
         ),
     ],
@@ -37,7 +42,7 @@ async def test_get_active_runner_status(mocker):
     mock_run_check = mocker.patch("cactus_runner.app.status.run_check")
 
     expected_test_name = "TEST_NAME"
-    expected_step_status = {"step_name": StepStatus.PENDING}
+    expected_step_status = {"step_name": StepStatus(StepState.PENDING)}
     expected_status_summary = "0/1 steps complete."
     active_test_procedure = Mock()
     active_test_procedure.name = expected_test_name
@@ -75,7 +80,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     get_runner_status_summary_spy = mocker.spy(status, "get_runner_status_summary")
 
     mock_session = create_mock_session()
-    expected_step_status = {"step_name": StepStatus.PENDING}
+    expected_step_status = {"step_name": StepStatus(StepState.PENDING)}
     active_test_procedure = Mock()
     active_test_procedure.step_status = expected_step_status
     active_test_procedure.definition = Mock()

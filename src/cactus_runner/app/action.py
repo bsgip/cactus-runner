@@ -19,15 +19,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
-from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
+from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
     RunnerState,
-    StepStatus,
+    StepState,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ async def action_remove_steps(
     for listener in listeners_to_remove:
         logger.info(f"ACTION remove-steps: Removing listener: {listener}")
         active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
-        active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
+        active_test_procedure.step_status[listener.step].state = StepState.RESOLVED
 
 
 async def action_finish_test(runner_state: RunnerState, session: AsyncSession):

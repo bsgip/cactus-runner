@@ -12,6 +12,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     RequestEntry,
     RunnerState,
+    StepState,
     StepStatus,
 )
 
@@ -24,7 +25,7 @@ def test_pdf_report_as_bytes():
         ActiveTestProcedure,
         name=test_name,
         definition=definitions.test_procedures[test_name],
-        step_status={"1": StepStatus.PENDING},
+        step_status={"1": StepStatus(StepState.PENDING)},
         finished_zip_data=None,
         run_id=None,
     )
@@ -76,7 +77,7 @@ def test_pdf_report_as_bytes_does_raise_exception_for_large_amount_of_validation
         ActiveTestProcedure,
         name=test_name,
         definition=definitions.test_procedures[test_name],
-        step_status={"1": StepStatus.PENDING},
+        step_status={"1": StepStatus(StepState.PENDING)},
         finished_zip_data=None,
         run_id=None,
     )
