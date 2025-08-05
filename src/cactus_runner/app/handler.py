@@ -166,6 +166,11 @@ async def init_handler(request: web.Request):
     for step_name, step in definition.steps.items():
         listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
 
+    # Create step status for all steps
+    step_status = {}
+    for step_name, step in definition.steps.items():
+        step_status[step_name] = StepStatus(state=StepState.PENDING, instructions=step.instructions)
+
     # Set 'active_test_procedure' to the requested test procedure
     active_test_procedure = ActiveTestProcedure(
         name=requested_test_procedure,
@@ -173,7 +178,7 @@ async def init_handler(request: web.Request):
         initialised_at=datetime.now(tz=timezone.utc),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
-        step_status={step: StepStatus(StepState.PENDING) for step in definition.steps.keys()},
+        step_status=step_status,
         client_lfdi=client_lfdi,
         client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
         client_aggregator_id=client_aggregator_id,
