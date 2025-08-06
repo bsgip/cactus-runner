@@ -358,7 +358,7 @@ async def do_check_readings_for_types(
         # following assumptions:
         # 1) Clients might register MANY MUPs/MMRs but only submit a minimal subset (and that's OK)
         # 2) Clients will be submitting readings in lockstep - it would be unusual for a client to have 8 voltage
-        #    readings and only 3 active power readings.
+        #    readings and only 3 active power readings (so they are compliant on at least one MMR)
         #
         # If the client breaks these assumptions - they're still getting marked as failing - the error message will
         # just end up being a little less than perfect.
@@ -368,7 +368,7 @@ async def do_check_readings_for_types(
         if highest_found_count >= minimum_count:
             return CheckResult(
                 True,
-                f"MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} has {highest_found_count} Readings.",
+                f"MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} has {highest_found_count} Readings.",  # noqa: E501
             )
         else:
             return CheckResult(
