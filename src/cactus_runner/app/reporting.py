@@ -9,6 +9,7 @@ import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px  # type: ignore
 import plotly.graph_objects as go  # type: ignore
+from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions import __version__ as cactus_test_definitions_version
 from envoy.server.model import (
     DynamicOperatingEnvelope,
@@ -142,7 +143,9 @@ def get_stylesheet() -> StyleSheet:
     )
 
 
-def first_page_template(canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_run_id: str) -> None:
+def first_page_template(
+    canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_run_id: str, csip_aus_version: CSIPAusVersion
+) -> None:
     """Template for the first/front/title page of the report"""
 
     document_creation: str = datetime.now(timezone.utc).strftime("%d-%m-%Y")
@@ -193,6 +196,9 @@ def first_page_template(canvas: Canvas, doc: BaseDocTemplate, test_procedure_nam
     )
     canvas.drawRightString(
         PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.5 * inch, f"Cactus Runner v{cactus_runner_version}"
+    )
+    canvas.drawRightString(
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.65 * inch, f"CSIP Aus {csip_aus_version}"
     )
 
 
@@ -1114,7 +1120,12 @@ def pdf_report_as_bytes(
     )
 
     test_procedure_name = runner_state.active_test_procedure.name
-    first_page = partial(first_page_template, test_procedure_name=test_procedure_name, test_run_id=test_run_id)
+    first_page = partial(
+        first_page_template,
+        test_procedure_name=test_procedure_name,
+        test_run_id=test_run_id,
+        csip_aus_version=runner_state.active_test_procedure.csip_aus_version,
+    )
     later_pages = partial(later_pages_template, test_procedure_name=test_procedure_name, test_run_id=test_run_id)
 
     with io.BytesIO() as buffer:

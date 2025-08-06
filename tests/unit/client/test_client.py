@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from aiohttp import ConnectionTimeoutError
-from cactus_test_definitions import TestProcedureId
+from cactus_test_definitions import CSIPAusVersion, TestProcedureId
 
 from cactus_runner.client import RunnerClient, RunnerClientException
 from cactus_runner.models import (
@@ -23,6 +23,7 @@ async def test_init_varying_domain_run_id(subscription_domain: str | None, run_i
         status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
     )
     test_id = TestProcedureId.ALL_01
+    csip_aus_version = CSIPAusVersion.RELEASE_1_2
     aggregator_certificate = """asdf"""
     device_certificate = """zxcv"""
     mock_session = MagicMock()
@@ -33,6 +34,7 @@ async def test_init_varying_domain_run_id(subscription_domain: str | None, run_i
     start_result = await RunnerClient.init(
         session=mock_session,
         test_id=test_id,
+        csip_aus_version=csip_aus_version,
         aggregator_certificate=aggregator_certificate,
         device_certificate=device_certificate,
         subscription_domain=subscription_domain,
@@ -92,6 +94,7 @@ async def test_init_varying_certificates(aggregator_certificate: str | None, dev
         status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
     )
     test_id = TestProcedureId.ALL_01
+    csip_aus_version = CSIPAusVersion.RELEASE_1_2
     subscription_domain = "fq.dn"
     run_id = "ALL-01"
     mock_session = MagicMock()
@@ -102,6 +105,7 @@ async def test_init_varying_certificates(aggregator_certificate: str | None, dev
     start_result = await RunnerClient.init(
         session=mock_session,
         test_id=test_id,
+        csip_aus_version=csip_aus_version,
         aggregator_certificate=aggregator_certificate,
         device_certificate=device_certificate,
         subscription_domain=subscription_domain,
@@ -164,6 +168,7 @@ async def test_init_connectionerror():
         _ = await RunnerClient.init(
             session=mock_session,
             test_id=TestProcedureId.ALL_01,
+            csip_aus_version=CSIPAusVersion.RELEASE_1_2,
             aggregator_certificate="FAKE_AGGREGATOR_CERT",
             device_certificate=None,
         )
