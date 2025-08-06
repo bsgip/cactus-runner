@@ -160,6 +160,13 @@ class CriteriaEntry(JSONWizard):
 
 
 @dataclass
+class PreconditionCheckEntry(JSONWizard):
+    success: bool
+    type: str
+    details: str
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise
@@ -168,6 +175,7 @@ class RunnerStatus(JSONWizard):
     last_client_interaction: ClientInteraction
     log_envoy: str  # Snapshot of the current envoy logs
     criteria: list[CriteriaEntry] = field(default_factory=list)
+    precondition_checks: list[PreconditionCheckEntry] = field(default_factory=list)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)

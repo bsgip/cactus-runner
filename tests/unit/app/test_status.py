@@ -47,6 +47,7 @@ async def test_get_active_runner_status(mocker):
     criteria_check = Check("check-1", {})
     active_test_procedure.definition.criteria.checks = [criteria_check]
     mock_run_check.return_value = CheckResult(True, "Details on Check 1")
+    active_test_procedure.definition.preconditions.checks = [criteria_check]  # reuse mocked criteria check
 
     request_history = Mock()
     last_client_interaction = Mock()
@@ -80,6 +81,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     active_test_procedure.step_status = expected_step_status
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = None
+    active_test_procedure.definition.preconditions.checks = None
     request_history = Mock()
     last_client_interaction = Mock()
 
