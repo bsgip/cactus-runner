@@ -42,6 +42,7 @@ async def test_get_active_runner_status(mocker):
     active_test_procedure = Mock()
     active_test_procedure.name = expected_test_name
     active_test_procedure.step_status = expected_step_status
+    active_test_procedure.listeners = []
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = Mock()
     criteria_check = Check("check-1", {})
@@ -79,9 +80,11 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     expected_step_status = {"step_name": StepStatus.PENDING}
     active_test_procedure = Mock()
     active_test_procedure.step_status = expected_step_status
+    active_test_procedure.listeners = []
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = None
     active_test_procedure.definition.preconditions.checks = None
+    active_test_procedure.listeners = []
     request_history = Mock()
     last_client_interaction = Mock()
 

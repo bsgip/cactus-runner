@@ -176,6 +176,7 @@ class RunnerStatus(JSONWizard):
     log_envoy: str  # Snapshot of the current envoy logs
     criteria: list[CriteriaEntry] = field(default_factory=list)
     precondition_checks: list[PreconditionCheckEntry] = field(default_factory=list)
+    instructions: list[str] | None = field(default=None)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)
