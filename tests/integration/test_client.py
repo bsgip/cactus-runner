@@ -7,7 +7,7 @@ import pytest
 from aiohttp import ClientSession, ClientTimeout
 from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_dict_type
-from cactus_test_definitions import TestProcedureId
+from cactus_test_definitions import CSIPAusVersion, TestProcedureId
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient, RunnerClientException
@@ -33,10 +33,10 @@ URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
 
 
 @pytest.mark.parametrize(
-    "test_procedure_id, sub_domain, aggregator_cert, device_cert",
+    "test_procedure_id, csip_aus_version, sub_domain, aggregator_cert, device_cert",
     [
-        (TestProcedureId.ALL_01, None, RAW_CERT_1, None),
-        (TestProcedureId.ALL_02, "my.example.domain", None, RAW_CERT_2),
+        (TestProcedureId.ALL_01, CSIPAusVersion.BETA_1_3_STORAGE, None, RAW_CERT_1, None),
+        (TestProcedureId.ALL_02, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2),
     ],
 )
 @pytest.mark.slow
@@ -44,6 +44,7 @@ URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
 async def test_client_interactions(
     cactus_runner_client: TestClient,
     test_procedure_id: TestProcedureId,
+    csip_aus_version: CSIPAusVersion,
     sub_domain: str | None,
     aggregator_cert: str | None,
     device_cert: str | None,
@@ -52,7 +53,9 @@ async def test_client_interactions(
 
     # Interrogate the init response
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        init_response = await RunnerClient.init(session, test_procedure_id, aggregator_cert, device_cert, sub_domain)
+        init_response = await RunnerClient.init(
+            session, test_procedure_id, csip_aus_version, aggregator_cert, device_cert, sub_domain
+        )
     assert isinstance(init_response, InitResponseBody)
     assert init_response.test_procedure == test_procedure_id.value
     assert isinstance(init_response.status, str)
@@ -73,7 +76,9 @@ async def test_client_interactions(
         status_response = await RunnerClient.status(session)
     assert isinstance(status_response, RunnerStatus)
     assert isinstance(status_response.status_summary, str)
+    assert isinstance(status_response.csip_aus_version, str)
     assert status_response.test_procedure_name == test_procedure_id.value
+    assert status_response.csip_aus_version == csip_aus_version.value
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
     assert_dict_type(str, StepStatus, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
@@ -119,6 +124,7 @@ async def test_client_init_bad_cert_combos(
             await RunnerClient.init(
                 session,
                 TestProcedureId.ALL_01,
+                CSIPAusVersion.RELEASE_1_2,
                 aggregator_certificate=aggregator_cert,
                 device_certificate=device_cert,
                 subscription_domain=None,

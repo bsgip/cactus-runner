@@ -1,7 +1,7 @@
 import logging
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
-from cactus_test_definitions import TestProcedureId
+from cactus_test_definitions.test_procedures import CSIPAusVersion, TestProcedureId
 
 from cactus_runner.models import (
     ClientInteraction,
@@ -38,6 +38,7 @@ class RunnerClient:
     async def init(
         session: ClientSession,
         test_id: TestProcedureId,
+        csip_aus_version: CSIPAusVersion,
         aggregator_certificate: str | None,
         device_certificate: str | None,
         subscription_domain: str | None = None,
@@ -46,13 +47,14 @@ class RunnerClient:
         """
         Args:
             test_id: The TestProcedureId to initialise the runner with
+            csip_aus_version: What CSIP Aus version of envoy is this runner communicating with?
             aggregator_certificate: The PEM encoded public certificate to be installed as the "aggregator" cert
             device_certificate: The PEM encoded public certificate to be reserved for use by a "device"
             subscription_domain: The FQDN that will be added to the allow list for subscription notifications
             run_id: The upstream identifier for this run (to be used in report metadata)"""
 
         try:
-            params = {"test": test_id.value}
+            params = {"test": test_id.value, "csip_aus_version": csip_aus_version.value}
             if aggregator_certificate is not None:
                 params["aggregator_certificate"] = aggregator_certificate
             if device_certificate is not None:

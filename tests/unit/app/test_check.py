@@ -31,9 +31,9 @@ from sqlalchemy import select
 from cactus_runner.app.check import (
     CheckResult,
     FailedCheckError,
-    UnknownCheckError,
-    ParamsDERSettingsContents,
     ParamsDERCapabilityContents,
+    ParamsDERSettingsContents,
+    UnknownCheckError,
     all_checks_passing,
     check_all_notifications_transmitted,
     check_all_steps_complete,
@@ -977,15 +977,20 @@ async def test_check_der_status_contents(
     [
         ([], None, True),
         ([], 0, True),
-        ([], 3, True),  # No srt_ids - nothing to check
-        ([1, 2, 3], 3, False),
-        ([1, 2, 3], 2, False),
-        ([1, 2, 3], 0, True),
+        ([], 3, False),
+        ([1, 2, 3], 3, True),  # First SRT has 3 readings
+        ([1, 2, 3], 4, False),
+        ([1, 2, 3], 2, True),
+        ([2, 3], 3, False),
+        ([3], 3, False),
         ([1, 2], 2, True),
         ([1], 3, True),
         ([1], 4, False),
-        ([1, 2, 3, 99], 0, True),
-        ([1, 2, 99], 2, False),
+        ([99], 0, True),
+        ([99], 1, False),
+        ([3, 2, 99], 0, True),
+        ([3, 2, 99], 2, True),
+        ([3, 2, 99], 3, False),
     ],
 )
 @pytest.mark.anyio
@@ -1009,15 +1014,20 @@ async def test_do_check_readings_for_types(
 
         await session.commit()
 
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_for_types(session, srt_ids, minimum_count)
+
+        result = await do_check_readings_for_types(session, faked_srts, minimum_count)
         assert_check_result(result, expected)
 
 
 @pytest.mark.parametrize(
-    "resolved_parameters, uom, reading_location, qualifier, site_reading_types, expected_srt_ids, expected_min_count",
+    "resolved_parameters, uom, reading_location, qualifier, site_reading_types, expected_min_count",
     [
-        ({}, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE, [], [], None),
+        ({}, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE, [], None),
         (
             {},
             UomType.APPARENT_ENERGY_VAH,
@@ -1026,7 +1036,6 @@ async def test_do_check_readings_for_types(
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1),
             ],
-            [1],
             None,
         ),
         (
@@ -1038,7 +1047,6 @@ async def test_do_check_readings_for_types(
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=4),
                 generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2),
             ],
-            [4, 2],
             123,
         ),
         (
@@ -1049,7 +1057,6 @@ async def test_do_check_readings_for_types(
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=2),
             ],
-            [2],
             0,
         ),
     ],
@@ -1065,7 +1072,6 @@ async def test_do_check_site_readings_and_params(
     reading_location: ReadingLocation,
     qualifier: DataQualifierType,
     site_reading_types: list[SiteReadingType],
-    expected_srt_ids: list[int],
     expected_min_count: int | None,
 ):
     """Tests that do_check_site_readings_and_params does the basic logic it needs before offloading to
@@ -1086,9 +1092,9 @@ async def test_do_check_site_readings_and_params(
     mock_get_csip_aus_site_reading_types.assert_called_once_with(mock_session, uom, reading_location, qualifier)
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
-    if len(expected_srt_ids) != 0:
+    if len(site_reading_types) != 0:
         assert result is expected_result
-        mock_do_check_readings_for_types.assert_called_once_with(mock_session, expected_srt_ids, expected_min_count)
+        mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()

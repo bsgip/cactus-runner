@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional, Annotated
+from typing import Annotated, Any, Optional, Sequence
 
 import pydantic
 import pydantic.alias_generators
@@ -14,7 +14,7 @@ from envoy.server.model.site import (
     SiteDERSetting,
     SiteDERStatus,
 )
-from envoy.server.model.site_reading import SiteReading
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy.server.model.subscription import Subscription, TransmitNotificationLog
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
@@ -319,28 +319,62 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
 
 
 async def do_check_readings_for_types(
-    session: AsyncSession, srt_ids: list[int], minimum_count: Optional[int]
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType], minimum_count: Optional[int]
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
-    are met.
+    are met. "Valid" is that at least ONE of the site_reading_types supplied meets the conditions
 
     session: DB session to query
-    srt_ids: list of SiteReadingType.site_reading_type values
+    site_reading_types: list of SiteReadingType's to check readings
     minimum_count: If not None - ensure that every SiteReadingType has at least this many SiteReadings
 
     """
     if minimum_count is not None:
-        results = await session.execute(
-            select(SiteReading.site_reading_type_id, func.count(SiteReading.site_reading_id))
-            .where(SiteReading.site_reading_type_id.in_(srt_ids))
-            .group_by(SiteReading.site_reading_type_id)
-        )
-        count_by_srt_id: dict[int, int] = {srt_id: count for srt_id, count in results.all()}
 
-        for srt_id in srt_ids:
-            count = count_by_srt_id.get(srt_id, 0)  # If there is nothing in the DB, we won't get a count back.
-            if count < minimum_count:
-                return CheckResult(False, f"/mup/{srt_id} has {count} Readings. Expected at least {minimum_count}.")
+        if site_reading_types:
+            srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
+            results = await session.execute(
+                select(SiteReading.site_reading_type_id, func.count(SiteReading.site_reading_id))
+                .where(SiteReading.site_reading_type_id.in_(srt_ids))
+                .group_by(SiteReading.site_reading_type_id)
+            )
+            count_by_srt_id: dict[int, int] = {srt_id: count for srt_id, count in results.all()}
+        else:
+            count_by_srt_id = {}
+
+        # We will scan through the site_reading_types - trying to find at least one that matches
+        highest_found_count = 0
+        highest_found_mrid = ""
+        highest_found_group = 0
+        for srt in site_reading_types:
+            count = count_by_srt_id.get(srt.site_reading_type_id, 0)
+            if count > highest_found_count:
+                highest_found_count = count
+                highest_found_mrid = srt.mrid
+                highest_found_group = srt.group_id
+
+        # If we are here - we didn't find anything. All we can do is report on the "best" set of readings
+        # There is a lot of complexity here (what if there are multiple MUPs / MMRs). We will operate under the
+        # following assumptions:
+        # 1) Clients might register MANY MUPs/MMRs but only submit a minimal subset (and that's OK)
+        # 2) Clients will be submitting readings in lockstep - it would be unusual for a client to have 8 voltage
+        #    readings and only 3 active power readings (so they are compliant on at least one MMR)
+        #
+        # If the client breaks these assumptions - they're still getting marked as failing - the error message will
+        # just end up being a little less than perfect.
+        total_mups = len(set((srt.group_id for srt in site_reading_types)))
+        total_mmrs = len(site_reading_types)
+
+        if highest_found_count >= minimum_count:
+            return CheckResult(
+                True,
+                f"MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} has {highest_found_count} Readings.",  # noqa: E501
+            )
+        else:
+            return CheckResult(
+                False,
+                f"Highest Reading count was {highest_found_count} / {minimum_count} from {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s).",  # noqa: E501
+            )
 
     return CheckResult(True, None)
 
@@ -352,13 +386,12 @@ async def do_check_site_readings_and_params(
     reading_location: ReadingLocation,
     data_qualifier: DataQualifierType,
 ) -> CheckResult:
-    average_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, data_qualifier)
-    if not average_reading_types:
+    site_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, data_qualifier)
+    if not site_reading_types:
         return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
-    srt_ids = [srt.site_reading_type_id for srt in average_reading_types]
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    return await do_check_readings_for_types(session, srt_ids, minimum_count)
+    return await do_check_readings_for_types(session, site_reading_types, minimum_count)
 
 
 async def check_readings_site_active_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:

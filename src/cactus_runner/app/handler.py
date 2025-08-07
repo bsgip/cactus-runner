@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import cast
 
 from aiohttp import web
+from cactus_test_definitions import CSIPAusVersion
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
@@ -37,7 +38,7 @@ from cactus_runner.models import (
 logger = logging.getLogger(__name__)
 
 
-async def init_handler(request: web.Request):
+async def init_handler(request: web.Request):  # noqa: C901
     """Handler for init requests.
 
         Sent by the client to initialise a test procedure.
@@ -87,9 +88,20 @@ async def init_handler(request: web.Request):
     await precondition.reset_db()
 
     # Get the name of the test procedure from the query parameter
-    requested_test_procedure = request.query["test"]
+    requested_test_procedure = request.query.get("test", None)
     if requested_test_procedure is None:
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'test' query parameter.")
+
+    # Get the name of the test procedure from the query parameter
+    csip_aus_version_raw = request.query.get("csip_aus_version", None)
+    if csip_aus_version_raw is None:
+        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'csip_aus_version' query parameter.")
+    try:
+        csip_aus_version = CSIPAusVersion(csip_aus_version_raw)
+    except ValueError:
+        return web.Response(
+            status=http.HTTPStatus.BAD_REQUEST, text="'csip_aus_version' query parameter doesn't match a known version."
+        )
 
     # Get the certificate of the aggregator to register
     aggregator_certificate = request.query.get("aggregator_certificate", None)
@@ -169,6 +181,7 @@ async def init_handler(request: web.Request):
     active_test_procedure = ActiveTestProcedure(
         name=requested_test_procedure,
         definition=definition,
+        csip_aus_version=csip_aus_version,
         initialised_at=datetime.now(tz=timezone.utc),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
