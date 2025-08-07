@@ -67,6 +67,30 @@ async def get_precondition_checks_summary(
     return checks
 
 
+async def get_current_instructions(active_test_procedure: ActiveTestProcedure) -> list[str] | None:
+    if active_test_procedure.started_at is None:
+        # The test is in the init-phase
+        # return the precondition instructions (if present)
+        preconditions = active_test_procedure.definition.preconditions
+        if preconditions:
+            return preconditions.instructions
+    else:
+        # The test has started
+        # return the instructions for any enabled steps
+        instructions = []
+        for listener in active_test_procedure.listeners:
+            if listener.enabled_time:
+                step_instructions = active_test_procedure.definition.steps[listener.step].instructions
+                if step_instructions is not None:
+                    # Add the step name to the end of each instruction
+                    step_instructions = [f"{instruction} ({listener.step})" for instruction in step_instructions]
+                    instructions.extend(step_instructions)
+        if instructions:
+            return instructions
+
+    return None
+
+
 async def get_active_runner_status(
     session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
@@ -85,6 +109,7 @@ async def get_active_runner_status(
         last_client_interaction=last_client_interaction,
         criteria=await get_criteria_summary(session, active_test_procedure),
         precondition_checks=await get_precondition_checks_summary(session, active_test_procedure),
+        instructions=await get_current_instructions(active_test_procedure),
         status_summary=get_runner_status_summary(step_status=step_status),
         step_status=step_status,
         request_history=request_history,
