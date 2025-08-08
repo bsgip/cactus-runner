@@ -144,6 +144,13 @@ async def check_end_device_contents(session: AsyncSession, resolved_parameters: 
     if has_connection_point_id and not site.nmi:
         return CheckResult(False, f"EndDevice {site.site_id} has no ConnectionPoint id specified.")
 
+    deviceCategory_anyset: int = int(resolved_parameters.get("deviceCategory_anyset", "0"), 16)
+    if deviceCategory_anyset and (deviceCategory_anyset & int(site.device_category)) == 0:
+        return CheckResult(
+            False,
+            f"EndDevice {site.site_id} has none of the expected ({deviceCategory_anyset:b}) deviceCategory bits set.",
+        )
+
     return CheckResult(True, None)
 
 
@@ -262,6 +269,12 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
     der_status = response.scalar_one_or_none()
     if der_status is None:
         return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}.")
+
+    alarm_status_val: int | None = resolved_parameters.get("alarmStatus", None)
+    if alarm_status_val is not None and der_status.alarm_status != alarm_status_val:
+        return CheckResult(
+            False, f"DERStatus.alarmStatus was expecting {alarm_status_val} but found {der_status.alarm_status}."
+        )
 
     # Compare the settings we have against any parameter requirements
     gc_status_val = der_status.generator_connect_status

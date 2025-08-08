@@ -25,7 +25,11 @@ from envoy.server.model.subscription import (
     TransmitNotificationLog,
 )
 from envoy_schema.server.schema.sep2.response import ResponseType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
+from envoy_schema.server.schema.sep2.types import (
+    DataQualifierType,
+    DeviceCategory,
+    UomType,
+)
 from sqlalchemy import select
 
 from cactus_runner.app.check import (
@@ -175,7 +179,7 @@ def test_check_all_steps_complete(
 )
 @mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
-async def test_check_connectionpoint_contents(
+async def test_check_end_device_contents_connection_point(
     mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
 ):
 
@@ -184,6 +188,41 @@ async def test_check_connectionpoint_contents(
     resolved_params = {}
     if has_connection_point_id is not None:
         resolved_params["has_connection_point_id"] = has_connection_point_id
+
+    result = await check_end_device_contents(mock_session, resolved_params)
+    assert_check_result(result, expected)
+
+    assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "active_site, deviceCategory_anyset, expected",
+    [
+        (None, "0", False),
+        (None, "123", False),
+        (None, None, False),
+        (generate_class_instance(Site), "0", True),
+        (generate_class_instance(Site), None, True),
+        (generate_class_instance(Site, device_category=DeviceCategory(0)), "0", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(0)), "1", False),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
+    ],
+)
+@mock.patch("cactus_runner.app.check.get_active_site")
+@pytest.mark.anyio
+async def test_check_end_device_contents_device_category(
+    mock_get_active_site: mock.MagicMock, active_site: Site | None, deviceCategory_anyset: str | None, expected: bool
+):
+
+    mock_get_active_site.return_value = active_site
+    mock_session = create_mock_session()
+    resolved_params = {}
+    if deviceCategory_anyset is not None:
+        resolved_params["deviceCategory_anyset"] = deviceCategory_anyset
 
     result = await check_end_device_contents(mock_session, resolved_params)
     assert_check_result(result, expected)
@@ -956,6 +995,82 @@ async def test_check_der_capability_contents(
             ],
             {},
             False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 0},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=1
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 0},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 1},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=3
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 3},
+            True,
         ),
     ],
 )
