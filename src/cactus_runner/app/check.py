@@ -444,7 +444,9 @@ async def do_check_site_readings_and_params(
         return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    return await do_check_readings_for_types(session, site_reading_types, minimum_count)
+    type_check = await do_check_readings_for_types(session, site_reading_types, minimum_count)
+    boundary_check = await do_check_readings_on_minute_boundary(session, site_reading_types)
+    return merge_checks([type_check, boundary_check])
 
 
 async def check_readings_site_active_power(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
