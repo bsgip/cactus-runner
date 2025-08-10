@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Annotated, Any, Optional, Sequence
 
 import pydantic
@@ -103,6 +104,25 @@ class SoftChecker:
             return CheckResult(True, None)
         msg = "; ".join([f.description for f in self._failures if f.description is not None])
         return CheckResult(False, msg)
+
+
+def merge_checks(checks: list[CheckResult]) -> CheckResult:
+    """Merges many CheckResults into a single overall CheckResult.
+
+    If all checks are True, a True CheckResult is returned with concatenated descriptions of all check results.
+    If any of the the checks are False, then a False CheckResult is returned with only the False check result descriptions concatenated.
+    """
+    any_checks_false = any([not check.passed for check in checks])
+    if any_checks_false:
+        # Only merge false check results
+        false_check_descriptions = [
+            check.description for check in checks if not check.passed and check.description is not None
+        ]
+        return CheckResult(False, "\n".join(false_check_descriptions))
+    else:
+        # All check results must be true so merge all of them
+        all_descriptions = [check.description for check in checks if check.description is not None]
+        return CheckResult(True, "\n".join(all_descriptions))
 
 
 def check_all_steps_complete(
@@ -375,6 +395,39 @@ async def do_check_readings_for_types(
                 False,
                 f"Highest Reading count was {highest_found_count} / {minimum_count} from {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s).",  # noqa: E501
             )
+
+    return CheckResult(True, None)
+
+
+def timestamp_on_minute_boundary(d: datetime) -> bool:
+    delta = d - datetime(d.year, d.month, d.day, d.hour, d.minute, tzinfo=d.tzinfo)
+    return delta == timedelta(0)
+
+
+async def do_check_readings_on_minute_boundary(
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+) -> CheckResult:
+    if site_reading_types:
+        srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
+        results = await session.execute(
+            select(SiteReading.time_period_start).where(SiteReading.site_reading_type_id.in_(srt_ids))
+        )
+        on_minute_boundary = [timestamp_on_minute_boundary(time_period_start) for time_period_start, in results.all()]
+        aligned_count = on_minute_boundary.count(True)
+        total_count = len(on_minute_boundary)
+
+        total_mups = len(set((srt.group_id for srt in site_reading_types)))
+        total_mmrs = len(site_reading_types)
+
+        if aligned_count != total_count:
+            return CheckResult(
+                False,
+                f"Only {aligned_count}/{total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoints(s) and {total_mmrs} MirrorMeterReadings(s).",
+            )
+        return CheckResult(
+            True,
+            f"All {total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoints(s) and {total_mmrs} MirrorMeterReadings(s).",
+        )
 
     return CheckResult(True, None)
 
