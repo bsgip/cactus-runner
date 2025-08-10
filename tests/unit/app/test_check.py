@@ -1177,8 +1177,10 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
 )
 @mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
+@mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params(
+    mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
     mock_get_csip_aus_site_reading_types: mock.MagicMock,
     resolved_parameters: dict[str, Any],
@@ -1195,6 +1197,7 @@ async def test_do_check_site_readings_and_params(
     expected_result = generate_class_instance(CheckResult)
     mock_get_csip_aus_site_reading_types.return_value = site_reading_types
     mock_do_check_readings_for_types.return_value = expected_result
+    mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -1207,8 +1210,9 @@ async def test_do_check_site_readings_and_params(
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:
-        assert result is expected_result
+        assert result == expected_result
         mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
+        mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
