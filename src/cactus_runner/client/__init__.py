@@ -15,7 +15,17 @@ __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProce
 logger = logging.getLogger(__name__)
 
 
-class RunnerClientException(Exception): ...  # noqa: E701
+class RunnerClientException(Exception):
+    def __init__(
+        self,
+        message: str,
+        http_status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        # Capturing status code in the exception to allow more detailed exception handling by client code.
+        # Taking this a step further, we could define app-specific exception codes that can be imported across
+        # components.
+        self.http_status_code = http_status_code
 
 
 async def ensure_success_response(response: ClientResponse) -> None:
@@ -30,7 +40,10 @@ async def ensure_success_response(response: ClientResponse) -> None:
         logger.error(
             f"Received HTTP {response.status} response for {response.request_info.url}. Response: {response_body}"
         )
-        raise RunnerClientException(f"Received HTTP {response.status} response from server. Response: {response_body}")
+        raise RunnerClientException(
+            f"Received HTTP {response.status} response from server. Response: {response_body}",
+            http_status_code=response.status,
+        )
 
 
 class RunnerClient:
