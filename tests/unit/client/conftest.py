@@ -23,6 +23,7 @@ def runner_status_fixture():
         last_client_interaction=ClientInteraction(
             interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(timezone.utc)
         ),
+        csip_aus_version="v1.2",
         test_procedure_name="ALL-01",
         step_status={
             "ALL-01-001": StepStatus.RESOLVED,

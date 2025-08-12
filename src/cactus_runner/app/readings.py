@@ -39,7 +39,8 @@ MANDATORY_READING_SPECIFIERS = [
 
 
 async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteReadingType, DataFrame]:
-    """Returns a dataframe containing readings matching the 'reading_specifiers'.
+    """Returns a dataframe containing readings matching the 'reading_specifiers'. If no readings are present for the
+    reading_specifier - it will NOT be included in the resulting dataframe.
 
     Args:
         reading_specifiers: A list of the types of readings to return.
@@ -59,7 +60,8 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
             for reading_type in reading_types:
                 reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
 
-                readings[reading_type] = scale_readings(reading_type=reading_type, readings=reading_data)
+                if reading_data:
+                    readings[reading_type] = scale_readings(reading_type=reading_type, readings=reading_data)
 
     groups = group_reading_types(list(readings.keys()))
     merged_readings = merge_readings(readings=readings, groups=groups)
@@ -160,7 +162,8 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
 
 
 def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
-    """Converts the readings to dataframe and calculates scaled value (power of 10 multiplier).
+    """Converts the readings to dataframe and calculates scaled value (power of 10 multiplier). Requires readings to be
+    a non empty list otherwise a ValueError will be raised
 
     Args:
         reading_type: The SiteReadingType associated with the 'readings'.
@@ -170,6 +173,9 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
         DataFrame: A dataframe containing all the readings in 'readings' along with an extra column
         'scaled_value'. 'scaled_value' = 'value' * power_of_10_multiplier.
     """
+    if not readings:
+        raise ValueError("Expected at least 1 entry in readings. Got 0/None")
+
     # Convert list of readings into a dataframe
     df = DataFrame([reading.__dict__ for reading in readings])
 

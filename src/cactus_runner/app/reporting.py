@@ -9,6 +9,7 @@ import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px  # type: ignore
 import plotly.graph_objects as go  # type: ignore
+from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions import __version__ as cactus_test_definitions_version
 from envoy.server.model import (
     DynamicOperatingEnvelope,
@@ -92,6 +93,9 @@ DEFAULT_TABLE_STYLE = TableStyle(
 # Limit document content to full width of page (minus margins)
 MAX_CONTENT_WIDTH = PAGE_WIDTH - 2 * MARGIN
 
+# The maximum length of a string that can appear in a single table cell
+MAX_CELL_LENGTH_CHARS = 500
+
 DOCUMENT_TITLE = "CSIP-AUS Client Test Procedure"
 AUTHOR = "Cactus Test Harness"
 AUTHOR_URL = "https://cactus.cecs.anu.edu.au"
@@ -113,6 +117,8 @@ class StyleSheet:
     table_width: float
     spacer: Spacer
     date_format: str
+    max_cell_length_chars: int
+    truncation_marker: str
 
 
 def get_stylesheet() -> StyleSheet:
@@ -132,10 +138,14 @@ def get_stylesheet() -> StyleSheet:
         table_width=MAX_CONTENT_WIDTH,
         spacer=DEFAULT_SPACER,
         date_format="%Y-%m-%d %H:%M:%S",
+        max_cell_length_chars=MAX_CELL_LENGTH_CHARS,
+        truncation_marker=" … ",
     )
 
 
-def first_page_template(canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_run_id: str) -> None:
+def first_page_template(
+    canvas: Canvas, doc: BaseDocTemplate, test_procedure_name: str, test_run_id: str, csip_aus_version: CSIPAusVersion
+) -> None:
     """Template for the first/front/title page of the report"""
 
     document_creation: str = datetime.now(timezone.utc).strftime("%d-%m-%Y")
@@ -186,6 +196,9 @@ def first_page_template(canvas: Canvas, doc: BaseDocTemplate, test_procedure_nam
     )
     canvas.drawRightString(
         PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.5 * inch, f"Cactus Runner v{cactus_runner_version}"
+    )
+    canvas.drawRightString(
+        PAGE_WIDTH - MARGIN, PAGE_HEIGHT - BANNER_HEIGHT - 0.65 * inch, f"CSIP Aus {csip_aus_version}"
     )
 
 
@@ -565,14 +578,22 @@ def generate_requests_with_errors_table(requests_with_errors: dict[int, RequestE
 def generate_requests_with_validation_errors_table(
     requests_with_validation_errors: dict[int, RequestEntry], stylesheet: StyleSheet
 ) -> Table:
-    data = [
-        [
-            i,
-            f"{str(req.method)} {req.path} {req.status}",
-            Paragraph("\n".join(req.body_xml_errors)),
-        ]
-        for i, req in requests_with_validation_errors.items()
-    ]
+    data = []
+    for i, req in requests_with_validation_errors.items():
+        request_description = f"{str(req.method)} {req.path} {req.status}"
+        validation_errors = "\n".join(req.body_xml_errors)
+
+        # Limit to a reason size the validation error information
+        if len(validation_errors) > stylesheet.max_cell_length_chars:
+            validation_errors = validation_errors[: stylesheet.max_cell_length_chars] + stylesheet.truncation_marker
+
+        data.append(
+            [
+                i,
+                request_description,
+                Paragraph(validation_errors),
+            ]
+        )
 
     data.insert(0, ["", "", "Validation Errors"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
@@ -1099,7 +1120,12 @@ def pdf_report_as_bytes(
     )
 
     test_procedure_name = runner_state.active_test_procedure.name
-    first_page = partial(first_page_template, test_procedure_name=test_procedure_name, test_run_id=test_run_id)
+    first_page = partial(
+        first_page_template,
+        test_procedure_name=test_procedure_name,
+        test_run_id=test_run_id,
+        csip_aus_version=runner_state.active_test_procedure.csip_aus_version,
+    )
     later_pages = partial(later_pages_template, test_procedure_name=test_procedure_name, test_run_id=test_run_id)
 
     with io.BytesIO() as buffer:

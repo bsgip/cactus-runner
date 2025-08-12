@@ -25,15 +25,19 @@ from envoy.server.model.subscription import (
     TransmitNotificationLog,
 )
 from envoy_schema.server.schema.sep2.response import ResponseType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
+from envoy_schema.server.schema.sep2.types import (
+    DataQualifierType,
+    DeviceCategory,
+    UomType,
+)
 from sqlalchemy import select
 
 from cactus_runner.app.check import (
     CheckResult,
     FailedCheckError,
-    UnknownCheckError,
-    ParamsDERSettingsContents,
     ParamsDERCapabilityContents,
+    ParamsDERSettingsContents,
+    UnknownCheckError,
     all_checks_passing,
     check_all_notifications_transmitted,
     check_all_steps_complete,
@@ -44,10 +48,13 @@ from cactus_runner.app.check import (
     check_response_contents,
     check_subscription_contents,
     do_check_readings_for_types,
+    do_check_readings_on_minute_boundary,
     do_check_site_readings_and_params,
     is_nth_bit_set_properly,
+    merge_checks,
     response_type_to_string,
     run_check,
+    timestamp_on_minute_boundary,
 )
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.models import ActiveTestProcedure, Listener
@@ -175,7 +182,7 @@ def test_check_all_steps_complete(
 )
 @mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
-async def test_check_connectionpoint_contents(
+async def test_check_end_device_contents_connection_point(
     mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
 ):
 
@@ -184,6 +191,41 @@ async def test_check_connectionpoint_contents(
     resolved_params = {}
     if has_connection_point_id is not None:
         resolved_params["has_connection_point_id"] = has_connection_point_id
+
+    result = await check_end_device_contents(mock_session, resolved_params)
+    assert_check_result(result, expected)
+
+    assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "active_site, deviceCategory_anyset, expected",
+    [
+        (None, "0", False),
+        (None, "123", False),
+        (None, None, False),
+        (generate_class_instance(Site), "0", True),
+        (generate_class_instance(Site), None, True),
+        (generate_class_instance(Site, device_category=DeviceCategory(0)), "0", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(0)), "1", False),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
+        (generate_class_instance(Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
+    ],
+)
+@mock.patch("cactus_runner.app.check.get_active_site")
+@pytest.mark.anyio
+async def test_check_end_device_contents_device_category(
+    mock_get_active_site: mock.MagicMock, active_site: Site | None, deviceCategory_anyset: str | None, expected: bool
+):
+
+    mock_get_active_site.return_value = active_site
+    mock_session = create_mock_session()
+    resolved_params = {}
+    if deviceCategory_anyset is not None:
+        resolved_params["deviceCategory_anyset"] = deviceCategory_anyset
 
     result = await check_end_device_contents(mock_session, resolved_params)
     assert_check_result(result, expected)
@@ -957,6 +999,82 @@ async def test_check_der_capability_contents(
             {},
             False,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 0},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=1
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 0},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 1},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_status=generate_class_instance(
+                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=3
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {"alarmStatus": 3},
+            True,
+        ),
     ],
 )
 @pytest.mark.anyio
@@ -977,15 +1095,20 @@ async def test_check_der_status_contents(
     [
         ([], None, True),
         ([], 0, True),
-        ([], 3, True),  # No srt_ids - nothing to check
-        ([1, 2, 3], 3, False),
-        ([1, 2, 3], 2, False),
-        ([1, 2, 3], 0, True),
+        ([], 3, False),
+        ([1, 2, 3], 3, True),  # First SRT has 3 readings
+        ([1, 2, 3], 4, False),
+        ([1, 2, 3], 2, True),
+        ([2, 3], 3, False),
+        ([3], 3, False),
         ([1, 2], 2, True),
         ([1], 3, True),
         ([1], 4, False),
-        ([1, 2, 3, 99], 0, True),
-        ([1, 2, 99], 2, False),
+        ([99], 0, True),
+        ([99], 1, False),
+        ([3, 2, 99], 0, True),
+        ([3, 2, 99], 2, True),
+        ([3, 2, 99], 3, False),
     ],
 )
 @pytest.mark.anyio
@@ -1009,15 +1132,131 @@ async def test_do_check_readings_for_types(
 
         await session.commit()
 
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_for_types(session, srt_ids, minimum_count)
+
+        result = await do_check_readings_for_types(session, faked_srts, minimum_count)
         assert_check_result(result, expected)
 
 
 @pytest.mark.parametrize(
-    "resolved_parameters, uom, reading_location, qualifier, site_reading_types, expected_srt_ids, expected_min_count",
+    "srt_ids, expected",
     [
-        ({}, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE, [], [], None),
+        ([], True),
+        ([1], True),
+        ([1, 2], False),  # srt 2 readings not-aligned
+        ([1, 3], True),
+        ([1, 2, 3], False),  # srt 2 readings not-aligned
+        ([2, 3], False),  # srt 2 readings not-aligned
+        ([3], True),
+        ([99], True),
+        ([1, 99], True),
+        ([2, 99], False),  # srt 2 readings not-aligned
+        ([3, 99], True),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: list[int], expected: bool):
+    """Tests that do_check_readings_for_types can handle various queries against a static DB model"""
+    async with generate_async_session(pg_base_config) as session:
+        # Load 3 SiteReadingTypes, the first has 3 readings, the second has 2.
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        srt2 = generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2, aggregator_id=1, site=site)
+        srt3 = generate_class_instance(SiteReadingType, seed=303, site_reading_type_id=3, aggregator_id=1, site=site)
+
+        session.add_all([site, srt1, srt2, srt3])
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=11,
+                site_reading_type=srt1,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:05:00"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=22,
+                site_reading_type=srt1,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:06:00"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=33,
+                site_reading_type=srt1,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:07:00"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=44,
+                site_reading_type=srt2,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:05:13"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=55,
+                site_reading_type=srt2,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:06:23"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=66,
+                site_reading_type=srt2,
+                time_period_start=datetime.fromisoformat("2011-11-04T00:07:59"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=77,
+                site_reading_type=srt3,
+                time_period_start=datetime.fromisoformat("2012-12-05T01:55:00"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=88,
+                site_reading_type=srt3,
+                time_period_start=datetime.fromisoformat("2012-12-05T02:55:00"),
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=99,
+                site_reading_type=srt3,
+                time_period_start=datetime.fromisoformat("2012-12-05T03:55:00"),
+            )
+        )
+
+        await session.commit()
+
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_readings_on_minute_boundary(session, faked_srts)
+        assert_check_result(result, expected)
+
+
+@pytest.mark.parametrize(
+    "resolved_parameters, uom, reading_location, qualifier, site_reading_types, expected_min_count",
+    [
+        ({}, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE, [], None),
         (
             {},
             UomType.APPARENT_ENERGY_VAH,
@@ -1026,7 +1265,6 @@ async def test_do_check_readings_for_types(
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1),
             ],
-            [1],
             None,
         ),
         (
@@ -1038,7 +1276,6 @@ async def test_do_check_readings_for_types(
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=4),
                 generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2),
             ],
-            [4, 2],
             123,
         ),
         (
@@ -1049,15 +1286,16 @@ async def test_do_check_readings_for_types(
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=2),
             ],
-            [2],
             0,
         ),
     ],
 )
 @mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
+@mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params(
+    mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
     mock_get_csip_aus_site_reading_types: mock.MagicMock,
     resolved_parameters: dict[str, Any],
@@ -1065,7 +1303,6 @@ async def test_do_check_site_readings_and_params(
     reading_location: ReadingLocation,
     qualifier: DataQualifierType,
     site_reading_types: list[SiteReadingType],
-    expected_srt_ids: list[int],
     expected_min_count: int | None,
 ):
     """Tests that do_check_site_readings_and_params does the basic logic it needs before offloading to
@@ -1075,6 +1312,7 @@ async def test_do_check_site_readings_and_params(
     expected_result = generate_class_instance(CheckResult)
     mock_get_csip_aus_site_reading_types.return_value = site_reading_types
     mock_do_check_readings_for_types.return_value = expected_result
+    mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -1086,9 +1324,10 @@ async def test_do_check_site_readings_and_params(
     mock_get_csip_aus_site_reading_types.assert_called_once_with(mock_session, uom, reading_location, qualifier)
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
-    if len(expected_srt_ids) != 0:
-        assert result is expected_result
-        mock_do_check_readings_for_types.assert_called_once_with(mock_session, expected_srt_ids, expected_min_count)
+    if len(site_reading_types) != 0:
+        assert result == expected_result
+        mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
+        mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
@@ -1641,3 +1880,35 @@ def test_params_der_capability_contents_model_has_correct_fields():
     assert sorted([f.alias for f in dccm.__pydantic_fields__.values()]) == sorted(
         [f for f in CHECK_PARAMETER_SCHEMA["der-capability-contents"]]
     )
+
+
+@pytest.mark.parametrize(
+    "timestamp_str, expected",
+    [("2011-11-04T00:05:23", False), ("2011-11-04T00:05:00.001", False), ("2011-11-04T00:05:00", True)],
+)
+def test_timestamp_on_minute_boundary(timestamp_str: str, expected: bool):
+    timestamp = datetime.fromisoformat(timestamp_str)
+
+    assert timestamp_on_minute_boundary(timestamp) == expected
+
+
+@pytest.mark.parametrize(
+    "checkresults, expected",
+    [
+        ([CheckResult(True, "1")], CheckResult(True, "1")),
+        ([CheckResult(False, "1")], CheckResult(False, "1")),
+        (
+            [CheckResult(True, "1"), CheckResult(True, "2"), CheckResult(True, "3")],
+            CheckResult(True, "1\n2\n3"),
+        ),  # all true
+        (
+            [CheckResult(False, "1"), CheckResult(False, "2"), CheckResult(False, "3")],
+            CheckResult(False, "1\n2\n3"),
+        ),  # all false
+        ([CheckResult(True, "1"), CheckResult(False, "2"), CheckResult(True, "3")], CheckResult(False, "2")),
+        ([CheckResult(True, "1"), CheckResult(False, "2"), CheckResult(False, "3")], CheckResult(False, "2\n3")),
+        ([CheckResult(True, "1"), CheckResult(True, "2"), CheckResult(False, "3")], CheckResult(False, "3")),
+    ],
+)
+def test_merge_check_results(checkresults: list[CheckResult], expected: CheckResult):
+    assert merge_checks(checkresults) == expected

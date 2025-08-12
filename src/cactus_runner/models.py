@@ -5,6 +5,7 @@ from enum import Enum, StrEnum, auto
 from typing import Any
 
 from cactus_test_definitions import (
+    CSIPAusVersion,
     Event,
     TestProcedure,
 )
@@ -28,6 +29,7 @@ class StepStatus(Enum):
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
+    csip_aus_version: CSIPAusVersion  # What CSIP aus version did is this run communicating with?
     initialised_at: datetime  # When did the test initialise - timezone aware
     started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
     listeners: list[Listener]
@@ -160,14 +162,24 @@ class CriteriaEntry(JSONWizard):
 
 
 @dataclass
+class PreconditionCheckEntry(JSONWizard):
+    success: bool
+    type: str
+    details: str
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise
     timestamp_start: datetime | None  # When did the test start
     status_summary: str
     last_client_interaction: ClientInteraction
+    csip_aus_version: str  # The CSIPAus version that is registered in the active test procedure (can be empty)
     log_envoy: str  # Snapshot of the current envoy logs
     criteria: list[CriteriaEntry] = field(default_factory=list)
+    precondition_checks: list[PreconditionCheckEntry] = field(default_factory=list)
+    instructions: list[str] | None = field(default=None)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)

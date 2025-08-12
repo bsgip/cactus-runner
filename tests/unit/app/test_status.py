@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
-from cactus_test_definitions.checks import Check
+from cactus_test_definitions import Check, CSIPAusVersion
 
 from cactus_runner.app import status
 from cactus_runner.app.check import CheckResult
@@ -39,14 +39,18 @@ async def test_get_active_runner_status(mocker):
     expected_test_name = "TEST_NAME"
     expected_step_status = {"step_name": StepStatus.PENDING}
     expected_status_summary = "0/1 steps complete."
+    expected_csip_aus_version = CSIPAusVersion.RELEASE_1_2
     active_test_procedure = Mock()
     active_test_procedure.name = expected_test_name
     active_test_procedure.step_status = expected_step_status
+    active_test_procedure.listeners = []
+    active_test_procedure.csip_aus_version = expected_csip_aus_version
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = Mock()
     criteria_check = Check("check-1", {})
     active_test_procedure.definition.criteria.checks = [criteria_check]
     mock_run_check.return_value = CheckResult(True, "Details on Check 1")
+    active_test_procedure.definition.preconditions.checks = [criteria_check]  # reuse mocked criteria check
 
     request_history = Mock()
     last_client_interaction = Mock()
@@ -66,6 +70,8 @@ async def test_get_active_runner_status(mocker):
     assert runner_status.test_procedure_name == expected_test_name
     assert runner_status.step_status == expected_step_status
     assert runner_status.status_summary == expected_status_summary
+    assert isinstance(runner_status.csip_aus_version, str)
+    assert runner_status.csip_aus_version == expected_csip_aus_version
     assert runner_status.criteria == [CriteriaEntry(True, "check-1", "Details on Check 1")]
     assert_mock_session(mock_session)
 
@@ -78,8 +84,11 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     expected_step_status = {"step_name": StepStatus.PENDING}
     active_test_procedure = Mock()
     active_test_procedure.step_status = expected_step_status
+    active_test_procedure.listeners = []
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = None
+    active_test_procedure.definition.preconditions.checks = None
+    active_test_procedure.listeners = []
     request_history = Mock()
     last_client_interaction = Mock()
 
@@ -100,5 +109,6 @@ def test_get_runner_status(example_client_interaction: ClientInteraction):
     assert runner_status.status_summary == "No test procedure running"
     assert runner_status.last_client_interaction == example_client_interaction
     assert runner_status.test_procedure_name == "-"
+    assert runner_status.csip_aus_version == ""
     assert runner_status.step_status is None
     assert runner_status.request_history == []

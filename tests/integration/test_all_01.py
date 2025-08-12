@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 import pytest
 from aiohttp import ClientResponse
+from cactus_test_definitions import CSIPAusVersion
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.models import RunnerStatus, StepStatus
@@ -18,14 +19,19 @@ async def assert_success_response(response: ClientResponse):
         assert False, f"{response.status}: {body}"
 
 
-@pytest.mark.parametrize("certificate_type", ["aggregator_certificate", "device_certificate"])
+@pytest.mark.parametrize(
+    "certificate_type, csip_aus_version",
+    [("aggregator_certificate", CSIPAusVersion.BETA_1_3_STORAGE), ("device_certificate", CSIPAusVersion.RELEASE_1_2)],
+)
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: str):
+async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion):
     """This is a full integration test of the entire ALL-01 workflow"""
 
     # Init
-    result = await cactus_runner_client.post(f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}")
+    result = await cactus_runner_client.post(
+        f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+    )
     await assert_success_response(result)
 
     # Start
@@ -71,6 +77,7 @@ async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: s
     summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))
     assert len(summary_data) > 0
     summary = RunnerStatus.from_json(summary_data.decode())
+    assert summary.csip_aus_version == csip_aus_version.value
     for step, resolved in summary.step_status.items():
         assert resolved == StepStatus.RESOLVED, step
 
