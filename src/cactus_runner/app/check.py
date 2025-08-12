@@ -732,6 +732,29 @@ async def determine_check_results(
     return check_results
 
 
+async def first_failing_check(
+    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+) -> CheckResult | None:
+    """Iterates through checks - looking for the first Check that returns a failing CheckResult. If all checks are
+    passing, returns None
+
+    Raises:
+      UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
+      FailedCheckError: Raised if this function encounters an exception while running the check."""
+
+    if not checks:
+        return None
+
+    for check in checks:
+        result = await run_check(check, active_test_procedure, session)
+        if not result.passed:
+            logger.info(f"{check} is not passing: {result}.")
+            return result
+
+    logger.debug(f"Evaluated {len(checks)} and all passed.")
+    return None
+
+
 async def all_checks_passing(
     checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
 ) -> bool:
@@ -741,15 +764,5 @@ async def all_checks_passing(
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
       FailedCheckError: Raised if this function encounters an exception while running the check."""
 
-    if not checks:
-        logger.debug("all_checks_passing: No checks specified. Returning True.")
-        return True
-
-    for check in checks:
-        result = await run_check(check, active_test_procedure, session)
-        if not result.passed:
-            logger.info(f"all_checks_passing: {check} is not passed. Returning False")
-            return False
-
-    logger.debug(f"all_checks_passing: Evaluated {len(checks)} and all passed.")
-    return True
+    failing_check = await first_failing_check(checks, active_test_procedure, session)
+    return failing_check is None

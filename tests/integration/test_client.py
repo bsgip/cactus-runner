@@ -1,6 +1,7 @@
 import io
 import zipfile
 from datetime import datetime
+from http import HTTPStatus
 from urllib.parse import quote
 
 import pytest
@@ -130,3 +131,35 @@ async def test_client_init_bad_cert_combos(
                 subscription_domain=None,
                 run_id="abc123",
             )
+
+
+@pytest.mark.slow
+@pytest.mark.anyio
+async def test_client_precondition_fails(cactus_runner_client: TestClient):
+    """Tests that the embedded client handles failures where the combination of certificates is wrong"""
+
+    aggregator_cert = RAW_CERT_1
+
+    # Interrogate the init response
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        # Create an ALL-20 test session
+        await RunnerClient.init(
+            session,
+            TestProcedureId.ALL_20,
+            CSIPAusVersion.RELEASE_1_2,
+            aggregator_certificate=aggregator_cert,
+            device_certificate=None,
+            subscription_domain=None,
+            run_id="abc123",
+        )
+
+        # This test will expect preconditions to be met (eg registering an EndDevice) - if we try to start now
+        # it should fail and report a useful error
+        with pytest.raises(RunnerClientException) as exc_info:
+            await RunnerClient.start(session)
+
+        assert exc_info.value.http_status_code == HTTPStatus.PRECONDITION_FAILED
+        assert exc_info.value.error_message, "Should have some details on the error"
+
+        # This assertion is rather brittle (it's assuming error text in the CheckResult referencing EndDevice)
+        assert "EndDevice" in exc_info.value.error_message, "There should be a reference to the missing EndDevice"

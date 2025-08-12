@@ -9,7 +9,7 @@ from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
 from cactus_runner.app import action, auth, event, finalize, precondition, proxy, status
-from cactus_runner.app.check import all_checks_passing
+from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
@@ -236,12 +236,13 @@ async def start_handler(request: web.Request):
     # We cannot start a test procedure if any of the precondition checks are failing:
     if active_test_procedure.definition.preconditions:
         async with begin_session() as session:
-            if not await all_checks_passing(
+            check_failure = await first_failing_check(
                 active_test_procedure.definition.preconditions.checks, active_test_procedure, session
-            ):
+            )
+            if check_failure:
                 return web.Response(
                     status=http.HTTPStatus.PRECONDITION_FAILED,
-                    text="Unable to start test procedure. One or more preconditions have NOT been met.",
+                    text=f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
                 )
 
     # We cannot start another test procedure if one is already running.

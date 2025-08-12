@@ -16,16 +16,16 @@ logger = logging.getLogger(__name__)
 
 
 class RunnerClientException(Exception):
-    def __init__(
-        self,
-        message: str,
-        http_status_code: int | None = None,
-    ) -> None:
+    http_status_code: int | None  # The HTTP status code received (if any) from the underlying client request
+    error_message: str | None  # The error message extracted from the underlying client
+
+    def __init__(self, message: str, http_status_code: int | None = None, error_message: str | None = None) -> None:
         super().__init__(message)
         # Capturing status code in the exception to allow more detailed exception handling by client code.
         # Taking this a step further, we could define app-specific exception codes that can be imported across
         # components.
         self.http_status_code = http_status_code
+        self.error_message = error_message
 
 
 async def ensure_success_response(response: ClientResponse) -> None:
@@ -43,6 +43,7 @@ async def ensure_success_response(response: ClientResponse) -> None:
         raise RunnerClientException(
             f"Received HTTP {response.status} response from server. Response: {response_body}",
             http_status_code=response.status,
+            error_message=response_body,  # We will just pass along the whole body - expecting plaintext
         )
 
 

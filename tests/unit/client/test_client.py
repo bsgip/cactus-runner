@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from http import HTTPStatus
 from itertools import product
 from unittest.mock import MagicMock
 
@@ -192,6 +193,23 @@ async def test_start():
     assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
     assert isinstance(start_result, StartResponseBody)
     assert start_result == expected_start_result
+
+
+@pytest.mark.asyncio
+async def test_start_precondition_failures():
+    # Arrange
+    expected_error_message = "This is an error message returned from the underlying runner"
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value.status = HTTPStatus.PRECONDITION_FAILED
+    mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_error_message
+
+    # Act
+    with pytest.raises(RunnerClientException) as exc_info:
+        await RunnerClient.start(session=mock_session)
+
+    # Assert
+    assert exc_info.value.error_message == expected_error_message
+    assert exc_info.value.http_status_code == HTTPStatus.PRECONDITION_FAILED
 
 
 @pytest.mark.asyncio

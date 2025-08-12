@@ -50,6 +50,7 @@ from cactus_runner.app.check import (
     do_check_readings_for_types,
     do_check_readings_on_minute_boundary,
     do_check_site_readings_and_params,
+    first_failing_check,
     is_nth_bit_set_properly,
     merge_checks,
     response_type_to_string,
@@ -1833,6 +1834,56 @@ async def test_run_check_check_dne():
 )
 @mock.patch("cactus_runner.app.check.run_check")
 @pytest.mark.anyio
+async def test_first_failing_check(
+    mock_run_check: mock.MagicMock,
+    checks: list[Check] | None,
+    run_check_results: list[bool | type[Exception]],
+    expected: bool | type[Exception],
+):
+    """Tries to trip up first_failing_check under various combinations of pass/fail/exception"""
+
+    # Arrange
+    mock_session = create_mock_session()
+    side_effects = []
+    for r in run_check_results:
+        if isinstance(r, type):
+            side_effects.append(r)
+        else:
+            side_effects.append(CheckResult(r, None))
+    mock_run_check.side_effect = side_effects
+
+    # Act
+    if isinstance(expected, type):
+        with pytest.raises(expected):
+            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_session)
+    else:
+        first_failing_result = await first_failing_check(
+            checks, generate_active_test_procedure_steps([], []), mock_session
+        )
+
+        if expected is True:
+            assert first_failing_result is None
+        else:
+            assert isinstance(first_failing_result, CheckResult)
+            assert expected is first_failing_result.passed
+
+    # Assert
+    assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "checks, run_check_results, expected",
+    [
+        (None, [], True),
+        ([Check("1", {}), Check("2", {})], [True, True], True),
+        ([Check("1", {}), Check("2", {})], [True, False], False),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, True, False], False),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, FailedCheckError, True], FailedCheckError),
+        ([Check("1", {}), Check("2", {}), Check("3", {})], [True, UnknownCheckError, True], UnknownCheckError),
+    ],
+)
+@mock.patch("cactus_runner.app.check.run_check")
+@pytest.mark.anyio
 async def test_all_checks_passing(
     mock_run_check: mock.MagicMock,
     checks: list[Check] | None,
@@ -1856,9 +1907,9 @@ async def test_all_checks_passing(
         with pytest.raises(expected):
             await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
     else:
-        result = await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
-        assert isinstance(result, bool)
-        assert result == expected
+        all_checks_result = await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+        assert isinstance(all_checks_result, bool)
+        assert all_checks_result == expected
 
     # Assert
     assert_mock_session(mock_session)
