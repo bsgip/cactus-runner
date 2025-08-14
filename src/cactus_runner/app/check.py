@@ -18,7 +18,7 @@ from envoy.server.model.site import (
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy.server.model.subscription import Subscription, TransmitNotificationLog
 from envoy_schema.server.schema.sep2.response import ResponseType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,6 +59,9 @@ class ParamsDERSettingsContents(pydantic.BaseModel):
     set_max_charge_rate_w: bool | None = None
     set_max_discharge_rate_w: bool | None = None
     set_max_wh: bool | None = None
+    set_min_wh: bool | None = None
+    vpp_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="vppModesEnabled_set")] = None
+    vpp_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="vppModesEnabled_unset")] = None
 
 
 class ParamsDERCapabilityContents(pydantic.BaseModel):
@@ -76,6 +79,8 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
     rtg_max_charge_rate_w: bool | None = None
     rtg_max_discharge_rate_w: bool | None = None
     rtg_max_wh: bool | None = None
+    vpp_modes_supported_set: Annotated[str | None, pydantic.Field(alias="vppModesSupported_set")] = None
+    vpp_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="vppModesSupported_unset")] = None
 
 
 @dataclass
@@ -452,8 +457,9 @@ async def do_check_site_readings_and_params(
     uom: UomType,
     reading_location: ReadingLocation,
     data_qualifier: DataQualifierType,
+    kind: KindType = KindType.POWER,
 ) -> CheckResult:
-    site_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, data_qualifier)
+    site_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, kind, data_qualifier)
     if not site_reading_types:
         return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
@@ -534,6 +540,20 @@ async def check_readings_der_voltage(session: AsyncSession, resolved_parameters:
         UomType.VOLTAGE,
         ReadingLocation.DEVICE_READING,
         DataQualifierType.AVERAGE,
+    )
+
+
+async def check_readings_der_stored_energy(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the readings-der-stored-energy check.
+
+    Will only consider the mandatory "Instantaneous" readings"""
+    return await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        UomType.REAL_ENERGY_WATT_HOURS,
+        ReadingLocation.DEVICE_READING,
+        DataQualifierType.NOT_APPLICABLE,  # TODO: Currently corresponds to 0 but should be called Instantaneous?
+        KindType.ENERGY,
     )
 
 
@@ -698,6 +718,9 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
             case "readings-der-voltage":
                 check_result = await check_readings_der_voltage(session, resolved_parameters)
+
+            case "readings-der-stored-energy":
+                check_result = await check_readings_der_stored_energy(session, resolved_parameters)
 
             case "all-notifications-transmitted":
                 check_result = await check_all_notifications_transmitted(session)

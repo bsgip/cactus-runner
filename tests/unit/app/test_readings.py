@@ -72,12 +72,23 @@ async def test_get_readings(mocker, pg_base_config):
             kind=KindType.POWER,
             role_flags=ReadingLocation.SITE_READING,
         )
-        session.add_all([power, voltage, reactive])
+        energy = generate_class_instance(
+            SiteReadingType,
+            seed=505,
+            aggregator_id=1,
+            site_reading_type_id=4,
+            site=site1,
+            uom=UomType.REAL_ENERGY_WATT_HOURS,
+            data_qualifier=DataQualifierType.NOT_APPLICABLE,
+            kind=KindType.ENERGY,
+            role_flags=ReadingLocation.DEVICE_READING,
+        )
+        session.add_all([power, voltage, reactive, energy])
 
         # Add readings
         def gen_sr(seed: int, srt: SiteReadingType) -> SiteReading:
             """Shorthand for generating a new SiteReading with the specified type"""
-            return generate_class_instance(SiteReading, seed=seed, site_reading_type=srt)
+            return generate_class_instance(SiteReading, seed=seed, site_reading_type=srt, site_reading_id=None)
 
         num_power_readings = 5
         power_readings = [gen_sr(i, power) for i in range(1, num_power_readings + 1)]
@@ -87,6 +98,10 @@ async def test_get_readings(mocker, pg_base_config):
         voltage_readings = [gen_sr(i + num_power_readings, voltage) for i in range(1, num_voltage_readings + 1)]
         session.add_all(voltage_readings)
 
+        num_energy_readings = 1
+        energy_readings = [gen_sr(i + num_energy_readings, energy) for i in range(1, num_energy_readings + 1)]
+        session.add_all(energy_readings)
+
         await session.commit()
 
     session = generate_async_session(pg_base_config)
@@ -94,9 +109,30 @@ async def test_get_readings(mocker, pg_base_config):
     mock_begin_session.__aenter__.return_value = session
 
     reading_specifiers = [
-        ReadingSpecifier(uom=UomType.REAL_POWER_WATT, location=ReadingLocation.DEVICE_READING),
-        ReadingSpecifier(uom=UomType.VOLTAGE, location=ReadingLocation.SITE_READING),
-        ReadingSpecifier(uom=UomType.REACTIVE_POWER_VAR, location=ReadingLocation.SITE_READING),
+        ReadingSpecifier(
+            uom=UomType.REAL_POWER_WATT,
+            location=ReadingLocation.DEVICE_READING,
+            kind=KindType.POWER,
+            qualifier=DataQualifierType.AVERAGE,
+        ),
+        ReadingSpecifier(
+            uom=UomType.VOLTAGE,
+            location=ReadingLocation.SITE_READING,
+            kind=KindType.POWER,
+            qualifier=DataQualifierType.AVERAGE,
+        ),
+        ReadingSpecifier(
+            uom=UomType.REACTIVE_POWER_VAR,
+            location=ReadingLocation.SITE_READING,
+            kind=KindType.POWER,
+            qualifier=DataQualifierType.AVERAGE,
+        ),
+        ReadingSpecifier(
+            uom=UomType.REAL_ENERGY_WATT_HOURS,
+            location=ReadingLocation.DEVICE_READING,
+            kind=KindType.ENERGY,
+            qualifier=DataQualifierType.NOT_APPLICABLE,
+        ),
     ]
 
     # Act
@@ -104,8 +140,10 @@ async def test_get_readings(mocker, pg_base_config):
     readings_map = await get_readings(reading_specifiers=reading_specifiers)
 
     # Assert
-    assert_dict_type(SiteReadingType, DataFrame, readings_map, count=2)  # two reading types with data (voltage, power)
-    assert sorted([num_power_readings, num_voltage_readings]) == sorted(
+    assert_dict_type(
+        SiteReadingType, DataFrame, readings_map, count=3
+    )  # three reading types with data (voltage, power, energy)
+    assert sorted([num_power_readings, num_voltage_readings, num_energy_readings]) == sorted(
         [len(readings) for readings in readings_map.values()]
     )
 

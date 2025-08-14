@@ -4,8 +4,7 @@ from typing import Sequence
 
 import pandas as pd
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.server.schema.sep2.types import UomType
-from pandas import DataFrame
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 
 from cactus_runner.app.database import (
     begin_session,
@@ -24,21 +23,60 @@ class ReadingSpecifier:
 
     uom: UomType
     location: ReadingLocation
+    kind: KindType
+    qualifier: DataQualifierType
 
 
 # Defines the mandatory CSIP-AUS readings expected to be sent to a utility server
 # See Annex A - Reporting DER Data (DER Monitoring Data) of the CSIP-AUS (Jan 2023) specification.
 MANDATORY_READING_SPECIFIERS = [
-    ReadingSpecifier(uom=UomType.VOLTAGE, location=ReadingLocation.SITE_READING),
-    ReadingSpecifier(uom=UomType.REAL_POWER_WATT, location=ReadingLocation.SITE_READING),
-    ReadingSpecifier(uom=UomType.REACTIVE_POWER_VAR, location=ReadingLocation.SITE_READING),
-    ReadingSpecifier(uom=UomType.VOLTAGE, location=ReadingLocation.DEVICE_READING),
-    ReadingSpecifier(uom=UomType.REAL_POWER_WATT, location=ReadingLocation.DEVICE_READING),
-    ReadingSpecifier(uom=UomType.REACTIVE_POWER_VAR, location=ReadingLocation.DEVICE_READING),
+    ReadingSpecifier(
+        uom=UomType.VOLTAGE,
+        location=ReadingLocation.SITE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    ReadingSpecifier(
+        uom=UomType.REAL_POWER_WATT,
+        location=ReadingLocation.SITE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    ReadingSpecifier(
+        uom=UomType.REACTIVE_POWER_VAR,
+        location=ReadingLocation.SITE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    ReadingSpecifier(
+        uom=UomType.VOLTAGE,
+        location=ReadingLocation.DEVICE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    ReadingSpecifier(
+        uom=UomType.REAL_POWER_WATT,
+        location=ReadingLocation.DEVICE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    ReadingSpecifier(
+        uom=UomType.REACTIVE_POWER_VAR,
+        location=ReadingLocation.DEVICE_READING,
+        kind=KindType.POWER,
+        qualifier=DataQualifierType.AVERAGE,
+    ),
+    # Storage extension
+    ReadingSpecifier(
+        uom=UomType.REAL_ENERGY_WATT_HOURS,
+        location=ReadingLocation.DEVICE_READING,
+        kind=KindType.ENERGY,
+        qualifier=DataQualifierType.NOT_APPLICABLE,
+    ),
 ]
 
 
-async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteReadingType, DataFrame]:
+async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteReadingType, pd.DataFrame]:
     """Returns a dataframe containing readings matching the 'reading_specifiers'. If no readings are present for the
     reading_specifier - it will NOT be included in the resulting dataframe.
 
@@ -55,7 +93,11 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
         for reading_specifier in reading_specifiers:
             # There maybe more than one reading type per reading specifier, for example, for different phases
             reading_types = await get_csip_aus_site_reading_types(
-                session=session, uom=reading_specifier.uom, location=reading_specifier.location
+                session=session,
+                uom=reading_specifier.uom,
+                location=reading_specifier.location,
+                kind=reading_specifier.kind,
+                qualifier=reading_specifier.qualifier,
             )
             for reading_type in reading_types:
                 reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
@@ -70,8 +112,8 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
 
 
 def merge_readings(
-    readings: dict[SiteReadingType, DataFrame], groups: list[list[SiteReadingType]]
-) -> dict[SiteReadingType, DataFrame]:
+    readings: dict[SiteReadingType, pd.DataFrame], groups: list[list[SiteReadingType]]
+) -> dict[SiteReadingType, pd.DataFrame]:
     """Merges the dataframes for reading types that have been grouped.
 
     Args:
@@ -161,7 +203,7 @@ def group_reading_types(reading_types: list[SiteReadingType]) -> list[list[SiteR
     return grouped_reading_types
 
 
-def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> DataFrame:
+def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading]) -> pd.DataFrame:
     """Converts the readings to dataframe and calculates scaled value (power of 10 multiplier). Requires readings to be
     a non empty list otherwise a ValueError will be raised
 
@@ -177,7 +219,7 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
         raise ValueError("Expected at least 1 entry in readings. Got 0/None")
 
     # Convert list of readings into a dataframe
-    df = DataFrame([reading.__dict__ for reading in readings])
+    df = pd.DataFrame([reading.__dict__ for reading in readings])
 
     # Calculate value with proper scaling applied (power_10)
     scale_factor = Decimal(10**reading_type.power_of_ten_multiplier)

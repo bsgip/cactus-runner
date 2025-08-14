@@ -28,6 +28,7 @@ from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     DeviceCategory,
+    KindType,
     UomType,
 )
 from sqlalchemy import select
@@ -77,6 +78,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "all-notifications-transmitted": "check_all_notifications_transmitted",
     "subscription-contents": "check_subscription_contents",
     "response-contents": "check_response_contents",
+    "readings-der-stored-energy": "check_readings_der_stored_energy",
 }
 
 
@@ -1255,14 +1257,23 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
 
 
 @pytest.mark.parametrize(
-    "resolved_parameters, uom, reading_location, qualifier, site_reading_types, expected_min_count",
+    "resolved_parameters, uom, reading_location, qualifier, kind, site_reading_types, expected_min_count",
     [
-        ({}, UomType.REAL_POWER_WATT, ReadingLocation.SITE_READING, DataQualifierType.AVERAGE, [], None),
+        (
+            {},
+            UomType.REAL_POWER_WATT,
+            ReadingLocation.SITE_READING,
+            DataQualifierType.AVERAGE,
+            KindType.POWER,
+            [],
+            None,
+        ),
         (
             {},
             UomType.APPARENT_ENERGY_VAH,
             ReadingLocation.DEVICE_READING,
             DataQualifierType.MINIMUM,
+            KindType.POWER,
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1),
             ],
@@ -1273,6 +1284,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
             UomType.BRITISH_THERMAL_UNIT,
             ReadingLocation.DEVICE_READING,
             DataQualifierType.STANDARD,
+            KindType.POWER,
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=4),
                 generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2),
@@ -1284,6 +1296,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
             UomType.FREQUENCY_HZ,
             ReadingLocation.SITE_READING,
             DataQualifierType.MAXIMUM,
+            KindType.ENERGY,
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=2),
             ],
@@ -1303,6 +1316,7 @@ async def test_do_check_site_readings_and_params(
     uom: UomType,
     reading_location: ReadingLocation,
     qualifier: DataQualifierType,
+    kind: KindType,
     site_reading_types: list[SiteReadingType],
     expected_min_count: int | None,
 ):
@@ -1317,12 +1331,12 @@ async def test_do_check_site_readings_and_params(
 
     # Act
     result = await do_check_site_readings_and_params(
-        mock_session, resolved_parameters, uom, reading_location, qualifier
+        mock_session, resolved_parameters, uom, reading_location, qualifier, kind
     )
 
     # Assert
     assert_mock_session(mock_session)
-    mock_get_csip_aus_site_reading_types.assert_called_once_with(mock_session, uom, reading_location, qualifier)
+    mock_get_csip_aus_site_reading_types.assert_called_once_with(mock_session, uom, reading_location, kind, qualifier)
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:

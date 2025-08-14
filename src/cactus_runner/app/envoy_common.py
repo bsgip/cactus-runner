@@ -42,6 +42,7 @@ async def get_csip_aus_site_reading_types(
     session: AsyncSession,
     uom: UomType,
     location: ReadingLocation,
+    kind: KindType,
     qualifier: DataQualifierType = DataQualifierType.AVERAGE,
 ) -> Sequence[SiteReadingType]:
     """Finds all SiteReadingTypes (MirrorUsagePoints) for the active site that matches the CSIP-Aus requirements for
@@ -57,6 +58,8 @@ async def get_csip_aus_site_reading_types(
     UomType.REACTIVE_POWER_VAR = MANDATORY
     UomType.FREQUENCY_HZ = OPTIONAL
     UomType.VOLTAGE = MANDATORY (at least 1 site or voltage MUP is required)
+    UomType.REAL_ENERGY_WATT_HOUR = MANDATORY (for 1.3 storage extensions)
+
 
     qualifier will filter the returned DataQualifierType - certain types are optional/mandatory under CSIP-Aus
 
@@ -64,6 +67,8 @@ async def get_csip_aus_site_reading_types(
     DataQualifierType.NORMAL = OPTIONAL
     DataQualifierType.MINIMUM = OPTIONAL
     DataQualifierType.MAXIMUM = OPTIONAL
+    DataQualifierType.INSTANTANEOUS = OPTIONAL (for 1.3 storage extensions)
+
 
     Returns the list of all SiteReadingType's that meet this criteria. Expect multiple if multiple phases or
     accumulation behaviors are being reported."""
@@ -77,7 +82,7 @@ async def get_csip_aus_site_reading_types(
             (SiteReadingType.site_id == site.site_id)
             & (SiteReadingType.role_flags == location)
             & (SiteReadingType.uom == uom)
-            & (SiteReadingType.kind == KindType.POWER)
+            & (SiteReadingType.kind == kind)
             & (SiteReadingType.data_qualifier == qualifier)
         )
         .order_by(SiteReadingType.created_time.asc())
