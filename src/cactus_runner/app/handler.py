@@ -125,7 +125,8 @@ async def init_handler(request: web.Request):  # noqa: C901
     if subscription_domain is None:
         logger.info("Subscriptions will NOT be creatable - no valid domain (subscription_domain not set)")
     else:
-        logger.info(f"Subscriptions will restricted to the FQDN '{subscription_domain}'")
+        sanitized_subscription_domain = subscription_domain.replace("\n", "").replace("\r", "")
+        logger.info(f"Subscriptions will restricted to the FQDN '{sanitized_subscription_domain}'")
 
     run_id = request.query.get("run_id", None)
     if run_id is None:
