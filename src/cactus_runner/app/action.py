@@ -19,10 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
-from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
+from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
@@ -66,6 +66,7 @@ async def action_enable_steps(
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-steps: Enabling step {listener.step}")
             listener.enabled_time = datetime.now(tz=timezone.utc)
+            active_test_procedure.step_status[listener.step] = StepStatus.ACTIVE
 
 
 async def action_remove_steps(

@@ -94,6 +94,8 @@ async def test_action_enable_steps():
     assert_nowish(listeners[0].enabled_time)
     assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
+    for step in steps_to_enable:
+        assert runner_state.active_test_procedure.step_status[step] == StepStatus.ACTIVE, "Check we update step_status"
 
 
 @pytest.mark.parametrize(

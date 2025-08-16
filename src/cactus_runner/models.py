@@ -21,8 +21,9 @@ class Listener:
 
 
 class StepStatus(Enum):
-    PENDING = 0
-    RESOLVED = auto()
+    PENDING = 0  # The step is not yet active
+    ACTIVE = auto()  # The step is currently active but not complete
+    RESOLVED = auto()  # The step has been full resolved
 
 
 @dataclass
