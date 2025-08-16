@@ -149,5 +149,7 @@ async def cactus_runner_client(
     pg_empty_config, aiohttp_client, envoy_server_client, envoy_admin_client, ensure_logs_dir
 ):
     with environment_snapshot():
-        async with await aiohttp_client(create_app()) as app:
-            yield app
+        with mock.patch("cactus_runner.app.main.generate_admin_client") as mock_generate_admin_client:
+            mock_generate_admin_client.return_value = envoy_admin_client
+            async with await aiohttp_client(create_app()) as app:
+                yield app

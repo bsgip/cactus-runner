@@ -98,10 +98,14 @@ async def setup_periodic_task(app: web.Application):
         await app[APPKEY_PERIODIC_TASK]
 
 
+def generate_admin_client(app: web.Application) -> EnvoyAdminClient:
+    init_kwargs = app[APPKEY_ENVOY_ADMIN_INIT_KWARGS]
+    return EnvoyAdminClient(**init_kwargs)
+
+
 async def app_on_startup_handler(app: web.Application) -> None:
     """Handler for on_startup event"""
-    init_kwargs = app[APPKEY_ENVOY_ADMIN_INIT_KWARGS]
-    app[APPKEY_ENVOY_ADMIN_CLIENT] = EnvoyAdminClient(**init_kwargs)
+    app[APPKEY_ENVOY_ADMIN_CLIENT] = generate_admin_client(app)
 
 
 async def app_on_cleanup_handler(app: web.Application) -> None:

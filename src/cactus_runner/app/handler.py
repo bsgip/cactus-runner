@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import cast
 
 from aiohttp import web
-from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions import Action, CSIPAusVersion
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
@@ -45,6 +45,16 @@ class StartResult:
     status: http.HTTPStatus
     content_type: str
     content: str
+
+
+async def attempt_apply_actions(
+    actions: list[Action] | None, runner_state: RunnerState, envoy_client: EnvoyAdminClient
+):
+    if actions:
+        async with begin_session() as session:
+            for a in actions:
+                await action.apply_action(a, runner_state, session, envoy_client)
+            await session.commit()  # Actions can write updates to the DB directly
 
 
 async def attempt_start_for_state(runner_state: RunnerState, envoy_client: EnvoyAdminClient) -> StartResult:
@@ -96,13 +106,8 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     active_test_procedure.started_at = now
 
     # Fire any precondition actions
-    if active_test_procedure.definition.preconditions and active_test_procedure.definition.preconditions.actions:
-        async with begin_session() as session:
-
-            for a in active_test_procedure.definition.preconditions.actions:
-                await action.apply_action(a, runner_state, session, envoy_client)
-
-            await session.commit()  # Actions can write updates to the DB directly
+    if active_test_procedure.definition.preconditions:
+        await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, envoy_client)
 
     # Activate the first listener
     if active_test_procedure.listeners:
@@ -288,6 +293,14 @@ async def init_handler(request: web.Request):  # noqa: C901
     )
 
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
+
+    # if this test has "init_actions" - now is the time to fire them
+    if active_test_procedure.definition.preconditions:
+        await attempt_apply_actions(
+            active_test_procedure.definition.preconditions.init_actions,
+            request.app[APPKEY_RUNNER_STATE],
+            request.app[APPKEY_ENVOY_ADMIN_CLIENT],
+        )
 
     # if this test is marked as immediate_start - we can trigger the "start" now
     is_started = False
