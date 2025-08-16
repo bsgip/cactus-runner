@@ -21,7 +21,10 @@ from cactus_runner.models import (
 async def test_init_varying_domain_run_id(subscription_domain: str | None, run_id: str | None):
     # Arrange
     expected_start_result = InitResponseBody(
-        status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
+        status="PLACEHOLDER-STATUS",
+        test_procedure="ALL-01",
+        timestamp=datetime.now(timezone.utc),
+        is_started=True,
     )
     test_id = TestProcedureId.ALL_01
     csip_aus_version = CSIPAusVersion.RELEASE_1_2
@@ -92,12 +95,15 @@ async def test_init_varying_domain_run_id(subscription_domain: str | None, run_i
 async def test_init_varying_certificates(aggregator_certificate: str | None, device_certificate: str | None):
     # Arrange
     expected_start_result = InitResponseBody(
-        status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
+        status="PLACEHOLDER-STATUS",
+        test_procedure="ALL-06",
+        timestamp=datetime.now(timezone.utc),
+        is_started=False,
     )
     test_id = TestProcedureId.ALL_01
     csip_aus_version = CSIPAusVersion.RELEASE_1_2
     subscription_domain = "fq.dn"
-    run_id = "ALL-01"
+    run_id = "ALL-06"
     mock_session = MagicMock()
     mock_session.post.return_value.__aenter__.return_value.status = 200
     mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_start_result.to_json()

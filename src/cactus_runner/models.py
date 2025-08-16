@@ -145,6 +145,9 @@ class InitResponseBody(JSONWizard):
     status: str
     test_procedure: str
     timestamp: datetime
+    is_started: bool = (
+        False  # True if the run has progressed to the started state. False if it's still waiting for a call to start it
+    )
 
 
 @dataclass

@@ -1,10 +1,13 @@
 import io
 import zipfile
+from datetime import datetime
 from urllib.parse import quote
 
 import pytest
 from aiohttp import ClientResponse
 from cactus_test_definitions import CSIPAusVersion
+from envoy_schema.server.schema.sep2.der import ConnectStatusTypeValue, DERStatus
+from envoy_schema.server.schema.sep2.end_device import EndDeviceRequest
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.models import RunnerStatus, StepStatus
@@ -19,37 +22,60 @@ async def assert_success_response(response: ClientResponse):
         assert False, f"{response.status}: {body}"
 
 
-@pytest.mark.parametrize(
-    "certificate_type, csip_aus_version",
-    [("aggregator_certificate", CSIPAusVersion.BETA_1_3_STORAGE), ("device_certificate", CSIPAusVersion.RELEASE_1_2)],
-)
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion):
-    """This is a full integration test of the entire ALL-01 workflow"""
+async def test_all_06_full(cactus_runner_client: TestClient):
+    """This is a full integration test of the entire ALL-06 workflow"""
+
+    csip_aus_version = CSIPAusVersion.RELEASE_1_2
 
     # Init
     result = await cactus_runner_client.post(
-        f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+        f"/init?test=ALL-06&aggregator_certificate={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
     )
     await assert_success_response(result)
 
-    # client "Start" is NOT required as ALL-01 is marked as immediate start
+    #
+    # Pre start - create an EndDevice
+    #
+
+    result = await cactus_runner_client.post(
+        "/edev",
+        headers={"ssl-client-cert": URI_ENCODED_CERT},
+        data=EndDeviceRequest(lFDI="854d10a201ca99e5e90d3c3e1f9bc1c3bd075f3b", sFDI=357827241281).to_xml(
+            skip_empty=True, exclude_none=True
+        ),
+    )
+    await assert_success_response(result)
+
+    # Start
+    result = await cactus_runner_client.post("/start")
+    await assert_success_response(result)
 
     #
     # Test Start
     #
 
-    result = await cactus_runner_client.get("/dcap", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    now = int(datetime.now().timestamp())
+    result = await cactus_runner_client.post(
+        "/edev/1/der/1/ders",
+        headers={"ssl-client-cert": URI_ENCODED_CERT},
+        data=DERStatus(
+            genConnectStatus=ConnectStatusTypeValue(dateTime=now, value="00"),
+            readingTime=now,
+        ).to_xml(skip_empty=True, exclude_none=True),
+    )
     await assert_success_response(result)
 
-    result = await cactus_runner_client.get("/edev?s=0&l=100", headers={"ssl-client-cert": URI_ENCODED_CERT})
-    await assert_success_response(result)
-
-    result = await cactus_runner_client.get("/tm", headers={"ssl-client-cert": URI_ENCODED_CERT})
-    await assert_success_response(result)
-
-    result = await cactus_runner_client.get("/edev/1/der", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    now = int(datetime.now().timestamp())
+    result = await cactus_runner_client.post(
+        "/edev/1/der/1/ders",
+        headers={"ssl-client-cert": URI_ENCODED_CERT},
+        data=DERStatus(
+            genConnectStatus=ConnectStatusTypeValue(dateTime=now, value="01"),
+            readingTime=now,
+        ).to_xml(skip_empty=True, exclude_none=True),
+    )
     await assert_success_response(result)
 
     #

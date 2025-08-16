@@ -8,7 +8,10 @@ import pytest
 from aiohttp import ClientSession, ClientTimeout
 from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_dict_type
+from assertical.fake.generator import generate_class_instance
+from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CSIPAusVersion, TestProcedureId
+from envoy.server.model.site import Site
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient, RunnerClientException
@@ -34,21 +37,23 @@ URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
 
 
 @pytest.mark.parametrize(
-    "test_procedure_id, csip_aus_version, sub_domain, aggregator_cert, device_cert",
+    "test_procedure_id, csip_aus_version, sub_domain, aggregator_cert, device_cert, expect_immediate_start",
     [
-        (TestProcedureId.ALL_01, CSIPAusVersion.BETA_1_3_STORAGE, None, RAW_CERT_1, None),
-        (TestProcedureId.ALL_02, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2),
+        (TestProcedureId.ALL_01, CSIPAusVersion.BETA_1_3_STORAGE, None, RAW_CERT_1, None, True),
+        (TestProcedureId.ALL_06, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2, False),
     ],
 )
 @pytest.mark.slow
 @pytest.mark.anyio
 async def test_client_interactions(
     cactus_runner_client: TestClient,
+    pg_base_config,
     test_procedure_id: TestProcedureId,
     csip_aus_version: CSIPAusVersion,
     sub_domain: str | None,
     aggregator_cert: str | None,
     device_cert: str | None,
+    expect_immediate_start: bool,
 ):
     """Tests that the embedded client can interact with a full test stack"""
 
@@ -61,16 +66,29 @@ async def test_client_interactions(
     assert init_response.test_procedure == test_procedure_id.value
     assert isinstance(init_response.status, str)
     assert isinstance(init_response.timestamp, datetime)
+    assert init_response.is_started is expect_immediate_start
     assert_nowish(init_response.timestamp)
 
-    # Interrogate start response
-    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        start_response = await RunnerClient.start(session)
-    assert isinstance(start_response, StartResponseBody)
-    assert start_response.test_procedure == test_procedure_id.value
-    assert isinstance(start_response.status, str)
-    assert isinstance(start_response.timestamp, datetime)
-    assert_nowish(start_response.timestamp)
+    # Slight workaround - lets simulate an EndDevice being registered (whether we are in pre-start or start doesn't
+    # matter)
+    async with generate_async_session(pg_base_config) as session:
+        agg_id = 1 if aggregator_cert is not None else 0
+        session.add(generate_class_instance(Site, aggregator_id=agg_id, site_id=None))
+        await session.commit()
+
+    # Interrogate start response (if it's an immediate start - you shouldn't be able to start it - it should be started)
+    if expect_immediate_start:
+        async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+            with pytest.raises(RunnerClientException):
+                await RunnerClient.start(session)
+    else:
+        async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+            start_response = await RunnerClient.start(session)
+        assert isinstance(start_response, StartResponseBody)
+        assert start_response.test_procedure == test_procedure_id.value
+        assert isinstance(start_response.status, str)
+        assert isinstance(start_response.timestamp, datetime)
+        assert_nowish(start_response.timestamp)
 
     # Interrogate status response
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:

@@ -1,5 +1,6 @@
 import http
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import cast
 
@@ -36,6 +37,94 @@ from cactus_runner.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class StartResult:
+    success: bool
+    status: http.HTTPStatus
+    content_type: str
+    content: str
+
+
+async def attempt_start_for_state(runner_state: RunnerState, envoy_client: EnvoyAdminClient) -> StartResult:
+    """Try to transition a runner_state to "started" from the "initialised" state. Returns a StartResult indicating
+    the result of that attempt.
+
+    Requires a runner state to be in the "initialised" state."""
+    active_test_procedure = runner_state.active_test_procedure
+
+    # We cannot start a test procedure if one hasn't been initialized
+    if active_test_procedure is None:
+        return StartResult(
+            False,
+            http.HTTPStatus.CONFLICT,
+            "text/plain",
+            "Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
+        )
+
+    # We cannot start a test procedure if any of the precondition checks are failing:
+    if active_test_procedure.definition.preconditions:
+        async with begin_session() as session:
+            check_failure = await first_failing_check(
+                active_test_procedure.definition.preconditions.checks, active_test_procedure, session
+            )
+            if check_failure:
+                return StartResult(
+                    False,
+                    http.HTTPStatus.PRECONDITION_FAILED,
+                    "text/plain",
+                    f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
+                )
+
+    # We cannot start another test procedure if one is already running.
+    # If there are active listeners then the test procedure must have already been started.
+    listener_state = [listener.enabled_time for listener in active_test_procedure.listeners]
+    if any(listener_state):
+        return StartResult(
+            False,
+            http.HTTPStatus.CONFLICT,
+            "text/plain",
+            f"Test Procedure ({active_test_procedure.name}) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
+        )
+
+    # Update last client interaction
+    now = datetime.now(timezone.utc)
+    runner_state.client_interactions.append(
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=now)
+    )
+    active_test_procedure.started_at = now
+
+    # Fire any precondition actions
+    if active_test_procedure.definition.preconditions and active_test_procedure.definition.preconditions.actions:
+        async with begin_session() as session:
+
+            for a in active_test_procedure.definition.preconditions.actions:
+                await action.apply_action(a, runner_state, session, envoy_client)
+
+            await session.commit()  # Actions can write updates to the DB directly
+
+    # Activate the first listener
+    if active_test_procedure.listeners:
+        active_test_procedure.listeners[0].enabled_time = datetime.now(tz=timezone.utc)
+
+    logger.info(
+        f"Test Procedure '{active_test_procedure.name}' started.",
+        extra={"test_procedure": active_test_procedure.name},
+    )
+
+    runner_state.active_test_procedure = active_test_procedure
+
+    return StartResult(
+        True,
+        http.HTTPStatus.OK,
+        "application/json",
+        StartResponseBody(
+            status="Test procedure started.",
+            test_procedure=active_test_procedure.name,
+            timestamp=datetime.now(timezone.utc),
+        ).to_json(),
+    )
 
 
 async def init_handler(request: web.Request):  # noqa: C901
@@ -200,12 +289,26 @@ async def init_handler(request: web.Request):  # noqa: C901
 
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
 
-    # TODO Should we put a sleep or ping an envoy server healthcheck here before returning a response?
+    # if this test is marked as immediate_start - we can trigger the "start" now
+    is_started = False
+    if definition.preconditions and definition.preconditions.immediate_start:
+        is_started = True
+        start_result = await attempt_start_for_state(
+            request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+        )
+        if not start_result.success:
+            logger.error(f"Unable to trigger immediate start: {start_result.content}")
+            return web.Response(
+                status=start_result.status,
+                text=f"Unable to trigger immediate start: {start_result.content}",
+                content_type="text/plain",
+            )
 
     body = InitResponseBody(
         status="Test procedure initialised.",
         test_procedure=active_test_procedure.name,
         timestamp=datetime.now(timezone.utc),
+        is_started=is_started,
     )
     return web.Response(status=http.HTTPStatus.CREATED, content_type="application/json", text=body.to_json())
 
@@ -223,71 +326,9 @@ async def start_handler(request: web.Request):
         409 (Conflict) if there is no initialised test procedure or
         409 (Conflict) if the test procedure already has enabled listeners (and has presumably already been started)
     """
-    runner_state = request.app[APPKEY_RUNNER_STATE]
-    active_test_procedure = runner_state.active_test_procedure
 
-    # We cannot start a test procedure if one hasn't been initialized
-    if active_test_procedure is None:
-        return web.Response(
-            status=http.HTTPStatus.CONFLICT,
-            text="Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
-        )
-
-    # We cannot start a test procedure if any of the precondition checks are failing:
-    if active_test_procedure.definition.preconditions:
-        async with begin_session() as session:
-            check_failure = await first_failing_check(
-                active_test_procedure.definition.preconditions.checks, active_test_procedure, session
-            )
-            if check_failure:
-                return web.Response(
-                    status=http.HTTPStatus.PRECONDITION_FAILED,
-                    text=f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
-                )
-
-    # We cannot start another test procedure if one is already running.
-    # If there are active listeners then the test procedure must have already been started.
-    listener_state = [listener.enabled_time for listener in active_test_procedure.listeners]
-    if any(listener_state):
-        return web.Response(
-            status=http.HTTPStatus.CONFLICT,
-            text=f"Test Procedure ({active_test_procedure.name}) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
-        )
-
-    # Update last client interaction
-    now = datetime.now(timezone.utc)
-    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=now)
-    )
-    active_test_procedure.started_at = now
-
-    # Fire any precondition actions
-    if active_test_procedure.definition.preconditions and active_test_procedure.definition.preconditions.actions:
-        async with begin_session() as session:
-            envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-
-            for a in active_test_procedure.definition.preconditions.actions:
-                await action.apply_action(a, runner_state, session, envoy_client)
-
-            await session.commit()  # Actions can write updates to the DB directly
-
-    # Activate the first listener
-    if active_test_procedure.listeners:
-        active_test_procedure.listeners[0].enabled_time = datetime.now(tz=timezone.utc)
-
-    logger.info(
-        f"Test Procedure '{active_test_procedure.name}' started.",
-        extra={"test_procedure": active_test_procedure.name},
-    )
-
-    runner_state.active_test_procedure = active_test_procedure
-
-    body = StartResponseBody(
-        status="Test procedure started.",
-        test_procedure=active_test_procedure.name,
-        timestamp=datetime.now(timezone.utc),
-    )
-    return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=body.to_json())
+    result = await attempt_start_for_state(request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT])
+    return web.Response(status=result.status, text=result.content, content_type=result.content_type)
 
 
 async def finalize_handler(request):
