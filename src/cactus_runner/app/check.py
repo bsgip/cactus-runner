@@ -48,6 +48,7 @@ class ParamsDERSettingsContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
+    doe_modes_enabled: Annotated[bool | None, pydantic.Field(alias="doeModesEnabled")] = None
     doe_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_set")] = None
     doe_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_unset")] = None
     modes_enabled_set: Annotated[str | None, pydantic.Field(alias="modesEnabled_set")] = None
@@ -69,6 +70,7 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
 
+    doe_modes_supported: Annotated[bool | None, pydantic.Field(alias="doeModesSupported")] = None
     doe_modes_supported_set: Annotated[str | None, pydantic.Field(alias="doeModesSupported_set")] = None
     doe_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="doeModesSupported_unset")] = None
     modes_supported_set: Annotated[str | None, pydantic.Field(alias="modesSupported_set")] = None
@@ -206,6 +208,14 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
     for k in params.model_fields_set:
         if k == "set_grad_w" and der_settings.grad_w != params.set_grad_w:
             soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
+        elif k == "doe_modes_enabled":
+            params_val: bool | int = bool(getattr(params, k))
+            field = params.__pydantic_fields__[k]
+            if params_val is True and der_settings.doe_modes_enabled is None:
+                soft_checker.add(f"DERSetting.{field.alias} must be set.")
+            elif params_val is False and der_settings.doe_modes_enabled is not None:
+                soft_checker.add(f"DERSetting.{field.alias} must be unset.")
+            continue
 
         elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
             # Bitwise assert hi (==1) checks
@@ -253,6 +263,14 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
 
     # Perform parameter checks
     for k in params.model_fields_set:
+        if k == "doe_modes_supported":
+            params_val: bool | int = bool(getattr(params, k))
+            field = params.__pydantic_fields__[k]
+            if params_val is True and der_rating.doe_modes_supported is None:
+                soft_checker.add(f"DERCapability.{field.alias} must be set.")
+            elif params_val is False and der_rating.doe_modes_supported is not None:
+                soft_checker.add(f"DERCapability.{field.alias} must be unset.")
+            continue
         if k in ["doe_modes_supported_set", "modes_supported_set"]:
             # Bitwise-and checks
             params_val = int(getattr(params, k), 16)

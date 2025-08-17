@@ -365,6 +365,74 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
+            {"doeModesEnabled": True},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=None),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled": True},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=None),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled": False},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled": False},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
+                        )
+                    ],
+                )
+            ],
             {"doeModesEnabled_set": "03"},
             True,
         ),
@@ -654,6 +722,74 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             {"modesSupported_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": True},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=None),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": True},
+            False,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=None),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": False},
+            True,
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported": False},
+            False,
+        ),
         (
             [
                 generate_class_instance(
