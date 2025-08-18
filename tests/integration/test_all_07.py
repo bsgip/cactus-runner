@@ -24,19 +24,19 @@ async def assert_success_response(response: ClientResponse):
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_06_full(cactus_runner_client: TestClient):
-    """This is a full integration test of the entire ALL-06 workflow"""
+async def test_all_07_full(cactus_runner_client: TestClient):
+    """This is a full integration test of the entire ALL-07 workflow"""
 
     csip_aus_version = CSIPAusVersion.RELEASE_1_2
 
     # Init
     result = await cactus_runner_client.post(
-        f"/init?test=ALL-06&aggregator_certificate={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+        f"/init?test=ALL-07&aggregator_certificate={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
     )
     await assert_success_response(result)
 
     #
-    # Pre start - create an EndDevice
+    # Pre start - create an EndDevice, register a DERStatus saying it's connected
     #
 
     result = await cactus_runner_client.post(
@@ -45,6 +45,17 @@ async def test_all_06_full(cactus_runner_client: TestClient):
         data=EndDeviceRequest(lFDI="854d10a201ca99e5e90d3c3e1f9bc1c3bd075f3b", sFDI=357827241281).to_xml(
             skip_empty=True, exclude_none=True
         ),
+    )
+    await assert_success_response(result)
+
+    now = int(datetime.now().timestamp())
+    result = await cactus_runner_client.post(
+        "/edev/1/der/1/ders",
+        headers={"ssl-client-cert": URI_ENCODED_CERT},
+        data=DERStatus(
+            genConnectStatus=ConnectStatusTypeValue(dateTime=now, value="01"),
+            readingTime=now,
+        ).to_xml(skip_empty=True, exclude_none=True),
     )
     await assert_success_response(result)
 
