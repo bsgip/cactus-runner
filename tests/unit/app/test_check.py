@@ -188,14 +188,21 @@ def test_check_all_steps_complete(
 async def test_check_end_device_contents_connection_point(
     mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
 ):
-
+    mock_active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        pen=0,
+        client_certificate_type="Device",
+        client_lfdi="",
+        step_status={},
+        finished_zip_data=None,
+    )
     mock_get_active_site.return_value = active_site
     mock_session = create_mock_session()
     resolved_params = {}
     if has_connection_point_id is not None:
         resolved_params["has_connection_point_id"] = has_connection_point_id
 
-    result = await check_end_device_contents(mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
     assert_check_result(result, expected)
 
     assert_mock_session(mock_session)
@@ -223,6 +230,14 @@ async def test_check_end_device_contents_connection_point(
 async def test_check_end_device_contents_device_category(
     mock_get_active_site: mock.MagicMock, active_site: Site | None, deviceCategory_anyset: str | None, expected: bool
 ):
+    mock_active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        pen=0,
+        client_certificate_type="Device",
+        client_lfdi="",
+        step_status={},
+        finished_zip_data=None,
+    )
 
     mock_get_active_site.return_value = active_site
     mock_session = create_mock_session()
@@ -230,10 +245,82 @@ async def test_check_end_device_contents_device_category(
     if deviceCategory_anyset is not None:
         resolved_params["deviceCategory_anyset"] = deviceCategory_anyset
 
-    result = await check_end_device_contents(mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
     assert_check_result(result, expected)
 
     assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "active_test_procedure, check_pen, expected",
+    [
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=0,
+                client_certificate_type="Device",
+                client_lfdi="",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            None,
+            True,
+        ),  # check_pen param not supplied
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=64,
+                client_certificate_type="Device",
+                client_lfdi="FFFFFFFFFF",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            True,
+            True,
+        ),  # pen shouldn't be checked with certificate type "Device"
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=887878,
+                client_certificate_type="Aggregator",
+                client_lfdi="FF000D8C46",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            True,
+            True,
+        ),  # check pen and pen matches
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=887878,
+                client_certificate_type="Aggregator",
+                client_lfdi="FFFFFFFFFF",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            True,
+            False,
+        ),  # check pen and pen doesn't match
+    ],
+)
+@mock.patch("cactus_runner.app.check.get_active_site")
+@pytest.mark.anyio
+async def test_check_end_device_pen(
+    mock_get_active_site: mock.MagicMock,
+    active_test_procedure: ActiveTestProcedure,
+    check_pen: bool | None,
+    expected: bool,
+):
+    active_site = generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16)))
+    mock_get_active_site.return_value = active_site
+    mock_session = create_mock_session()
+    resolved_params = {}
+    if check_pen is not None:
+        resolved_params["check_pen"] = check_pen
+
+    result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
+    assert_check_result(result, expected)
 
 
 def der_setting_bool_param_scenario(param: str, expected: bool) -> tuple[list, dict[str, bool], bool]:

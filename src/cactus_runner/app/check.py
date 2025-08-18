@@ -157,10 +157,18 @@ def check_all_steps_complete(
         return CheckResult(True, None)
 
 
-async def check_end_device_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_end_device_contents(
+    active_test_procedure: ActiveTestProcedure, session: AsyncSession, resolved_parameters: dict[str, Any]
+) -> CheckResult:
     """Implements the end-device-contents check
 
-    Returns pass if there is an active test site (an optionally checks the contents of that EndDevice)"""
+    Returns pass if there is an active test site.
+
+    Optionally checks:
+    - has connection point id set
+    - has a non-zero device catgory set
+    - PEN matches the last 32 bits of the aggregator lfdi (PEN ignored if using device lfdi)
+    """
 
     site = await get_active_site(session)
     if site is None:
@@ -176,6 +184,19 @@ async def check_end_device_contents(session: AsyncSession, resolved_parameters: 
             False,
             f"EndDevice {site.site_id} has none of the expected ({deviceCategory_anyset:b}) deviceCategory bits set.",
         )
+
+    check_pen_in_aggregator_cert: bool = resolved_parameters.get("check_pen", False)
+    if check_pen_in_aggregator_cert and active_test_procedure.client_certificate_type == "Aggregator":
+        # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen
+        pen = active_test_procedure.pen
+        try:
+            pen_from_lfdi = int(active_test_procedure.client_lfdi[-8:], 16)
+        except ValueError:
+            return CheckResult(False, f"Unable to extract PEN from Aggregator LFDI.")
+        if pen != pen_from_lfdi:
+            return CheckResult(
+                False, f"PEN from aggregator lfdi, '{pen_from_lfdi}' does not match supplied PEN, '{pen}'."
+            )
 
     return CheckResult(True, None)
 
@@ -690,7 +711,7 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 
             case "end-device-contents":
-                check_result = await check_end_device_contents(session, resolved_parameters)
+                check_result = await check_end_device_contents(active_test_procedure, session, resolved_parameters)
 
             case "der-settings-contents":
                 check_result = await check_der_settings_contents(session, resolved_parameters)

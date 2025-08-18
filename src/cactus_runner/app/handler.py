@@ -149,6 +149,7 @@ async def init_handler(request: web.Request):  # noqa: C901
             query parameters:
             'test' - the name of the test procedure to initialize
             'certificate' - the PEM encoded certificate to register as belonging to the aggregator
+            'pen' - the Private Enterprise Number (PEN)
             'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
 
         Returns:
@@ -228,6 +229,18 @@ async def init_handler(request: web.Request):  # noqa: C901
     else:
         logger.info(f"run ID {run_id} has been assigned to this test.")
 
+    pen = request.query.get("pen", None)
+    if pen is None:
+        logger.info("No PEN has been associated with this test. Defaulting to 0 (no PEN)")
+        pen = 0
+    else:
+        try:
+            pen = int(pen)
+            logger.info(f"PEN {pen} has been associated with this test")
+        except ValueError:
+            logger.error("A non-numeric PEN value was supplied: {pen}. Defaulting to 0 (no PEN)")
+            pen = 0
+
     # Need EITHER device certificate or an aggregator certificate. Can't run both.
     if device_lfdi is not None and aggregator_lfdi is not None:
         return web.Response(
@@ -286,6 +299,7 @@ async def init_handler(request: web.Request):  # noqa: C901
         client_aggregator_id=client_aggregator_id,
         client_certificate_type=client_type,
         run_id=run_id,
+        pen=pen,
     )
 
     logger.info(
