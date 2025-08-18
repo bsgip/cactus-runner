@@ -8,6 +8,7 @@ import pydantic.alias_generators
 from cactus_test_definitions.checks import Check
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
+from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     SiteDER,
@@ -640,10 +641,37 @@ def response_type_to_string(t: int | ResponseType | None) -> str:
         return f"{t}"
 
 
+def match_all_responses(
+    status_str: str,
+    controls: Sequence[DynamicOperatingEnvelope],
+    responses: Sequence[DynamicOperatingEnvelopeResponse],
+) -> CheckResult:
+    responses_by_doe_id: dict[int, list[DynamicOperatingEnvelopeResponse]] = {}
+    for r in responses:
+        existing = responses_by_doe_id.get(r.dynamic_operating_envelope_id, None)
+        if existing is None:
+            responses_by_doe_id[r.dynamic_operating_envelope_id] = [r]
+        else:
+            existing.append(r)
+
+    unmatched_controls: int = 0
+    for c in controls:
+        if c.dynamic_operating_envelope_id not in responses_by_doe_id:
+            unmatched_controls += 1
+
+    if unmatched_controls > 0:
+        return CheckResult(
+            False, f"{unmatched_controls} DERControl(s) failed to receive a Response with a status of {status_str}"
+        )
+    else:
+        return CheckResult(True, f"All DERControl(s) have a Response with a status of {status_str}")
+
+
 async def check_response_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
     """Implements the response-contents check by inspecting the response table for site controls"""
 
     is_latest: bool = resolved_parameters.get("latest", False)
+    is_all: bool = resolved_parameters.get("all", False)
     status_filter: int | None = resolved_parameters.get("status", None)
     status_filter_string = response_type_to_string(status_filter)
 
@@ -669,6 +697,15 @@ async def check_response_contents(resolved_parameters: dict[str, Any], session: 
             )
 
         return CheckResult(True, f"Latest DERControl response of type {rt_string} matches check.")
+    elif is_all:
+        # All queries look at every SiteControl and try to match them to a response
+        # if every SiteControl has a matching response - the check will pass
+        controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+        response_stmt = select(DynamicOperatingEnvelopeResponse)
+        if status_filter is not None:
+            response_stmt = response_stmt.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
+        responses = (await session.execute(response_stmt)).scalars().all()
+        return match_all_responses(status_filter_string, controls, responses)
     else:
         # Otherwise we look for ANY responses that match our request
         any_query = (

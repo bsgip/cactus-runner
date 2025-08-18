@@ -1860,6 +1860,73 @@ async def test_check_response_contents_latest(pg_base_config):
         )
 
 
+@pytest.mark.parametrize(
+    "status, control_ids, response_status_values, expected",
+    [
+        (1, [], [], True),
+        (1, [1], [], False),
+        (1, [1], [(1, 2), (1, 1)], True),
+        (3, [1], [(1, 2), (1, 1)], False),  # No items with response_status 3
+        (None, [1], [(1, 2), (1, 1)], True),
+        (1, [1, 2], [(1, 2), (1, 1)], False),  # Control 2 has no responses
+        (1, [1, 2], [(1, 2), (1, 1), (2, 2)], False),  # Control 2 has no responses of type 2
+        (2, [1, 2], [(1, 2), (1, 1), (2, 2)], True),
+    ],
+)
+@pytest.mark.anyio
+async def test_check_response_contents_all(
+    pg_base_config,
+    status: int | None,
+    control_ids: list[int],
+    response_status_values: list[tuple[int, int]],
+    expected: bool,
+):
+    """check_response_contents should behave correctly when looking at all controls having responses
+
+    response_status_values: tuple[control_id, response_status_type]"""
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        control_by_id = {}
+        for idx, control_id in enumerate(control_ids):
+            control = generate_class_instance(
+                DynamicOperatingEnvelope,
+                seed=idx,
+                site=site1,
+                site_control_group=site_control_group,
+                calculation_log_id=None,
+                dynamic_operating_envelope_id=control_id,
+            )
+            control_by_id[control_id] = control
+            session.add(control)
+
+        for idx, t in enumerate(response_status_values):
+            (response_control_id, response_status) = t
+            session.add(
+                generate_class_instance(
+                    DynamicOperatingEnvelopeResponse,
+                    seed=idx,
+                    site=site1,
+                    response_type=response_status,
+                    dynamic_operating_envelope=control_by_id[response_control_id],
+                )
+            )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        params = {"all": True}
+        if status is not None:
+            params["status"] = status
+        assert_check_result(await check_response_contents(params, session), expected)
+
+
 @pytest.mark.anyio
 async def test_check_response_contents_any(pg_base_config):
     """check_response_contents should behave correctly when looking at ANY of the Responses"""
