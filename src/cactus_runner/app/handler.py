@@ -229,13 +229,13 @@ async def init_handler(request: web.Request):  # noqa: C901
     else:
         logger.info(f"run ID {run_id} has been assigned to this test.")
 
-    pen = request.query.get("pen", None)
-    if pen is None:
+    raw_pen = request.query.get("pen", None)
+    if raw_pen is None:
         logger.info("No PEN has been associated with this test. Defaulting to 0 (no PEN)")
         pen = 0
     else:
         try:
-            pen = int(pen)
+            pen = int(raw_pen)
             logger.info(f"PEN {pen} has been associated with this test")
         except ValueError:
             logger.error("A non-numeric PEN value was supplied: {pen}. Defaulting to 0 (no PEN)")

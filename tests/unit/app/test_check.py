@@ -48,12 +48,14 @@ from cactus_runner.app.check import (
     check_end_device_contents,
     check_response_contents,
     check_subscription_contents,
+    do_check_reading_type_mrids_match_pen,
     do_check_readings_for_types,
     do_check_readings_on_minute_boundary,
     do_check_site_readings_and_params,
     first_failing_check,
     is_nth_bit_set_properly,
     merge_checks,
+    mrid_matches_pen,
     response_type_to_string,
     run_check,
     timestamp_on_minute_boundary,
@@ -1344,7 +1346,115 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
 
 
 @pytest.mark.parametrize(
-    "resolved_parameters, uom, reading_location, qualifier, kind, site_reading_types, expected_min_count",
+    "mrid,pen,expected_result",
+    [
+        ("", 0, False),
+        ("FF00000000", 0, True),
+        ("FF0001E240", 123456, True),
+        ("FF0001E241", 123456, False),  # off by 1
+        ("FF0001E240", 123457, False),  # off by 1
+        ("FFFFFFFFFF", 4294967295, True),  # the largest pen 2^32-1
+    ],
+)
+def test_mrid_matches_pen(mrid: str, pen: int, expected_result: bool):
+    assert mrid_matches_pen(pen=pen, mrid=mrid) == expected_result
+
+
+@pytest.mark.parametrize(
+    "mrid1,mrid2,group_mrid,pen,expected_result",
+    [
+        (None, None, None, 0, CheckResult(True, None)),
+        (
+            "110001E240",
+            "220001E240",
+            "330001E240",
+            123456,
+            CheckResult(
+                True,
+                "All MRIDS and group MRIDS for the site readings types match the supplied Private Enterprise Number (PEN).",  # noqa: E501
+            ),
+        ),
+        (
+            "1100000000",  # mrid doesn't match pen
+            "220001E240",
+            "330001E240",
+            123456,
+            CheckResult(
+                False,
+                "1/2 MRIDS do not match the supplied PEN.",
+            ),
+        ),
+        (
+            "1100000000",  # mrid doesn't match pen
+            "2200000000",  # mrid doesn't match pen
+            "330001E240",
+            123456,
+            CheckResult(
+                False,
+                "2/2 MRIDS do not match the supplied PEN.",
+            ),
+        ),
+        (
+            "110001E240",
+            "220001E240",
+            "3300000000",  # group mrid doesn't match pen
+            123456,
+            CheckResult(
+                False,
+                "2/2 group MRIDS do not match the supplied PEN.",
+            ),
+        ),
+        (
+            "1100000000",  # mrid doesn't match pen
+            "2200000000",  # mrid doesn't match pen
+            "3300000000",  # group mrid doesn't match pen
+            123456,
+            CheckResult(
+                False,
+                "2/2 group MRIDS do not match the supplied PEN. 2/2 MRIDS do not match the supplied PEN.",
+            ),
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_reading_type_mrids_match_pen(
+    mrid1: str | None, mrid2: str | None, group_mrid: str | None, pen: int, expected_result: CheckResult
+):
+    # Arrange
+    site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+    srts = []
+    if mrid1 is not None and group_mrid is not None:
+        srt1 = generate_class_instance(
+            SiteReadingType,
+            seed=101,
+            site_reading_type_id=1,
+            aggregator_id=1,
+            site=site,
+            mrid=mrid1,
+            group_mrid=group_mrid,
+        )
+        srts.append(srt1)
+    if mrid2 is not None and group_mrid is not None:
+        srt2 = generate_class_instance(
+            SiteReadingType,
+            seed=101,
+            site_reading_type_id=1,
+            aggregator_id=1,
+            site=site,
+            mrid=mrid2,
+            group_mrid=group_mrid,
+        )
+        srts.append(srt2)
+
+    # Act
+    result = await do_check_reading_type_mrids_match_pen(site_reading_types=srts, pen=pen)
+
+    # Assert
+    assert result == expected_result
+
+
+@pytest.mark.parametrize(
+    "resolved_parameters, uom, reading_location, qualifier, kind, site_reading_types, pen, expected_min_count",
     [
         (
             {},
@@ -1353,6 +1463,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
             DataQualifierType.AVERAGE,
             KindType.POWER,
             [],
+            0,
             None,
         ),
         (
@@ -1364,6 +1475,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
             [
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1),
             ],
+            64,
             None,
         ),
         (
@@ -1376,6 +1488,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=4),
                 generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2),
             ],
+            888,
             123,
         ),
         (
@@ -1388,14 +1501,17 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
                 generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=2),
             ],
             0,
+            0,
         ),
     ],
 )
 @mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
+@mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params(
+    mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
     mock_get_csip_aus_site_reading_types: mock.MagicMock,
@@ -1405,6 +1521,7 @@ async def test_do_check_site_readings_and_params(
     qualifier: DataQualifierType,
     kind: KindType,
     site_reading_types: list[SiteReadingType],
+    pen: int,
     expected_min_count: int | None,
 ):
     """Tests that do_check_site_readings_and_params does the basic logic it needs before offloading to
@@ -1415,10 +1532,11 @@ async def test_do_check_site_readings_and_params(
     mock_get_csip_aus_site_reading_types.return_value = site_reading_types
     mock_do_check_readings_for_types.return_value = expected_result
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
+    mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
-        mock_session, resolved_parameters, uom, reading_location, qualifier, kind
+        mock_session, resolved_parameters, pen, uom, reading_location, qualifier, kind
     )
 
     # Assert
@@ -1430,6 +1548,7 @@ async def test_do_check_site_readings_and_params(
         assert result == expected_result
         mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
         mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
+        mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
