@@ -181,3 +181,35 @@ async def test_client_precondition_fails(cactus_runner_client: TestClient):
 
         # This assertion is rather brittle (it's assuming error text in the CheckResult referencing EndDevice)
         assert "EndDevice" in exc_info.value.error_message, "There should be a reference to the missing EndDevice"
+
+
+@pytest.mark.slow
+@pytest.mark.anyio
+async def test_status_steps_immediate_start(
+    cactus_runner_client: TestClient,
+    pg_base_config,
+):
+    """Tests that the embedded client will"""
+
+    test_procedure_id = TestProcedureId.ALL_01
+    csip_aus_version = CSIPAusVersion.RELEASE_1_2
+    sub_domain = None
+    aggregator_cert = RAW_CERT_1
+
+    # Init and then fetch status
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        init_response = await RunnerClient.init(
+            session, test_procedure_id, csip_aus_version, aggregator_cert, None, sub_domain
+        )
+        assert init_response.is_started, "ALL-01 should be immediate start"
+
+        status_response = await RunnerClient.status(session)
+    assert isinstance(status_response, RunnerStatus)
+    assert_dict_type(str, StepStatus, status_response.step_status)
+
+    step_status_counts: dict[StepStatus, int] = {}
+    for status in status_response.step_status.values():
+        step_status_counts[status] = step_status_counts.get(status, 0) + 1
+
+    assert step_status_counts.get(StepStatus.ACTIVE, 0) == 1, "One step should initially be active"
+    assert step_status_counts.get(StepStatus.RESOLVED, 0) == 0, "No steps should be resolved at the start"

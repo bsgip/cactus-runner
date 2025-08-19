@@ -110,8 +110,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
         await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, envoy_client)
 
     # Activate the first listener
-    if active_test_procedure.listeners:
-        active_test_procedure.listeners[0].enabled_time = datetime.now(tz=timezone.utc)
+    await action.action_enable_steps(active_test_procedure, {"steps": [active_test_procedure.listeners[0].step]})
 
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' started.",
