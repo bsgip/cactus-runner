@@ -17,6 +17,7 @@ from cactus_runner.app.env import (
     SERVER_URL,
 )
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.app.health import is_healthy
 from cactus_runner.app.schema_validator import validate_proxy_request_schema
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
@@ -418,6 +419,18 @@ async def finalize_handler(request):
             status=http.HTTPStatus.BAD_REQUEST,
             text="ERROR: Unable to finalize test procedure. No test procedure in progress.",
         )
+
+
+async def health_handler(request):
+    """Handler for health requests. Serves a HTTP 200 if the Runner is fully operational - HTTP 503 otherwise
+
+    Returns:
+        aiohttp.web.Response: No response body - Either a HTTP 200 on success or 503 on failure.
+    """
+    if await is_healthy():
+        return web.Response(status=http.HTTPStatus.OK)
+    else:
+        return web.Response(status=http.HTTPStatus.SERVICE_UNAVAILABLE)
 
 
 async def status_handler(request):

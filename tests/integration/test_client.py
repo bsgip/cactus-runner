@@ -14,6 +14,7 @@ from cactus_test_definitions import CSIPAusVersion, TestProcedureId
 from envoy.server.model.site import Site
 from pytest_aiohttp.plugin import TestClient
 
+from cactus_runner.app.database import remove_database_connection
 from cactus_runner.client import RunnerClient, RunnerClientException
 from cactus_runner.models import (
     ClientInteraction,
@@ -226,3 +227,24 @@ async def test_pre_init_status(cactus_runner_client: TestClient):
     assert isinstance(status_response, RunnerStatus)
     assert isinstance(status_response.status_summary, str)
     assert status_response.status_summary
+
+
+@pytest.mark.slow
+@pytest.mark.anyio
+async def test_health_ok(cactus_runner_client: TestClient):
+    """Tests that the embedded client will return True for the server health check"""
+
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        health_response = await RunnerClient.health(session)
+        assert health_response is True
+
+
+@pytest.mark.slow
+@pytest.mark.anyio
+async def test_health_db_dead(cactus_runner_client: TestClient):
+    """Tests that the embedded client will return True for the server health check"""
+
+    remove_database_connection()
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        health_response = await RunnerClient.health(session)
+        assert health_response is False

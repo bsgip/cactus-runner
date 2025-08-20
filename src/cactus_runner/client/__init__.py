@@ -139,3 +139,13 @@ class RunnerClient:
     async def last_interaction(session: ClientSession) -> ClientInteraction:
         status = await RunnerClient.status(session=session)
         return status.last_client_interaction
+
+    @staticmethod
+    async def health(session: ClientSession) -> bool:
+        try:
+            async with session.get(url="/health") as response:
+                await ensure_success_response(response)
+                return True
+        except Exception as e:
+            logger.debug(e)
+            return False

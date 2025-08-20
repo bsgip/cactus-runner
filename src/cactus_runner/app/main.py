@@ -124,6 +124,7 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[log_error_middleware])
 
     # Add routes for Test Runner
+    app.router.add_route("GET", MOUNT_POINT + "health", handler.health_handler)
     app.router.add_route("GET", MOUNT_POINT + "status", handler.status_handler)
     app.router.add_route("POST", MOUNT_POINT + "init", handler.init_handler)
     app.router.add_route("POST", MOUNT_POINT + "start", handler.start_handler)
