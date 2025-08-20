@@ -105,7 +105,7 @@ async def test_finalize_handler_handles_no_active_test_procedure():
 @pytest.mark.asyncio
 async def test_health_handler(mocker, is_healthy, expected_status):
     mocker.patch("cactus_runner.app.handler.is_healthy").return_value = is_healthy
-    response = await handler.health_handler()
+    response = await handler.health_handler(MagicMock())
     assert isinstance(response, Response)
     assert response.status == expected_status
 
