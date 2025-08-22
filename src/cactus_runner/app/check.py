@@ -1,13 +1,17 @@
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Annotated, Any, Optional, Sequence
+from itertools import chain
+from typing import Annotated, Any, Iterable, Optional, Sequence
 
 import pydantic
 import pydantic.alias_generators
 from cactus_test_definitions.checks import Check
+from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
+from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
@@ -171,6 +175,7 @@ async def check_end_device_contents(
     - has connection point id set
     - has a non-zero device catgory set
     - PEN matches the last 32 bits of the aggregator lfdi (PEN ignored if using device lfdi)
+    - LFDI is only hexadecimal characters [0-9a-fA-F]
     """
 
     site = await get_active_site(session)
@@ -188,18 +193,32 @@ async def check_end_device_contents(
             f"EndDevice {site.site_id} has none of the expected ({deviceCategory_anyset:b}) deviceCategory bits set.",
         )
 
-    check_pen_in_aggregator_cert: bool = resolved_parameters.get("check_pen", False)
-    if check_pen_in_aggregator_cert and active_test_procedure.client_certificate_type == "Aggregator":
-        # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen
-        pen = active_test_procedure.pen
-        try:
-            pen_from_lfdi = int(active_test_procedure.client_lfdi[-8:], 16)
-        except ValueError:
-            return CheckResult(False, "Unable to extract PEN from Aggregator LFDI.")
-        if pen != pen_from_lfdi:
+    check_lfdi: bool = resolved_parameters.get("check_lfdi", False)
+    if check_lfdi:
+        # Check the LFDI/SFDI of the site
+        if re.search("[^a-fA-F0-9]", site.lfdi) is not None:
+            return CheckResult(False, f"EndDevice lfdi must consist only of hexadecimal characters. Got '{site.lfdi}'.")
+        if len(site.lfdi) != 40:
+            return CheckResult(False, f"EndDevice lfdi must be 40 hexadecimal characters long. Got {len(site.lfdi)}.")
+
+        expected_sfdi = convert_lfdi_to_sfdi(site.lfdi)
+        if expected_sfdi != site.sfdi:
             return CheckResult(
-                False, f"PEN from aggregator lfdi, '{pen_from_lfdi}' does not match supplied PEN, '{pen}'."
+                False,
+                f"EndDevice sfdi should be derived from the lfdi. Expected {expected_sfdi} but found {site.sfdi}.",
             )
+
+        # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen
+        if active_test_procedure.client_certificate_type == "Aggregator":
+            pen = active_test_procedure.pen
+            try:
+                pen_from_lfdi = int(site.lfdi[-8:], 16)
+            except ValueError:
+                return CheckResult(False, "Unable to extract PEN from Aggregator LFDI.")
+            if pen != pen_from_lfdi:
+                return CheckResult(
+                    False, f"PEN from aggregator lfdi, '{pen_from_lfdi}' does not match supplied PEN, '{pen}'."
+                )
 
     return CheckResult(True, None)
 
@@ -729,14 +748,14 @@ def response_type_to_string(t: int | ResponseType | None) -> str:
 
 def match_all_responses(
     status_str: str,
-    controls: Sequence[DynamicOperatingEnvelope],
+    controls: Iterable[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope],
     responses: Sequence[DynamicOperatingEnvelopeResponse],
 ) -> CheckResult:
     responses_by_doe_id: dict[int, list[DynamicOperatingEnvelopeResponse]] = {}
     for r in responses:
-        existing = responses_by_doe_id.get(r.dynamic_operating_envelope_id, None)
+        existing = responses_by_doe_id.get(r.dynamic_operating_envelope_id_snapshot, None)
         if existing is None:
-            responses_by_doe_id[r.dynamic_operating_envelope_id] = [r]
+            responses_by_doe_id[r.dynamic_operating_envelope_id_snapshot] = [r]
         else:
             existing.append(r)
 
@@ -787,16 +806,27 @@ async def check_response_contents(resolved_parameters: dict[str, Any], session: 
         # All queries look at every SiteControl and try to match them to a response
         # if every SiteControl has a matching response - the check will pass
         controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+        deleted_controls = (
+            (
+                await session.execute(
+                    select(ArchiveDynamicOperatingEnvelope).where(
+                        ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None)
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         response_stmt = select(DynamicOperatingEnvelopeResponse)
         if status_filter is not None:
             response_stmt = response_stmt.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
         responses = (await session.execute(response_stmt)).scalars().all()
-        return match_all_responses(status_filter_string, controls, responses)
+        return match_all_responses(status_filter_string, chain(controls, deleted_controls), responses)
     else:
         # Otherwise we look for ANY responses that match our request
         any_query = (
             select(DynamicOperatingEnvelopeResponse)
-            .order_by(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id)
+            .order_by(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id_snapshot)
             .limit(1)
         )
         if status_filter is not None:

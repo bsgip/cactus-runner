@@ -9,6 +9,7 @@ from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CHECK_PARAMETER_SCHEMA, Event, Step, TestProcedure
 from cactus_test_definitions.checks import Check
 from envoy.server.model.aggregator import Aggregator
+from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
@@ -254,73 +255,127 @@ async def test_check_end_device_contents_device_category(
 
 
 @pytest.mark.parametrize(
-    "active_test_procedure, check_pen, expected",
+    "active_test_procedure, site_lfdi, site_sfdi, check_lfdi, expected",
     [
         (
             generate_class_instance(
                 ActiveTestProcedure,
                 pen=0,
                 client_certificate_type="Device",
-                client_lfdi="",
                 step_status={},
                 finished_zip_data=None,
             ),
+            "abc123",
+            123456,
             None,
             True,
-        ),  # check_pen param not supplied
+        ),  # check_lfdi param not supplied (everything else is invalid)
         (
             generate_class_instance(
                 ActiveTestProcedure,
-                pen=64,
+                pen=1,
                 client_certificate_type="Device",
-                client_lfdi="FFFFFFFFFF",
+                client_lfdi="3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+                client_sfdi=167261211391,
                 step_status={},
                 finished_zip_data=None,
             ),
+            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            167261211391,
             True,
             True,
-        ),  # pen shouldn't be checked with certificate type "Device"
+        ),  # pen shouldn't be checked with certificate type "Device" - everything is valid
         (
             generate_class_instance(
                 ActiveTestProcedure,
-                pen=887878,
+                pen=int("984e23e5", 16),
                 client_certificate_type="Aggregator",
-                client_lfdi="FF000D8C46",
                 step_status={},
                 finished_zip_data=None,
             ),
+            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            167261211391,
             True,
             True,
-        ),  # check pen and pen matches
+        ),  # check everything
         (
             generate_class_instance(
                 ActiveTestProcedure,
-                pen=887878,
+                pen=int("984e23e5", 16),
                 client_certificate_type="Aggregator",
-                client_lfdi="FFFFFFFFFF",
                 step_status={},
                 finished_zip_data=None,
             ),
+            "3e4f45ab31edfe5b6Xe343e5e4562e31984e23e5",
+            167261211391,
             True,
             False,
-        ),  # check pen and pen doesn't match
+        ),  # Random X in the middle of the LFDI (bad character)
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=int("984e23e5", 16),
+                client_certificate_type="Aggregator",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            "3e4f45ab31edfe5b67fe343e5e4562e31984e23e5",
+            167261211391,
+            True,
+            False,
+        ),  # Extra long LFDI
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=123,
+                client_certificate_type="Aggregator",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            167261211391,
+            True,
+            False,
+        ),  # PEN is wrong
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=int("984e23e5", 16),
+                client_certificate_type="Aggregator",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            1234,
+            True,
+            False,
+        ),  # sfdi doesn't match lfdi
     ],
 )
 @mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
-async def test_check_end_device_pen(
+async def test_check_end_device_lfdi(
     mock_get_active_site: mock.MagicMock,
     active_test_procedure: ActiveTestProcedure,
-    check_pen: bool | None,
+    site_lfdi: str,
+    site_sfdi: int,
+    check_lfdi: bool | None,
     expected: bool,
 ):
-    active_site = generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16)))
+    active_site = generate_class_instance(
+        Site, device_category=DeviceCategory(int("22A8B", 16)), lfdi=site_lfdi, sfdi=site_sfdi
+    )
     mock_get_active_site.return_value = active_site
     mock_session = create_mock_session()
     resolved_params = {}
-    if check_pen is not None:
-        resolved_params["check_pen"] = check_pen
+    if check_lfdi is not None:
+        resolved_params["check_lfdi"] = check_lfdi
 
+    result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
+    assert_check_result(result, expected)
+
+    # upper/lower case LFDI shouldn't change things
+    active_site.lfdi = active_site.lfdi.upper()
     result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
     assert_check_result(result, expected)
 
@@ -2022,7 +2077,7 @@ async def test_check_response_contents_latest(pg_base_config):
                 response_type=ResponseType.EVENT_CANCELLED,
                 created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
 
@@ -2034,7 +2089,7 @@ async def test_check_response_contents_latest(pg_base_config):
                 response_type=ResponseType.EVENT_COMPLETED,
                 created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
 
@@ -2045,7 +2100,7 @@ async def test_check_response_contents_latest(pg_base_config):
                 response_type=ResponseType.EVENT_RECEIVED,
                 created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
         await session.commit()
@@ -2067,16 +2122,18 @@ async def test_check_response_contents_latest(pg_base_config):
 
 
 @pytest.mark.parametrize(
-    "status, control_ids, response_status_values, expected",
+    "status, control_ids, deleted_control_ids, response_status_values, expected",
     [
-        (1, [], [], True),
-        (1, [1], [], False),
-        (1, [1], [(1, 2), (1, 1)], True),
-        (3, [1], [(1, 2), (1, 1)], False),  # No items with response_status 3
-        (None, [1], [(1, 2), (1, 1)], True),
-        (1, [1, 2], [(1, 2), (1, 1)], False),  # Control 2 has no responses
-        (1, [1, 2], [(1, 2), (1, 1), (2, 2)], False),  # Control 2 has no responses of type 2
-        (2, [1, 2], [(1, 2), (1, 1), (2, 2)], True),
+        (1, [], [], [], True),
+        (1, [1], [], [], False),
+        (1, [1], [], [(1, 2), (1, 1)], True),
+        (1, [1], [2], [(1, 2), (1, 1)], False),  # Deleted control 2 was not responded to
+        (3, [1], [], [(1, 2), (1, 1)], False),  # No items with response_status 3
+        (None, [1], [], [(1, 2), (1, 1)], True),
+        (1, [1, 2], [], [(1, 2), (1, 1)], False),  # Control 2 has no responses
+        (1, [1, 2], [], [(1, 2), (1, 1), (2, 2)], False),  # Control 2 has no responses of type 2
+        (2, [1, 2], [], [(1, 2), (1, 1), (2, 2)], True),
+        (2, [1], [2], [(1, 2), (1, 1), (2, 2)], True),
     ],
 )
 @pytest.mark.anyio
@@ -2084,6 +2141,7 @@ async def test_check_response_contents_all(
     pg_base_config,
     status: int | None,
     control_ids: list[int],
+    deleted_control_ids: list[int],
     response_status_values: list[tuple[int, int]],
     expected: bool,
 ):
@@ -2100,7 +2158,6 @@ async def test_check_response_contents_all(
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
-        control_by_id = {}
         for idx, control_id in enumerate(control_ids):
             control = generate_class_instance(
                 DynamicOperatingEnvelope,
@@ -2110,7 +2167,18 @@ async def test_check_response_contents_all(
                 calculation_log_id=None,
                 dynamic_operating_envelope_id=control_id,
             )
-            control_by_id[control_id] = control
+            session.add(control)
+
+        for idx, control_id in enumerate(deleted_control_ids):
+            control = generate_class_instance(
+                ArchiveDynamicOperatingEnvelope,
+                seed=idx * 1001,
+                site_id=site1.site_id,
+                deleted_time=datetime(2022, 11, 14, tzinfo=timezone.utc),
+                site_control_group_id=site_control_group.site_control_group_id,
+                calculation_log_id=None,
+                dynamic_operating_envelope_id=control_id,
+            )
             session.add(control)
 
         for idx, t in enumerate(response_status_values):
@@ -2121,7 +2189,7 @@ async def test_check_response_contents_all(
                     seed=idx,
                     site=site1,
                     response_type=response_status,
-                    dynamic_operating_envelope=control_by_id[response_control_id],
+                    dynamic_operating_envelope_id_snapshot=response_control_id,
                 )
             )
         await session.commit()
