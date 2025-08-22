@@ -2230,7 +2230,7 @@ async def test_check_response_contents_any(pg_base_config):
                 response_type=ResponseType.EVENT_CANCELLED,
                 created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
 
@@ -2241,7 +2241,7 @@ async def test_check_response_contents_any(pg_base_config):
                 response_type=ResponseType.EVENT_COMPLETED,
                 created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
 
@@ -2252,7 +2252,7 @@ async def test_check_response_contents_any(pg_base_config):
                 response_type=ResponseType.EVENT_RECEIVED,
                 created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
                 site=site1,
-                dynamic_operating_envelope=der_control_1,
+                dynamic_operating_envelope_id_snapshot=der_control_1.dynamic_operating_envelope_id,
             )
         )
         await session.commit()
