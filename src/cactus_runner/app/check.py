@@ -35,7 +35,7 @@ from cactus_runner.app.envoy_common import (
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import ActiveTestProcedure
+from cactus_runner.models import ActiveTestProcedure, ClientCertificateType
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ async def check_end_device_contents(
             )
 
         # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen
-        if active_test_procedure.client_certificate_type == "Aggregator":
+        if active_test_procedure.client_certificate_type == ClientCertificateType.AGGREGATOR:
             pen = active_test_procedure.pen
             try:
                 pen_from_lfdi = int(site.lfdi[-8:], 16)

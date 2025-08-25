@@ -25,6 +25,7 @@ from cactus_runner.app.evaluator import (
 from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.models import (
     ActiveTestProcedure,
+    ClientCertificateType,
     Listener,
     RunnerState,
     StepStatus,
@@ -282,7 +283,23 @@ async def action_register_end_device(
     # This is only really used for out of band registration tests - it just needs to work "once"
     nmi: str | None = resolved_parameters.get("nmi", None)
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
+    aggregator_lfdi: str | None = resolved_parameters.get("aggregator_lfdi", None)
+    aggregator_sfdi: int | None = resolved_parameters.get("aggregator_sfdi", None)
     now = datetime.now(tz=timezone.utc)
+
+    lfdi: str
+    sfdi: int
+    if (
+        active_test_procedure.client_certificate_type == ClientCertificateType.AGGREGATOR
+        and aggregator_lfdi is not None
+        and aggregator_sfdi is not None
+    ):
+        lfdi = aggregator_lfdi[0:32] + f"{active_test_procedure.pen:08X}"
+        sfdi = aggregator_sfdi
+    else:
+        lfdi = active_test_procedure.client_lfdi
+        sfdi = active_test_procedure.client_sfdi
+
     session.add(
         Site(
             nmi=nmi,
@@ -290,8 +307,8 @@ async def action_register_end_device(
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,
-            lfdi=active_test_procedure.client_lfdi,
-            sfdi=active_test_procedure.client_sfdi,
+            lfdi=lfdi,
+            sfdi=sfdi,
             device_category=0,
             registration_pin=registration_pin if registration_pin is not None else 1,
         )

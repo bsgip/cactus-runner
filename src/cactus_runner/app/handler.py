@@ -27,6 +27,7 @@ from cactus_runner.app.shared import (
 )
 from cactus_runner.models import (
     ActiveTestProcedure,
+    ClientCertificateType,
     ClientInteraction,
     ClientInteractionType,
     InitResponseBody,
@@ -257,11 +258,11 @@ async def init_handler(request: web.Request):  # noqa: C901
         lfdi=aggregator_lfdi, subscription_domain=subscription_domain
     )
     if aggregator_lfdi is None:
-        client_type = "Device"
+        client_type = ClientCertificateType.DEVICE
         client_lfdi = cast(str, device_lfdi)  # we know its set due to checks above
         client_certificate = cast(str, device_certificate)  # we know its set due to checks above
     else:
-        client_type = "Aggregator"
+        client_type = ClientCertificateType.AGGREGATOR
         client_lfdi = cast(str, aggregator_lfdi)  # we know its set due to checks above
         client_certificate = cast(str, aggregator_certificate)  # we know its set due to checks above
     logger.info(f"Registering a {client_type} certificate {client_lfdi} under aggregator id {client_aggregator_id}")

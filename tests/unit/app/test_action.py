@@ -28,7 +28,13 @@ from cactus_runner.app.action import (
     apply_action,
     apply_actions,
 )
-from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState, StepStatus
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    ClientCertificateType,
+    Listener,
+    RunnerState,
+    StepStatus,
+)
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
 # the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
@@ -564,24 +570,126 @@ async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_clien
         assert site.post_rate_seconds == 123, "This value shouldn't have changed"
 
 
-@pytest.mark.parametrize("agg_id", [0, 1])
+@pytest.mark.parametrize(
+    "agg_id, agg_lfdi, agg_sfdi, pin", [(0, None, None, None), (0, None, None, 456), (1, "abc", 123, None)]
+)
 @pytest.mark.anyio
-async def test_action_register_aggregator_end_device(pg_base_config, agg_id: int):
+async def test_action_register_aggregator_end_device_device_cert(
+    pg_base_config, agg_id: int, agg_lfdi: str | None, agg_sfdi: int | None, pin: int | None
+):
     # Arrange
     active_test_procedure = generate_class_instance(
-        ActiveTestProcedure, step_status={"1": StepStatus.PENDING}, finished_zip_data=None, client_aggregator_id=agg_id
+        ActiveTestProcedure,
+        step_status={},
+        client_certificate_type=ClientCertificateType.DEVICE,
+        finished_zip_data=None,
+        client_aggregator_id=agg_id,
     )
     resolved_params = {
-        "nmi": "abc",
-        "registration_pin": 1234,
+        "nmi": "1234567890",
     }
+    if agg_lfdi is not None:
+        resolved_params["aggregator_lfdi"] = agg_lfdi
+    if agg_sfdi is not None:
+        resolved_params["aggregator_sfdi"] = agg_sfdi
+    if pin is not None:
+        resolved_params["registration_pin"] = pin
 
     # Act
     async with generate_async_session(pg_base_config) as session:
         await action_register_end_device(active_test_procedure, resolved_params, session)
 
     # Assert
-    assert pg_base_config.execute(f"select count(*) from site where aggregator_id = {agg_id};").fetchone()[0] == 1
+    async with generate_async_session(pg_base_config) as session:
+        sites = (await session.execute(select(Site))).scalars().all()
+        assert len(sites) == 1
+        site_1 = sites[0]
+        assert site_1.lfdi == active_test_procedure.client_lfdi
+        assert site_1.sfdi == active_test_procedure.client_sfdi
+        if pin is not None:
+            assert site_1.registration_pin == pin
+
+
+# aggregator_lfdi: 3E4F45AB31EDFE5B67E343E5E4562E3100000000 # Trailing PEN digits set to 0
+#         aggregator_sfdi: 16726121139
+@pytest.mark.parametrize(
+    "pen, agg_lfdi, agg_sfdi, expected_lfdi, expected_sfdi",
+    [
+        (
+            0,
+            "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
+            16726121139,
+            "3E4F45AB31EDFE5B67E343E5E4562E3100000000",
+            16726121139,
+        ),
+        (
+            1234,
+            "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
+            123,
+            "3E4F45AB31EDFE5B67E343E5E4562E31000004D2",
+            123,
+        ),
+        (
+            2684359314,
+            "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
+            16726121139,
+            "3E4F45AB31EDFE5B67E343E5E4562E31A0001292",
+            16726121139,
+        ),
+        (
+            123,
+            None,
+            None,
+            None,
+            None,
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_action_register_aggregator_end_device_agg_cert(
+    pg_base_config,
+    pen: int,
+    agg_lfdi: str | None,
+    agg_sfdi: int | None,
+    expected_lfdi: int | None,
+    expected_sfdi: int | None,
+):
+    """Checks that an aggregator"""
+    agg_id = 1
+    # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        step_status={},
+        client_certificate_type=ClientCertificateType.AGGREGATOR,
+        pen=pen,
+        finished_zip_data=None,
+        client_aggregator_id=agg_id,
+    )
+    resolved_params = {}
+    if agg_lfdi is not None:
+        resolved_params["aggregator_lfdi"] = agg_lfdi
+    if agg_sfdi is not None:
+        resolved_params["aggregator_sfdi"] = agg_sfdi
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_register_end_device(active_test_procedure, resolved_params, session)
+
+    # Assert
+    async with generate_async_session(pg_base_config) as session:
+        sites = (await session.execute(select(Site))).scalars().all()
+        assert len(sites) == 1
+        site_1 = sites[0]
+
+        if expected_lfdi is None:
+            assert site_1.lfdi == active_test_procedure.client_lfdi
+        else:
+            assert site_1.lfdi == expected_lfdi
+
+        if expected_sfdi is None:
+            assert site_1.sfdi == active_test_procedure.client_sfdi
+        else:
+            assert site_1.sfdi == expected_sfdi
 
 
 @pytest.mark.parametrize(

@@ -26,6 +26,11 @@ class StepStatus(Enum):
     RESOLVED = auto()  # The step has been full resolved
 
 
+class ClientCertificateType(StrEnum):
+    AGGREGATOR = "Aggregator"
+    DEVICE = "Device"
+
+
 @dataclass
 class ActiveTestProcedure:
     name: str
@@ -35,7 +40,7 @@ class ActiveTestProcedure:
     started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
     listeners: list[Listener]
     step_status: dict[str, StepStatus]
-    client_certificate_type: str  # Either "Aggregator" or "Device". Human text to identify source of cert
+    client_certificate_type: ClientCertificateType  # Human readable text to identify source of cert.
     client_aggregator_id: int  # What aggregator ID will be the client operating as? (0 for device certs)
     client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
     client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)

@@ -45,6 +45,7 @@ from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
 from cactus_runner.models import (
+    ClientCertificateType,
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,
@@ -236,7 +237,7 @@ def generate_overview_section(
     test_run_id: str,
     init_timestamp: datetime,
     start_timestamp: datetime,
-    client_cert_type: str,
+    client_cert_type: ClientCertificateType,
     client_lfdi: str,
     duration: timedelta,
     stylesheet: StyleSheet,
