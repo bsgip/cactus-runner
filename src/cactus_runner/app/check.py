@@ -7,6 +7,7 @@ from typing import Annotated, Any, Iterable, Optional, Sequence
 
 import pydantic
 import pydantic.alias_generators
+import pydantic.fields
 from cactus_test_definitions.checks import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
@@ -48,24 +49,51 @@ class FailedCheckError(Exception):
     """Check failed to run (raised an exception)"""
 
 
+class SiteReadingTypeProperty:
+    name: str
+
+    def __init__(self, name: str):
+        self.name = name
+
+
 class ParamsDERSettingsContents(pydantic.BaseModel):
     """Represents all parameters that could be provided as part of the DERSettings contents check"""
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
-
-    doe_modes_enabled: Annotated[bool | None, pydantic.Field(alias="doeModesEnabled")] = None
+    doe_modes_enabled: Annotated[
+        bool | None, pydantic.Field(alias="doeModesEnabled"), SiteReadingTypeProperty("doe_modes_enabled")
+    ] = None
     doe_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_set")] = None
     doe_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="doeModesEnabled_unset")] = None
     modes_enabled_set: Annotated[str | None, pydantic.Field(alias="modesEnabled_set")] = None
     modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="modesEnabled_unset")] = None
-    set_grad_w: int | None = None
-    set_max_w: bool | None = None
-    set_max_va: Annotated[bool | None, pydantic.Field(alias="setMaxVA")] = None
-    set_max_var: bool | None = None
-    set_max_charge_rate_w: bool | None = None
-    set_max_discharge_rate_w: bool | None = None
-    set_max_wh: bool | None = None
-    set_min_wh: bool | None = None
+    set_grad_w: Annotated[int | None, pydantic.Field(alias="setGradW")] = None
+    set_max_w: Annotated[bool | None, pydantic.Field(alias="setMaxW"), SiteReadingTypeProperty("max_w_value")] = None
+    set_max_va: Annotated[bool | None, pydantic.Field(alias="setMaxVA"), SiteReadingTypeProperty("max_va_value")] = None
+    set_max_var: Annotated[bool | None, pydantic.Field(alias="setMaxVar"), SiteReadingTypeProperty("max_var_value")] = (
+        None
+    )
+    set_max_var_neg: Annotated[
+        bool | None, pydantic.Field(alias="setMaxVarNeg"), SiteReadingTypeProperty("max_var_neg_value")
+    ] = None
+    set_max_charge_rate_w: Annotated[
+        bool | None, pydantic.Field(alias="setMaxChargeRateW"), SiteReadingTypeProperty("max_charge_rate_w_value")
+    ] = None
+    set_max_discharge_rate_w: Annotated[
+        bool | None, pydantic.Field(alias="setMaxDischargeRateW"), SiteReadingTypeProperty("max_discharge_rate_w_value")
+    ] = None
+    set_max_wh: Annotated[bool | None, pydantic.Field(alias="setMaxWh"), SiteReadingTypeProperty("max_wh_value")] = None
+    set_min_wh: Annotated[bool | None, pydantic.Field(alias="setMinWh"), SiteReadingTypeProperty("min_wh_value")] = None
+    set_min_pf_over_excited: Annotated[
+        bool | None,
+        pydantic.Field(alias="setMinPFOverExcited"),
+        SiteReadingTypeProperty("min_pf_over_excited_displacement"),
+    ] = None
+    set_min_pf_under_excited: Annotated[
+        bool | None,
+        pydantic.Field(alias="setMinPFUnderExcited"),
+        SiteReadingTypeProperty("min_pf_under_excited_displacement"),
+    ] = None
     vpp_modes_enabled_set: Annotated[str | None, pydantic.Field(alias="vppModesEnabled_set")] = None
     vpp_modes_enabled_unset: Annotated[str | None, pydantic.Field(alias="vppModesEnabled_unset")] = None
 
@@ -74,18 +102,38 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
     """Represents all parameters that could be provided as part of the DERCapability contents check"""
 
     model_config = pydantic.ConfigDict(alias_generator=pydantic.alias_generators.to_camel)
-
-    doe_modes_supported: Annotated[bool | None, pydantic.Field(alias="doeModesSupported")] = None
+    doe_modes_supported: Annotated[
+        bool | None, pydantic.Field(alias="doeModesSupported"), SiteReadingTypeProperty("doe_modes_supported")
+    ] = None
     doe_modes_supported_set: Annotated[str | None, pydantic.Field(alias="doeModesSupported_set")] = None
     doe_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="doeModesSupported_unset")] = None
     modes_supported_set: Annotated[str | None, pydantic.Field(alias="modesSupported_set")] = None
     modes_supported_unset: Annotated[str | None, pydantic.Field(alias="modesSupported_unset")] = None
-    rtg_max_va: Annotated[bool | None, pydantic.Field(alias="rtgMaxVA")] = None
-    rtg_max_var: bool | None = None
-    rtg_max_w: bool | None = None
-    rtg_max_charge_rate_w: bool | None = None
-    rtg_max_discharge_rate_w: bool | None = None
-    rtg_max_wh: bool | None = None
+    rtg_max_va: Annotated[bool | None, pydantic.Field(alias="rtgMaxVA"), SiteReadingTypeProperty("max_va_value")] = None
+    rtg_max_var: Annotated[bool | None, pydantic.Field(alias="rtgMaxVar"), SiteReadingTypeProperty("max_var_value")] = (
+        None
+    )
+    rtg_max_var_neg: Annotated[
+        bool | None, pydantic.Field(alias="rtgMaxVarNeg"), SiteReadingTypeProperty("max_var_neg_value")
+    ] = None
+    rtg_max_w: Annotated[bool | None, pydantic.Field(alias="rtgMaxW"), SiteReadingTypeProperty("max_w_value")] = None
+    rtg_max_charge_rate_w: Annotated[
+        bool | None, pydantic.Field(alias="rtgMaxChargeRateW"), SiteReadingTypeProperty("max_charge_rate_w_value")
+    ] = None
+    rtg_max_discharge_rate_w: Annotated[
+        bool | None, pydantic.Field(alias="rtgMaxDischargeRateW"), SiteReadingTypeProperty("max_discharge_rate_w_value")
+    ] = None
+    rtg_max_wh: Annotated[bool | None, pydantic.Field(alias="rtgMaxWh"), SiteReadingTypeProperty("max_wh_value")] = None
+    rtg_min_pf_over_excited: Annotated[
+        bool | None,
+        pydantic.Field(alias="rtgMinPFOverExcited"),
+        SiteReadingTypeProperty("min_pf_over_excited_displacement"),
+    ] = None
+    rtg_min_pf_under_excited: Annotated[
+        bool | None,
+        pydantic.Field(alias="rtgMinPFUnderExcited"),
+        SiteReadingTypeProperty("min_pf_under_excited_displacement"),
+    ] = None
     vpp_modes_supported_set: Annotated[str | None, pydantic.Field(alias="vppModesSupported_set")] = None
     vpp_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="vppModesSupported_unset")] = None
 
@@ -173,7 +221,7 @@ async def check_end_device_contents(
 
     Optionally checks:
     - has connection point id set
-    - has a non-zero device catgory set
+    - has a non-zero device category set
     - PEN matches the last 32 bits of the aggregator lfdi (PEN ignored if using device lfdi)
     - LFDI is only hexadecimal characters [0-9a-fA-F]
     """
@@ -223,6 +271,41 @@ async def check_end_device_contents(
     return CheckResult(True, None)
 
 
+def do_field_exists_check(
+    soft_checker: SoftChecker,
+    db_entity: SiteDERSetting | SiteDERRating,
+    field: pydantic.fields.FieldInfo,
+    expected_to_be_set: bool,
+) -> None:
+    """Checks for the existence (or non existence) of field within the specified database entity. Depends on the type
+    annotation having a SiteReadingTypeProperty to allow the mapping of field to a specific property in db_entity.
+
+    soft_checker: Will report any failures into this object
+    db_entity: The object whose properties are interrogated
+    field: The field info with Annotated metadata containing a SiteReadingTypeProperty. If not metadata - no check
+    expected_to_be_set: True will assert that the property in db_entity is not None. False will assert that it's None
+    """
+    if not field.metadata:
+        # If we don't have metadata - nothing we can check
+        return
+
+    property: SiteReadingTypeProperty | None = None
+    for m in field.metadata:
+        if isinstance(m, SiteReadingTypeProperty):
+            property = m
+            break
+
+    if property is None:
+        # If we don't have metadata - nothing we can check
+        return
+
+    actual_value = getattr(db_entity, property.name, None)
+    if expected_to_be_set and actual_value is None:
+        soft_checker.add(f"{field.alias} MUST be set but is currently missing.")
+    elif not expected_to_be_set and actual_value is not None:
+        soft_checker.add(f"{field.alias} MUST be unset but is currently specified as: {actual_value}.")
+
+
 async def check_der_settings_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the der-settings-contents check
 
@@ -247,35 +330,24 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
 
     # Perform parameter checks
     for k in params.model_fields_set:
+        raw_value: Any = getattr(params, k)
         if k == "set_grad_w" and der_settings.grad_w != params.set_grad_w:
             soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
-        elif k == "doe_modes_enabled":
-            params_val: bool | int = bool(getattr(params, k))
-            field = params.__pydantic_fields__[k]
-            if params_val is True and der_settings.doe_modes_enabled is None:
-                soft_checker.add(f"DERSetting.{field.alias} must be set.")
-            elif params_val is False and der_settings.doe_modes_enabled is not None:
-                soft_checker.add(f"DERSetting.{field.alias} must be unset.")
-            continue
-
         elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
             # Bitwise assert hi (==1) checks
-            params_val = int(getattr(params, k), 16)
+            params_val = int(raw_value, 16)
             if (getattr(der_settings, k.rstrip("_set")) & params_val) != params_val:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check hi (==1) failed")
-
         elif k in ["doe_modes_enabled_unset", "modes_enabled_unset"]:
             # Bitwise assert lo (==0) checks
-            params_val = int(getattr(params, k), 16)
+            params_val = int(raw_value, 16)
             if (getattr(der_settings, k.rstrip("_unset")) & params_val) != 0:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check lo (==0) failed")
-
-        elif getattr(params, k) is False:
-            # Boolean param checks
+        elif isinstance(raw_value, bool):
             field = params.__pydantic_fields__[k]
-            soft_checker.add(f"DERSetting.{field.alias} boolean expression failed")
+            do_field_exists_check(soft_checker, der_settings, field, raw_value)
 
     return soft_checker.finalize()
 
@@ -304,32 +376,23 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
 
     # Perform parameter checks
     for k in params.model_fields_set:
-        if k == "doe_modes_supported":
-            params_val: bool | int = bool(getattr(params, k))
-            field = params.__pydantic_fields__[k]
-            if params_val is True and der_rating.doe_modes_supported is None:
-                soft_checker.add(f"DERCapability.{field.alias} must be set.")
-            elif params_val is False and der_rating.doe_modes_supported is not None:
-                soft_checker.add(f"DERCapability.{field.alias} must be unset.")
-            continue
+        raw_value: Any = getattr(params, k)
         if k in ["doe_modes_supported_set", "modes_supported_set"]:
             # Bitwise-and checks
-            params_val = int(getattr(params, k), 16)
+            params_val = int(raw_value, 16)
             if (getattr(der_rating, k.rstrip("_set")) & params_val) != params_val:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check hi (==1) failed")
 
         if k in ["doe_modes_supported_unset", "modes_supported_unset"]:
             # Bitwise-and checks
-            params_val = int(getattr(params, k), 16)
+            params_val = int(raw_value, 16)
             if (getattr(der_rating, k.rstrip("_unset")) & params_val) != 0:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check lo (==0) failed")
-
-        elif getattr(params, k) is False:
-            # Boolean param checks
+        elif isinstance(raw_value, bool):
             field = params.__pydantic_fields__[k]
-            soft_checker.add(f"DERCapability.{field.alias} boolean expression failed")
+            do_field_exists_check(soft_checker, der_rating, field, raw_value)
 
     return soft_checker.finalize()
 

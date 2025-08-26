@@ -380,31 +380,56 @@ async def test_check_end_device_lfdi(
     assert_check_result(result, expected)
 
 
-def der_setting_bool_param_scenario(param: str, expected: bool) -> tuple[list, dict[str, bool], bool]:
-    """Convenience for generating scenarios for testing the settings boolean param checks"""
-    return (
+def der_bool_param_scenario(
+    der_key: str,
+    der_type: type,
+    param: str,
+    param_value: bool,
+    db_property: str,
+    db_property_value: Any,
+    expected: bool,
+) -> tuple[list, dict[str, bool], bool]:
+    """Convenience for generating scenarios for testing the der settings/capability boolean param checks"""
+    der_props = {der_key: generate_class_instance(der_type, **{db_property: db_property_value})}
+    # raise Exception(f"der_key={der_key} der={der}")
+    return pytest.param(
         [
             generate_class_instance(
                 Site,
                 seed=101,
                 aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        site_der_setting=generate_class_instance(SiteDERSetting),
-                    )
-                ],
+                site_ders=[generate_class_instance(SiteDER, **der_props)],
             )
         ],
-        {param: expected},
+        {param: param_value},
         expected,
+        id=f"boolcheck-{param}-{param_value}-{db_property}-{db_property_value}-expecting-{expected}",
     )
 
 
 DERSETTING_BOOL_PARAM_SCENARIOS = [
-    der_setting_bool_param_scenario(p, e)
-    for p in ["setMaxW", "setMaxVA", "setMaxVar", "setMaxChargeRateW", "setMaxDischargeRateW", "setMaxWh"]
-    for e in [True, False]
+    der_bool_param_scenario("site_der_setting", SiteDERSetting, param, param_value, db_prop, db_prop_value, expected)
+    for param, db_prop in [
+        ("doeModesEnabled", "doe_modes_enabled"),
+        ("setMaxVA", "max_va_value"),
+        ("setMaxVar", "max_var_value"),
+        ("setMaxVarNeg", "max_var_neg_value"),
+        ("setMaxChargeRateW", "max_charge_rate_w_value"),
+        ("setMaxDischargeRateW", "max_discharge_rate_w_value"),
+        ("setMaxWh", "max_wh_value"),
+        ("setMinPFOverExcited", "min_pf_over_excited_displacement"),
+        ("setMinPFUnderExcited", "min_pf_under_excited_displacement"),
+    ]
+    for param_value, db_prop_value, expected in [
+        (True, 2, True),
+        (True, None, False),
+        (False, None, True),
+        (False, 2, False),
+    ]
+] + [
+    # These values can't be nulled - so we do a cursory check of the value being set
+    der_bool_param_scenario("site_der_setting", SiteDERSetting, "setMaxW", True, "max_w_value", 2, True),
+    der_bool_param_scenario("site_der_setting", SiteDERSetting, "setMaxW", False, "max_w_value", 2, False),
 ]
 
 
@@ -493,74 +518,6 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                 )
             ],
             {},
-            False,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesEnabled": True},
-            True,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=None),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesEnabled": True},
-            False,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=None),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesEnabled": False},
-            True,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesEnabled": False},
             False,
         ),
         (
@@ -715,31 +672,29 @@ async def test_check_der_settings_contents(
         assert_check_result(result, expected)
 
 
-def der_rating_bool_param_scenario(param: str, expected: bool) -> tuple[list, dict[str, bool], bool]:
-    """Convenience for generating scenarios for testing the ratings boolean param checks"""
-    return (
-        [
-            generate_class_instance(
-                Site,
-                seed=101,
-                aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        site_der_rating=generate_class_instance(SiteDERRating),
-                    )
-                ],
-            )
-        ],
-        {param: expected},
-        expected,
-    )
-
-
 DERRATING_BOOL_PARAM_SCENARIOS = [
-    der_rating_bool_param_scenario(p, e)
-    for p in ["rtgMaxW", "rtgMaxVA", "rtgMaxVar", "rtgMaxChargeRateW", "rtgMaxDischargeRateW", "rtgMaxWh"]
-    for e in [True, False]
+    der_bool_param_scenario("site_der_rating", SiteDERRating, param, param_value, db_prop, db_prop_value, expected)
+    for param, db_prop in [
+        ("doeModesSupported", "doe_modes_supported"),
+        ("rtgMaxVA", "max_va_value"),
+        ("rtgMaxVar", "max_var_value"),
+        ("rtgMaxVarNeg", "max_var_neg_value"),
+        ("rtgMaxChargeRateW", "max_charge_rate_w_value"),
+        ("rtgMaxDischargeRateW", "max_discharge_rate_w_value"),
+        ("rtgMaxWh", "max_wh_value"),
+        ("rtgMinPFOverExcited", "min_pf_over_excited_displacement"),
+        ("rtgMinPFUnderExcited", "min_pf_under_excited_displacement"),
+    ]
+    for param_value, db_prop_value, expected in [
+        (True, 2, True),
+        (True, None, False),
+        (False, None, True),
+        (False, 2, False),
+    ]
+] + [
+    # These are non nullable and so we only do a cursory check
+    der_bool_param_scenario("site_der_rating", SiteDERRating, "rtgMaxW", True, "max_w_value", 2, True),
+    der_bool_param_scenario("site_der_rating", SiteDERRating, "rtgMaxW", False, "max_w_value", 2, False),
 ]
 
 
@@ -866,74 +821,6 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             {"modesSupported_set": "03"},
             False,
         ),  # Bit flag 1 not set on actual value
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesSupported": True},
-            True,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=None),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesSupported": True},
-            False,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=None),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesSupported": False},
-            True,
-        ),
-        (
-            [
-                generate_class_instance(
-                    Site,
-                    seed=101,
-                    aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
-                        )
-                    ],
-                )
-            ],
-            {"doeModesSupported": False},
-            False,
-        ),
         (
             [
                 generate_class_instance(
