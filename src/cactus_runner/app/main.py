@@ -6,6 +6,8 @@ import logging
 import logging.config
 import logging.handlers
 import os
+import traceback
+from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import web
@@ -53,7 +55,17 @@ async def log_error_middleware(request, handler):
     except Exception as exc:
         # Handle uncaught exceptions
         logger.error(f"Uncaught exception: {exc}", exc_info=exc)
-        return web.json_response({"error": "Internal Server Error"}, status=500)
+
+        # We are making the conscious decision to report (in great detail) the contents of our internal errors
+        # This is NOT typically best practice but there is nothing sensitive being stored on a Runner instance
+        # and it allows for more detailed logging at whatever level is orchestrating the runner instance.
+        return web.json_response(
+            {
+                "error": f"Internal Server Error: {type(exc)} {exc}",
+                "traceback": traceback.format_exc(),
+            },
+            status=HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
 
 
 async def periodic_task(app: web.Application):
