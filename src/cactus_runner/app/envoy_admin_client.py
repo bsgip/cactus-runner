@@ -9,6 +9,7 @@ from http import HTTPStatus
 
 from aiohttp import BasicAuth, ClientSession, ClientTimeout, TCPConnector
 from aiohttp.typedefs import StrOrURL
+from envoy_schema.admin.schema.aggregator import AggregatorPageResponse
 from envoy_schema.admin.schema.config import (
     ControlDefaultRequest,
     ControlDefaultResponse,
@@ -24,6 +25,7 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlResponse,
 )
 from envoy_schema.admin.schema.uri import (
+    AggregatorListUri,
     ServerConfigRuntimeUri,
     SiteControlDefaultConfigUri,
     SiteControlGroupListUri,
@@ -79,6 +81,12 @@ class EnvoyAdminClient:
 
     async def close_session(self):
         await self._session.close()
+
+    async def get_aggregators(self) -> AggregatorPageResponse:
+        async with self._session.get(AggregatorListUri) as resp:
+            resp.raise_for_status()
+            json = await resp.json()
+            return AggregatorPageResponse(**json)
 
     async def get_single_site(self, site_id: int) -> SiteResponse:
         async with self._session.get(SiteUri.format(site_id=site_id)) as resp:

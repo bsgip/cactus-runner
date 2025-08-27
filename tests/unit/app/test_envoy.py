@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from assertical.fake.generator import generate_class_instance
+from envoy_schema.admin.schema.aggregator import AggregatorPageResponse
 from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
     RuntimeServerConfigResponse,
@@ -47,6 +48,23 @@ def mock_session_with_json_response():
         return mock_session, mock_response
 
     return _mock
+
+
+@pytest.mark.asyncio
+async def test_aggregators(mock_session_with_json_response):
+    # Arrange
+    expected_json = generate_class_instance(AggregatorPageResponse, seed=123, generate_relationships=True).model_dump()
+    mock_session, _ = mock_session_with_json_response(expected_json, method="get")
+
+    client = EnvoyAdminClient("http://localhost", EnvoyAdminClientAuthParams("user", "pass"))
+    client._session = mock_session
+
+    # Act
+    site = await client.get_aggregators()
+
+    # Assert
+    assert isinstance(site, AggregatorPageResponse)
+    mock_session.get.assert_called_once()
 
 
 @pytest.mark.asyncio

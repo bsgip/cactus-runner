@@ -100,11 +100,18 @@ async def test_finalize_handler_handles_no_active_test_procedure():
 
 
 @pytest.mark.parametrize(
-    "is_healthy, expected_status", [(True, http.HTTPStatus.OK), (False, http.HTTPStatus.SERVICE_UNAVAILABLE)]
+    "is_db_healthy, is_admin_api_healthy, expected_status",
+    [
+        (True, True, http.HTTPStatus.OK),
+        (False, True, http.HTTPStatus.SERVICE_UNAVAILABLE),
+        (True, False, http.HTTPStatus.SERVICE_UNAVAILABLE),
+        (False, False, http.HTTPStatus.SERVICE_UNAVAILABLE),
+    ],
 )
 @pytest.mark.asyncio
-async def test_health_handler(mocker, is_healthy, expected_status):
-    mocker.patch("cactus_runner.app.handler.is_healthy").return_value = is_healthy
+async def test_health_handler(mocker, is_db_healthy: bool, is_admin_api_healthy: bool, expected_status):
+    mocker.patch("cactus_runner.app.handler.is_db_healthy").return_value = is_db_healthy
+    mocker.patch("cactus_runner.app.handler.is_admin_api_healthy").return_value = is_admin_api_healthy
     response = await handler.health_handler(MagicMock())
     assert isinstance(response, Response)
     assert response.status == expected_status
