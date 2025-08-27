@@ -153,3 +153,10 @@ async def cactus_runner_client(
             mock_generate_admin_client.return_value = envoy_admin_client
             async with await aiohttp_client(create_app()) as app:
                 yield app
+
+
+@pytest.fixture
+async def cactus_runner_client_faulty_admin(pg_empty_config, aiohttp_client, envoy_server_client, ensure_logs_dir):
+    with environment_snapshot():
+        async with await aiohttp_client(create_app()) as app:
+            yield app

@@ -231,7 +231,7 @@ async def test_pre_init_status(cactus_runner_client: TestClient):
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_health_ok(cactus_runner_client: TestClient):
+async def test_health_ok(cactus_runner_client: TestClient, envoy_admin_client):
     """Tests that the embedded client will return True for the server health check"""
 
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
@@ -241,10 +241,22 @@ async def test_health_ok(cactus_runner_client: TestClient):
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_health_db_dead(cactus_runner_client: TestClient):
-    """Tests that the embedded client will return True for the server health check"""
+async def test_health_db_dead(cactus_runner_client: TestClient, envoy_admin_client):
+    """Tests that the embedded client will return False for the server health check if the DB is down"""
 
     remove_database_connection()
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        health_response = await RunnerClient.health(session)
+        assert health_response is False
+
+
+@pytest.mark.slow
+@pytest.mark.anyio
+async def test_health_admin_api_dead(cactus_runner_client_faulty_admin: TestClient):
+    """Tests that the embedded client will return False for the server health check if the admin API isn't configured"""
+
+    async with ClientSession(
+        base_url=cactus_runner_client_faulty_admin.make_url("/"), timeout=ClientTimeout(30)
+    ) as session:
         health_response = await RunnerClient.health(session)
         assert health_response is False

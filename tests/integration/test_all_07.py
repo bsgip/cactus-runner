@@ -68,7 +68,7 @@ async def test_all_07_full(cactus_runner_client: TestClient):
     #
 
     now = int(datetime.now().timestamp())
-    result = await cactus_runner_client.post(
+    result = await cactus_runner_client.put(
         "/edev/1/der/1/ders",
         headers={"ssl-client-cert": URI_ENCODED_CERT},
         data=DERStatus(
@@ -79,7 +79,7 @@ async def test_all_07_full(cactus_runner_client: TestClient):
     await assert_success_response(result)
 
     now = int(datetime.now().timestamp())
-    result = await cactus_runner_client.post(
+    result = await cactus_runner_client.put(
         "/edev/1/der/1/ders",
         headers={"ssl-client-cert": URI_ENCODED_CERT},
         data=DERStatus(

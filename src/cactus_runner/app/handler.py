@@ -428,7 +428,7 @@ async def health_handler(request):
     Returns:
         aiohttp.web.Response: No response body - Either a HTTP 200 on success or 503 on failure.
     """
-    if await is_db_healthy() and await is_admin_api_healthy():
+    if await is_db_healthy() and await is_admin_api_healthy(request.app[APPKEY_ENVOY_ADMIN_CLIENT]):
         return web.Response(status=http.HTTPStatus.OK)
     else:
         return web.Response(status=http.HTTPStatus.SERVICE_UNAVAILABLE)
