@@ -288,12 +288,12 @@ async def test_check_end_device_contents_device_category(
         (
             generate_class_instance(
                 ActiveTestProcedure,
-                pen=int("984e23e5", 16),
+                pen=98492395,
                 client_certificate_type="Aggregator",
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            "3e4f45ab31edfe5b67e343e5e4562e3198492395",
             167261211391,
             True,
             True,
@@ -1428,10 +1428,10 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
     [
         ("", 0, False),
         ("FF00000000", 0, True),
-        ("FF0001E240", 123456, True),
-        ("FF0001E241", 123456, False),  # off by 1
-        ("FF0001E240", 123457, False),  # off by 1
-        ("FFFFFFFFFF", 4294967295, True),  # the largest pen 2^32-1
+        ("FF00123456", 123456, True),
+        ("FF00123466", 123456, False),  # off by 1
+        ("FF00123456", 123457, False),  # off by 1
+        ("FF99999999", 99999999, True),  # the largest pen 99999999
     ],
 )
 def test_mrid_matches_pen(mrid: str, pen: int, expected_result: bool):
@@ -1441,62 +1441,23 @@ def test_mrid_matches_pen(mrid: str, pen: int, expected_result: bool):
 @pytest.mark.parametrize(
     "mrid1,mrid2,group_mrid,pen,expected_result",
     [
-        (None, None, None, 0, CheckResult(True, None)),
-        (
-            "110001E240",
-            "220001E240",
-            "330001E240",
-            123456,
-            CheckResult(
-                True,
-                "All MRIDS and group MRIDS for the site readings types match the supplied Private Enterprise Number (PEN).",  # noqa: E501
-            ),
-        ),
-        (
-            "1100000000",  # mrid doesn't match pen
-            "220001E240",
-            "330001E240",
-            123456,
-            CheckResult(
-                False,
-                "1/2 MRIDS do not match the supplied PEN.",
-            ),
-        ),
-        (
-            "1100000000",  # mrid doesn't match pen
-            "2200000000",  # mrid doesn't match pen
-            "330001E240",
-            123456,
-            CheckResult(
-                False,
-                "2/2 MRIDS do not match the supplied PEN.",
-            ),
-        ),
-        (
-            "110001E240",
-            "220001E240",
-            "3300000000",  # group mrid doesn't match pen
-            123456,
-            CheckResult(
-                False,
-                "2/2 group MRIDS do not match the supplied PEN.",
-            ),
-        ),
+        (None, None, None, 0, True),
+        ("1100123456", "2200123456", "3300123456", 123456, True),
+        ("1100120056", "2200123456", "3300123456", 123456, False),  # mrid doesn't match pen
+        ("1100000000", "2200000000", "3300123456", 123456, False),  # mrid doesn't match pen  # mrid doesn't match pen
+        ("1100123456", "2200123456", "3300000000", 123456, False),  # group mrid doesn't match pen
         (
             "1100000000",  # mrid doesn't match pen
             "2200000000",  # mrid doesn't match pen
             "3300000000",  # group mrid doesn't match pen
             123456,
-            CheckResult(
-                False,
-                "2/2 group MRIDS do not match the supplied PEN. 2/2 MRIDS do not match the supplied PEN.",
-            ),
+            False,
         ),
     ],
 )
 @pytest.mark.anyio
 async def test_do_check_reading_type_mrids_match_pen(
-    mrid1: str | None, mrid2: str | None, group_mrid: str | None, pen: int, expected_result: CheckResult
+    mrid1: str | None, mrid2: str | None, group_mrid: str | None, pen: int, expected_result: bool
 ):
     # Arrange
     site = generate_class_instance(Site, aggregator_id=1, site_id=1)
@@ -1528,7 +1489,7 @@ async def test_do_check_reading_type_mrids_match_pen(
     result = await do_check_reading_type_mrids_match_pen(site_reading_types=srts, pen=pen)
 
     # Assert
-    assert result == expected_result
+    assert_check_result(result, expected_result)
 
 
 @pytest.mark.parametrize(

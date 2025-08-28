@@ -256,16 +256,17 @@ async def check_end_device_contents(
                 f"EndDevice sfdi should be derived from the lfdi. Expected {expected_sfdi} but found {site.sfdi}.",
             )
 
-        # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen
+        # The last 32 bits (8 hex digits) of the aggregator lfdi should match the pen (in base 10)
         if active_test_procedure.client_certificate_type == ClientCertificateType.AGGREGATOR:
             pen = active_test_procedure.pen
             try:
-                pen_from_lfdi = int(site.lfdi[-8:], 16)
+                pen_from_lfdi = int(site.lfdi[-8:])
             except ValueError:
                 return CheckResult(False, "Unable to extract PEN from Aggregator LFDI.")
             if pen != pen_from_lfdi:
                 return CheckResult(
-                    False, f"PEN from aggregator lfdi, '{pen_from_lfdi}' does not match supplied PEN, '{pen}'."
+                    False,
+                    f"PEN from lfdi '{pen_from_lfdi}' (last 8 hex digits) does not match '{pen}'. PEN should be decimal encoded.",  # noqa: E501
                 )
 
     return CheckResult(True, None)
@@ -576,7 +577,7 @@ async def do_check_readings_on_minute_boundary(
 def mrid_matches_pen(pen: int, mrid: str) -> bool:
     # The last 32 bits (8 hex digits) of mrid should match the pen
     try:
-        pen_from_mrid = int(mrid[-8:], 16)
+        pen_from_mrid = int(mrid[-8:])
     except ValueError:
         return False
 
@@ -593,11 +594,15 @@ async def do_check_reading_type_mrids_match_pen(site_reading_types: Sequence[Sit
         mrid_mismatches = mrid_checks.count(False)
 
         group_mrid_msg = (
-            f"{group_mrid_mismatches}/{srt_count} group MRIDS do not match the supplied PEN."
+            f"{group_mrid_mismatches}/{srt_count} group MRIDS do not match the supplied PEN. (Ensure decimal encoding)."
             if group_mrid_mismatches
             else ""
         )
-        mrid_msg = f"{mrid_mismatches}/{srt_count} MRIDS do not match the supplied PEN." if mrid_mismatches else ""
+        mrid_msg = (
+            f"{mrid_mismatches}/{srt_count} MRIDS do not match the supplied PEN. (Ensure decimal encoding)."
+            if mrid_mismatches
+            else ""
+        )
         if group_mrid_msg and mrid_msg:
             mrid_msg = f" {mrid_msg}"
 
