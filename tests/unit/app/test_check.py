@@ -280,7 +280,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
             167261211391,
             True,
             True,
@@ -293,7 +293,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
             167261211391,
             True,
             True,
@@ -306,7 +306,20 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b6Xe343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67e343E5E4562E31984E23E5",  # single lowercase e in the middle
+            167261211391,
+            True,
+            False,
+        ),  # only upper case hex characters are allowed
+        (
+            generate_class_instance(
+                ActiveTestProcedure,
+                pen=int("984e23e5", 16),
+                client_certificate_type="Aggregator",
+                step_status={},
+                finished_zip_data=None,
+            ),
+            "3E4F45AB31EDFE5B6XE343E5E4562E31984E23E5",
             167261211391,
             True,
             False,
@@ -319,7 +332,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67fe343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67FE343E5E4562E31984E23E5",
             167261211391,
             True,
             False,
@@ -332,7 +345,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
             167261211391,
             True,
             False,
@@ -345,7 +358,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e31984e23e5",
+            "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
             1234,
             True,
             False,
@@ -371,11 +384,6 @@ async def test_check_end_device_lfdi(
     if check_lfdi is not None:
         resolved_params["check_lfdi"] = check_lfdi
 
-    result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
-    assert_check_result(result, expected)
-
-    # upper/lower case LFDI shouldn't change things
-    active_site.lfdi = active_site.lfdi.upper()
     result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
     assert_check_result(result, expected)
 

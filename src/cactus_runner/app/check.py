@@ -223,7 +223,7 @@ async def check_end_device_contents(
     - has connection point id set
     - has a non-zero device category set
     - PEN matches the last 32 bits of the aggregator lfdi (PEN ignored if using device lfdi)
-    - LFDI is only hexadecimal characters [0-9a-fA-F]
+    - LFDI is only uppercase hexadecimal characters [0-9A-F]
     """
 
     site = await get_active_site(session)
@@ -244,8 +244,10 @@ async def check_end_device_contents(
     check_lfdi: bool = resolved_parameters.get("check_lfdi", False)
     if check_lfdi:
         # Check the LFDI/SFDI of the site
-        if re.search("[^a-fA-F0-9]", site.lfdi) is not None:
-            return CheckResult(False, f"EndDevice lfdi must consist only of hexadecimal characters. Got '{site.lfdi}'.")
+        if re.search("[^A-F0-9]", site.lfdi) is not None:
+            return CheckResult(
+                False, f"EndDevice lfdi must consist only of UPPERCASE hexadecimal characters. Got '{site.lfdi}'."
+            )
         if len(site.lfdi) != 40:
             return CheckResult(False, f"EndDevice lfdi must be 40 hexadecimal characters long. Got {len(site.lfdi)}.")
 
