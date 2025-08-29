@@ -914,7 +914,7 @@ def generate_readings_timeline(
     alternative_x_axis_label = "Time relative to test start (s)"
     if time_relative_to_test_start and base_timestamp is not None:
         new_x_axis_column = "timedelta_from_start"
-        readings_df[new_x_axis_column] = readings_df[x_axis_column] - base_timestamp
+        readings_df[new_x_axis_column] = readings_df[x_axis_column] - base_timestamp  # type: ignore
         x_axis_column = new_x_axis_column
         x_axis_label = alternative_x_axis_label
 
