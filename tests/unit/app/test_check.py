@@ -293,7 +293,7 @@ async def test_check_end_device_contents_device_category(
                 step_status={},
                 finished_zip_data=None,
             ),
-            "3e4f45ab31edfe5b67e343e5e4562e3198492395",
+            "3E4F45AB31EDFE5B67E343E5E4562E3198492395",
             167261211391,
             True,
             True,
