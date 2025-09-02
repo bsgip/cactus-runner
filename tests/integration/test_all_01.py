@@ -70,7 +70,7 @@ async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: s
         for filename in filenames:
             if filename.startswith(prefix):
                 return filename
-        return ""
+        raise Exception(f"No filename prefixed by '{prefix}' found in filenames.")
 
     summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))
     assert len(summary_data) > 0

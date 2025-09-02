@@ -2,12 +2,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pandas as pd
+import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import TestProcedureConfig
 from envoy.server.model import DynamicOperatingEnvelope, Site, SiteReadingType
+from envoy_schema.server.schema.sep2.types import DeviceCategory
 
 from cactus_runner.app.check import CheckResult
-from cactus_runner.app.reporting import pdf_report_as_bytes
+from cactus_runner.app.reporting import device_category_to_string, pdf_report_as_bytes
 from cactus_runner.models import (
     ActiveTestProcedure,
     RequestEntry,
@@ -107,3 +109,15 @@ def test_pdf_report_as_bytes_does_raise_exception_for_large_amount_of_validation
     )
 
     # There should be not exceptions raises do to Flowables being too large
+
+
+@pytest.mark.parametrize(
+    "device_category,expected",
+    [
+        (DeviceCategory(0), "Unspecified device category (0)"),
+        (DeviceCategory.SMART_ENERGY_MODULE, "smart energy module"),
+        (DeviceCategory.SMART_ENERGY_MODULE | DeviceCategory.WATER_HEATER, "water heater | smart energy module"),
+    ],
+)
+def test_device_category_to_string(device_category: DeviceCategory, expected: str):
+    assert device_category_to_string(device_category=device_category) == expected
