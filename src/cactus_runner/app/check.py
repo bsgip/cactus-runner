@@ -670,13 +670,14 @@ async def check_readings_site_reactive_power(
     )
 
 
-async def check_readings_site_voltage(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
-) -> CheckResult:
-    """Implements the readings-site-voltage check.
+async def check_readings_voltage(session: AsyncSession, resolved_parameters: dict[str, Any], pen: int) -> CheckResult:
+    """Implements the readings-voltage check.
+
+    Does a check for SITE AND DER voltage - as long as one valid, then this check is passed
 
     Will only consider the mandatory "Average" readings"""
-    return await do_check_site_readings_and_params(
+
+    site_check = await do_check_site_readings_and_params(
         session,
         resolved_parameters,
         pen,
@@ -684,6 +685,24 @@ async def check_readings_site_voltage(
         ReadingLocation.SITE_READING,
         DataQualifierType.AVERAGE,
     )
+    if site_check.passed:
+        # If they have sent us valid site data - treat it as a pass
+        return site_check
+
+    device_check = await do_check_site_readings_and_params(
+        session,
+        resolved_parameters,
+        pen,
+        UomType.VOLTAGE,
+        ReadingLocation.DEVICE_READING,
+        DataQualifierType.AVERAGE,
+    )
+    if device_check.passed:
+        # If they have sent us valid device data - treat it as a pass
+        return device_check
+
+    # At this point - we don't have valid site OR device data
+    return merge_checks([site_check, device_check])
 
 
 async def check_readings_der_active_power(
@@ -713,22 +732,6 @@ async def check_readings_der_reactive_power(
         resolved_parameters,
         pen,
         UomType.REACTIVE_POWER_VAR,
-        ReadingLocation.DEVICE_READING,
-        DataQualifierType.AVERAGE,
-    )
-
-
-async def check_readings_der_voltage(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
-) -> CheckResult:
-    """Implements the readings-der-voltage check.
-
-    Will only consider the mandatory "Average" readings"""
-    return await do_check_site_readings_and_params(
-        session,
-        resolved_parameters,
-        pen,
-        UomType.VOLTAGE,
         ReadingLocation.DEVICE_READING,
         DataQualifierType.AVERAGE,
     )
@@ -949,17 +952,14 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
             case "readings-site-reactive-power":
                 check_result = await check_readings_site_reactive_power(session, resolved_parameters, pen)
 
-            case "readings-site-voltage":
-                check_result = await check_readings_site_voltage(session, resolved_parameters, pen)
+            case "readings-voltage":
+                check_result = await check_readings_voltage(session, resolved_parameters, pen)
 
             case "readings-der-active-power":
                 check_result = await check_readings_der_active_power(session, resolved_parameters, pen)
 
             case "readings-der-reactive-power":
                 check_result = await check_readings_der_reactive_power(session, resolved_parameters, pen)
-
-            case "readings-der-voltage":
-                check_result = await check_readings_der_voltage(session, resolved_parameters, pen)
 
             case "readings-der-stored-energy":
                 check_result = await check_readings_der_stored_energy(session, resolved_parameters, pen)

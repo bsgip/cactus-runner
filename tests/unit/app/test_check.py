@@ -47,6 +47,7 @@ from cactus_runner.app.check import (
     check_der_settings_contents,
     check_der_status_contents,
     check_end_device_contents,
+    check_readings_voltage,
     check_response_contents,
     check_subscription_contents,
     do_check_reading_type_mrids_match_pen,
@@ -74,10 +75,9 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "der-status-contents": "check_der_status_contents",
     "readings-site-active-power": "check_readings_site_active_power",
     "readings-site-reactive-power": "check_readings_site_reactive_power",
-    "readings-site-voltage": "check_readings_site_voltage",
+    "readings-voltage": "check_readings_voltage",
     "readings-der-active-power": "check_readings_der_active_power",
     "readings-der-reactive-power": "check_readings_der_reactive_power",
-    "readings-der-voltage": "check_readings_der_voltage",
     "all-notifications-transmitted": "check_all_notifications_transmitted",
     "subscription-contents": "check_subscription_contents",
     "response-contents": "check_response_contents",
@@ -1635,7 +1635,7 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     reading_checks = [
         Check(type=check_type, parameters={})
         for check_type, _ in CHECK_TYPE_TO_HANDLER.items()
-        if "reading" in check_type.lower()
+        if "reading" in check_type.lower() and check_type != "readings-voltage"  # voltage readings are a special case
     ]
     assert len(reading_checks) > 2, "Expected at least a few 'reading' style checks."
 
@@ -1656,6 +1656,53 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     ), "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
 
     assert_mock_session(mock_session)
+
+
+@pytest.mark.parametrize(
+    "site_passed, device_passed, expected_result",
+    [(False, False, False), (True, False, True), (False, True, True), (True, True, True)],
+)
+@mock.patch("cactus_runner.app.check.do_check_site_readings_and_params")
+@pytest.mark.anyio
+async def test_check_readings_voltage(
+    mock_do_check_site_readings_and_params: mock.MagicMock,
+    site_passed: bool,
+    device_passed: bool,
+    expected_result: bool,
+):
+    """The check for voltage readings is unique as it acts as an "OR" for the device and site level tests. This test
+    enumerates the various possibilities for do_check_site_readings_and_params and what the expected check result
+    should be under those circumstances"""
+
+    # Arrange
+    mock_session = create_mock_session()
+    resolved_params = {}
+    pen = 123
+    site_check_result = generate_class_instance(CheckResult, seed=101, passed=site_passed)
+    device_check_result = generate_class_instance(CheckResult, seed=202, passed=device_passed)
+    mock_do_check_site_readings_and_params.side_effect = lambda session, params, pen, uom, location, dq: (
+        site_check_result if location == ReadingLocation.SITE_READING else device_check_result
+    )
+
+    # Act
+    result = await check_readings_voltage(mock_session, resolved_params, pen)
+
+    # Assert
+    assert_mock_session(mock_session)
+    assert isinstance(result, CheckResult)
+    assert result.passed is expected_result
+    assert site_check_result.description in result.description or device_check_result.description in result.description
+
+    # Cursory look at passed params
+    assert mock_do_check_site_readings_and_params.call_count >= 1
+    assert all([ca.args[0] is mock_session for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[1] is resolved_params for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[2] is pen for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[3] is UomType.VOLTAGE for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[4] in ReadingLocation for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all(
+        [ca.args[5] is DataQualifierType.AVERAGE for ca in mock_do_check_site_readings_and_params.call_args_list]
+    )
 
 
 @pytest.mark.anyio
