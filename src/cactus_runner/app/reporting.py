@@ -520,7 +520,6 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
 def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Test Progress", stylesheet.heading))
-    elements[-1].keepWithNext = True
     if runner_state.request_history:
         elements.append(generate_test_progress_chart(runner_state=runner_state))
     else:
@@ -630,7 +629,6 @@ def generate_communications_section(
 
     elements: list[Flowable] = []
     elements.append(Paragraph("Communications", stylesheet.heading))
-    elements[-1].keepWithNext = True
     if have_requests:
         timestamps, description = get_request_timestamps(
             runner_state=runner_state, time_relative_to_test_start=time_relative_to_test_start
@@ -918,7 +916,6 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
 def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Devices", stylesheet.heading))
-    elements[-1].keepWithNext = True
     if sites:
         for site in sites:
             elements.extend(generate_site_section(site=site, stylesheet=stylesheet))
@@ -965,7 +962,6 @@ def generate_controls_table(controls: list[DynamicOperatingEnvelope], stylesheet
 def generate_controls_section(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Controls", stylesheet.heading))
-    elements[-1].keepWithNext = True
     if controls:
         elements.append(generate_controls_chart(controls=controls))
         elements.append(stylesheet.spacer)
@@ -1053,7 +1049,6 @@ def generate_readings_section(
 
     elements: list[Flowable] = []
     elements.append(Paragraph("Readings", stylesheet.heading))
-    elements[-1].keepWithNext = True
 
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
@@ -1064,7 +1059,6 @@ def generate_readings_section(
         if readings:
             for reading_type, readings_df in readings.items():
                 elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
-                elements[-1].keepWithNext = True
                 elements.append(
                     generate_readings_timeline(
                         readings_df=readings_df, quantity=reading_quantity(reading_type), runner_state=runner_state
