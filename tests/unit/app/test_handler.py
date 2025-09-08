@@ -152,10 +152,12 @@ async def test_status_handler_handles_no_active_test_procedure(example_client_in
     get_runner_status_spy.assert_called_once()
 
 
+@pytest.mark.parametrize("bad_headers", [{}, {"ssl-client-cert": ""}])
 @pytest.mark.asyncio
-async def test_proxied_request_handler_performs_authorization(mocker):
+async def test_proxied_request_handler_performs_authorization(mocker, bad_headers: dict):
     # Arrange
     request = MagicMock()
+    request.headers = bad_headers
     request.app[APPKEY_RUNNER_STATE].active_test_procedure.is_finished.return_value = False
     handler.DEV_SKIP_AUTHORIZATION_CHECK = False
 
