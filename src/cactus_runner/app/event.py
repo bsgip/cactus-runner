@@ -60,6 +60,39 @@ class EventTrigger:
     client_request: ClientRequestDetails | None  # Only specified if type == CLIENT_REQUEST
 
 
+def does_endpoint_match(request: ClientRequestDetails, match: str) -> bool:
+    """Performs all logic for matching an "endpoint" to an incoming request's path.
+
+    '*' can be a "wildcard" character for matching a single component of the path (a path component is part of the path
+    seperated by '/'). It will NOT partially match
+
+    eg:
+    match=/edev/*/derp/1  would match /some/prefix/edev/123/derp/1
+    match=/edev/1*3/derp/1  would NOT match /some/prefix/edev/123/derp/1
+
+
+    Will be tolerant to path prefixes on the incoming request."""
+
+    # If we don't have a wildcard - we can do a really simply method for matching
+    WILDCARD = "*"
+    if WILDCARD not in match:
+        return request.path.endswith(match)
+
+    # Otherwise we need to do a component by component comparison
+    # Noting that there may be a variable prefix that the runner doesn't know about
+    # To handle this - we start the comparison matching in reverse
+    request_components = list(filter(None, request.path.split("/")))  # Remove empty strings
+    match_components = list(filter(None, match.split("/")))  # Remove empty strings
+    compared_component_count = 0
+    for request_component, match_component in zip(reversed(request_components), reversed(match_components)):
+        if match_component != WILDCARD and request_component != match_component:
+            return False
+
+        compared_component_count += 1
+
+    return compared_component_count == len(match_components)
+
+
 async def is_listener_triggerable(
     listener: Listener,
     trigger: EventTrigger,
@@ -89,9 +122,7 @@ async def is_listener_triggerable(
         endpoint = resolved_params.get("endpoint", "")
         serve_request_first = resolved_params.get("serve_request_first", False)
 
-        # We want to support requests with a HREF_PREFIX to match. Eg incoming request is /envoy-svc-1221421/edev/1 but
-        # we want it to match to /edev/1
-        if not trigger.client_request.path.endswith(endpoint):
+        if not does_endpoint_match(trigger.client_request, endpoint):
             return False
 
         # Make sure that we are listening to the correct before/after serving event
