@@ -7,20 +7,17 @@ from typing import Any, Callable, Sequence, cast
 from envoy.server.model.archive import ArchiveBase
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
-    ArchiveSiteControlGroup,
 )
 from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
-from envoy.server.model.site import DefaultSiteControl, Site, SiteDER
+from envoy.server.model.doe import DynamicOperatingEnvelope
+from envoy.server.model.site import DefaultSiteControl
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
-    RoleFlagsType,
     UomType,
 )
 from intervaltree import Interval, IntervalTree  # type: ignore
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import (
@@ -30,17 +27,6 @@ from cactus_runner.app.envoy_common import (
     get_site_defaults_with_archive,
     get_site_readings,
 )
-
-
-@dataclass
-class ActivePowerEntry:
-    watts: int
-
-
-@dataclass
-class TimelineEntry:
-    offset_seconds: int  # The number of seconds offset from the parent Timeline's start that this entry represents
-    watts: int  # The active power observation in watts. Positive sign means import, Negative sign means export
 
 
 @dataclass
@@ -64,11 +50,11 @@ class Timeline:
     data_streams: list[TimelineDataStream]
 
 
-def decimal_to_watts(value: Decimal | None) -> int | None:
+def decimal_to_watts(value: Decimal | None, negate: bool) -> int | None:
     if value is None:
         return None
 
-    return int(value)
+    return (-1 * int(value)) if negate else int(value)
 
 
 def pow10_to_watts(value: int, pow_10: int) -> int:
@@ -218,10 +204,10 @@ async def generate_control_data_streams(
             end,
             interval_seconds,
             [
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).import_limit_active_watts),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).export_limit_watts),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).load_limit_active_watts),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).generation_limit_active_watts),
+                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).import_limit_active_watts, False),
+                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).export_limit_watts, True),
+                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).load_limit_active_watts, False),
+                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).generation_limit_active_watts, True),
             ],
         )
 
@@ -288,10 +274,10 @@ async def generate_default_control_data_streams(
         end,
         interval_seconds,
         [
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).import_limit_active_watts),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).export_limit_active_watts),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).load_limit_active_watts),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).generation_limit_active_watts),
+            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).import_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).export_limit_active_watts, True),
+            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).load_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).generation_limit_active_watts, True),
         ],
     )
 
@@ -334,7 +320,7 @@ async def generate_timeline(
 
     site_readings = await generate_readings_data_stream(
         session,
-        label="Site Readings",
+        label="Site Power",
         location=ReadingLocation.SITE_READING,
         start=start,
         end=end,
@@ -342,7 +328,7 @@ async def generate_timeline(
     )
     device_readings = await generate_readings_data_stream(
         session,
-        label="Site Readings",
+        label="Device Power",
         location=ReadingLocation.DEVICE_READING,
         start=start,
         end=end,

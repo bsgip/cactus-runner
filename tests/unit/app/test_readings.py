@@ -31,7 +31,7 @@ from cactus_runner.app.readings import (
 
 
 @pytest.mark.asyncio
-async def test_get_readings(mocker, pg_base_config):
+async def test_get_readings(pg_base_config):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
@@ -104,10 +104,6 @@ async def test_get_readings(mocker, pg_base_config):
 
         await session.commit()
 
-    session = generate_async_session(pg_base_config)
-    mock_begin_session = mocker.patch("cactus_runner.app.handler.begin_session")
-    mock_begin_session.__aenter__.return_value = session
-
     reading_specifiers = [
         ReadingSpecifier(
             uom=UomType.REAL_POWER_WATT,
@@ -137,7 +133,8 @@ async def test_get_readings(mocker, pg_base_config):
 
     # Act
     # async with generate_async_session(pg_base_config) as session:
-    readings_map = await get_readings(reading_specifiers=reading_specifiers)
+    async with generate_async_session(pg_base_config) as session:
+        readings_map = await get_readings(session, reading_specifiers=reading_specifiers)
 
     # Assert
     assert_dict_type(

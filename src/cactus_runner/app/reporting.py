@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from http import HTTPStatus
+from typing import Sequence
 
 import pandas as pd
 import PIL.Image as PilImage
@@ -50,6 +51,7 @@ from reportlab.platypus import (
 from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
+from cactus_runner.app.timeline import Timeline
 from cactus_runner.models import (
     ClientCertificateType,
     ClientInteraction,
@@ -913,7 +915,7 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
     return elements
 
 
-def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
+def generate_devices_section(sites: Sequence[Site], stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Devices", stylesheet.heading))
     if sites:
@@ -936,38 +938,134 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def generate_controls_table(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
-    elements: list[Flowable] = []
+def duration_to_label(duration_seconds: int) -> str:
+    """Simple method for turning a duration to a simple text label"""
+    if duration_seconds == 0:
+        return "start"
 
-    table_data = [
-        [
-            f"{i}",
-            control.start_time,
-            control.duration_seconds,
-            "-" if control.import_limit_active_watts is None else control.import_limit_active_watts,
-            "-" if control.export_limit_watts is None else control.export_limit_watts,
-            "-" if control.load_limit_active_watts is None else control.load_limit_active_watts,
-        ]
-        for i, control in enumerate(controls, start=1)
+    abs_duration = abs(duration_seconds)
+    if abs_duration < 60:
+        return f"{duration_seconds}s"
+
+    sign = "-" if duration_seconds < 0 else ""
+    return f"{sign}{abs_duration // 60}m{abs_duration % 60}s"
+
+
+def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
+    fig = go.Figure()
+    for ds in timeline.data_streams:
+        x_data = [duration_to_label(timeline.interval_seconds * i) for i in range(len(ds.offset_watt_values))]
+        y_data = ds.offset_watt_values
+        line_shape = "hv" if ds.stepped else "linear"
+        line = {"dash": "dash"} if ds.dashed else {}
+        fig.add_trace(go.Scatter(x=x_data, y=y_data, name=ds.label, line_shape=line_shape, line=line))
+
+    # Figure out if we have a setMaxW to utilise
+    set_max_w: int | None = None
+    for site in sites:
+        try:
+            der_setting = site.site_ders[0].site_der_setting
+            if der_setting:
+                set_max_w = int(der_setting.max_w_value * pow(10, der_setting.max_w_multiplier))
+                break
+        except Exception as exc:
+            logger.error(f"Failing looking up setMaxW for site {site.site_id}", exc_info=exc)
+
+    shapes = [
+        # This adds emphasis to the zero line
+        dict(
+            type="line",
+            xref="paper",
+            x0=0,
+            x1=1,
+            yref="y",
+            y0=0,
+            y1=0,
+            line=dict(color="black", width=2, dash="dash"),
+            opacity=0.5,
+        )
     ]
-    table_data.insert(0, ["", "Start (UTC)", "Duration (s)", "Import Limit (W)", "Export Limit (W)", "Load Limit (W)"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.06, 0.35, 0.11, 0.16, 0.16, 0.16]]
-    table = Table(table_data, colWidths=column_widths)
-    table.setStyle(stylesheet.table)
-    elements.append(table)
-    elements.append(stylesheet.spacer)
-    return elements
+    annotations = []
+
+    if set_max_w is not None:
+        shapes.extend(
+            [
+                dict(
+                    type="line",
+                    xref="paper",
+                    x0=0,
+                    x1=1,
+                    yref="y",
+                    y0=set_max_w,
+                    y1=set_max_w,
+                    line=dict(color="red", width=2, dash="dash"),
+                ),
+                dict(
+                    type="line",
+                    xref="paper",
+                    x0=0,
+                    x1=1,
+                    yref="y",
+                    y0=-set_max_w,
+                    y1=-set_max_w,
+                    line=dict(color="red", width=2, dash="dash"),
+                ),
+            ]
+        )
+        annotations.extend(
+            [
+                dict(
+                    xref="paper",
+                    x=0.5,  # Middle of the page
+                    y=set_max_w,
+                    xanchor="center",
+                    yanchor="middle",
+                    text="setMaxW",
+                    showarrow=False,
+                    font=dict(color="red", size=12),
+                    bgcolor="white",
+                    bordercolor="red",
+                ),
+                dict(
+                    xref="paper",
+                    x=0.5,  # Middle of the page
+                    y=-set_max_w,
+                    xanchor="center",
+                    yanchor="middle",
+                    text="setMaxW",
+                    showarrow=False,
+                    font=dict(color="red", size=12),
+                    bgcolor="white",
+                    bordercolor="red",
+                ),
+            ]
+        )
+
+    fig.update_xaxes(title="Time")
+    fig.update_yaxes(title="Watts", zeroline=True)
+    fig.update_layout(
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        shapes=shapes,
+        annotations=annotations,
+    )
+
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def generate_controls_section(controls: list[DynamicOperatingEnvelope], stylesheet: StyleSheet) -> list[Flowable]:
+def generate_timeline_section(
+    timeline: Timeline | None, sites: Sequence[Site], stylesheet: StyleSheet
+) -> list[Flowable]:
     elements: list[Flowable] = []
-    elements.append(Paragraph("Controls", stylesheet.heading))
-    if controls:
-        elements.append(generate_controls_chart(controls=controls))
-        elements.append(stylesheet.spacer)
-        elements.extend(generate_controls_table(controls=controls, stylesheet=stylesheet))
+    elements.append(Paragraph("Timeline", stylesheet.heading))
+    if timeline is not None:
+        elements.append(
+            Paragraph(
+                f"This chart is based from when the test was started: {timeline.start.strftime(stylesheet.date_format)}"
+            )
+        )
+        elements.append(generate_timeline_chart(timeline=timeline, sites=sites))
     else:
-        elements.append(Paragraph("No controls active during this test procedure."))
+        elements.append(Paragraph("Timeline chart is unavailable due to a lack of data."))
     elements.append(stylesheet.spacer)
     return elements
 
@@ -1086,8 +1184,8 @@ def generate_page_elements(
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
-    sites: list[Site],
-    controls: list[DynamicOperatingEnvelope],
+    sites: Sequence[Site],
+    timeline: Timeline | None,
     stylesheet: StyleSheet,
 ) -> list[Flowable]:
     active_test_procedure = runner_state.active_test_procedure
@@ -1147,8 +1245,8 @@ def generate_page_elements(
     # Devices Section
     page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
-    # Controls Section
-    page_elements.extend(generate_controls_section(controls=controls, stylesheet=stylesheet))
+    # Timeline Section
+    page_elements.extend(generate_timeline_section(timeline=timeline, sites=sites, stylesheet=stylesheet))
 
     # Readings Section
     page_elements.extend(
@@ -1165,8 +1263,8 @@ def pdf_report_as_bytes(
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
-    sites: list[Site],
-    controls: list[DynamicOperatingEnvelope],
+    sites: Sequence[Site],
+    timeline: Timeline | None,
 ) -> bytes:
     stylesheet = get_stylesheet()
 
@@ -1183,7 +1281,7 @@ def pdf_report_as_bytes(
         readings=readings,
         reading_counts=reading_counts,
         sites=sites,
-        controls=controls,
+        timeline=timeline,
         stylesheet=stylesheet,
     )
 

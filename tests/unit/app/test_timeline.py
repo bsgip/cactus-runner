@@ -38,11 +38,18 @@ from cactus_runner.app.timeline import (
 BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=timezone.utc)  # Used as an arbitrary - non aligned datetime
 
 
-@pytest.mark.parametrize("value, expected", [(None, None), (Decimal("-123"), -123), (Decimal("2.74"), 2)])
+@pytest.mark.parametrize("value, expected", [(None, None), (Decimal("123"), 123), (Decimal("2.74"), 2)])
 def test_decimal_to_watts(value, expected):
-    result = decimal_to_watts(value)
+    result = decimal_to_watts(value, False)
     assert type(result) is type(expected)
     assert result == expected
+
+    result_negated = decimal_to_watts(value, True)
+    assert type(result_negated) is type(expected)
+    if expected is not None:
+        assert result_negated == -1 * expected
+    else:
+        assert result_negated is None
 
 
 @pytest.mark.parametrize("value, pow10, expected", [(123, 0, 123), (123, -1, 12), (129, -1, 12), (123, 2, 12300)])
@@ -233,7 +240,10 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
         start,
         end,
         interval_length_seconds,
-        [lambda x: decimal_to_watts(x.import_limit_active_watts), lambda x: decimal_to_watts(x.export_limit_watts)],
+        [
+            lambda x: decimal_to_watts(x.import_limit_active_watts, False),
+            lambda x: decimal_to_watts(x.export_limit_watts, False),
+        ],
     )
     assert isinstance(result, list)
     assert len(result) == 2, "Two lambdas were used - should have two resulting lists"
@@ -358,7 +368,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[1, None], [2, None], [3, None], [4, None]],
+            [[1, None], [-2, None], [3, None], [-4, None]],
         ),
         (
             [
@@ -376,7 +386,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[1, None], [2, None], [3, None], [4, None]],
+            [[1, None], [-2, None], [3, None], [-4, None]],
         ),  # Control was active for only the first 5 seconds before being deleted
         (
             [
@@ -387,7 +397,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[11, None], [None, 22], [33, None], [None, 44]],
+            [[11, None], [None, -22], [33, None], [None, -44]],
         ),  # Multiple Controls, some out of range of the interval period - no overlaps - with None values in controls
         (
             [
@@ -408,7 +418,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=20),
-            [[21, 31, 41, 31], [22, 32, 42, 32], [23, 33, 43, 33], [24, 34, 44, 34]],
+            [[21, 31, 41, 31], [-22, -32, -42, -32], [23, 33, 43, 33], [-24, -34, -44, -34]],
         ),  # Multiple Controls with overlaps
         (
             [
@@ -424,17 +434,17 @@ def doe(
             BASIS + timedelta(seconds=10),
             [
                 [21, 11],
-                [22, 12],
+                [-22, -12],
                 [23, 13],
-                [24, 14],  # SCG 1
+                [-24, -14],  # SCG 1
                 [None, 31],
-                [None, 32],
+                [None, -32],
                 [None, 33],
-                [None, 34],  # SCG 2
+                [None, -34],  # SCG 2
                 [41, 41],
-                [42, 42],
+                [-42, -42],
                 [43, 43],
-                [44, 44],  # SCG 3
+                [-44, -44],  # SCG 3
             ],
         ),  # Multiple control groups - mix of overlapping
     ],
@@ -511,7 +521,7 @@ def def_ctrl(
             BASIS - timedelta(seconds=5),
             5,
             BASIS + timedelta(seconds=10),
-            [[None, 1, 1], [None, 2, 2], [None, 3, 3], [None, 4, 4]],
+            [[None, 1, 1], [None, -2, -2], [None, 3, 3], [None, -4, -4]],
         ),
         (
             [
@@ -538,7 +548,7 @@ def def_ctrl(
             BASIS,
             5,
             BASIS + timedelta(seconds=15),
-            [[None, 21, 11], [32, None, 12], [None, 23, 13], [34, None, 14]],
+            [[None, 21, 11], [-32, None, -12], [None, 23, 13], [-34, None, -14]],
         ),
     ],
 )
@@ -582,6 +592,13 @@ async def test_generate_default_control_data_streams(
             [[None, None], [2, None], [None, 3], [None, None]],
             [[None, None], [4, 4]],
             [[None, 1], [2, None], [None, 3], [4, 4]],
+        ),
+        (
+            [1, 2],
+            [3, 4],
+            [[None, None], [2, None], [None, 3], [None, None]],
+            [[None, None], [4, 4]],
+            [[1, 2], [3, 4], [2, None], [None, 3], [4, 4]],
         ),
     ],
 )

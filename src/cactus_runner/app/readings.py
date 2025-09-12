@@ -5,14 +5,11 @@ from typing import Sequence
 import pandas as pd
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.database import (
-    begin_session,
-)
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_csip_aus_site_reading_types,
-    get_reading_counts_grouped_by_reading_type,
     get_site_readings,
 )
 
@@ -76,7 +73,9 @@ MANDATORY_READING_SPECIFIERS = [
 ]
 
 
-async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteReadingType, pd.DataFrame]:
+async def get_readings(
+    session: AsyncSession, reading_specifiers: list[ReadingSpecifier]
+) -> dict[SiteReadingType, pd.DataFrame]:
     """Returns a dataframe containing readings matching the 'reading_specifiers'. If no readings are present for the
     reading_specifier - it will NOT be included in the resulting dataframe.
 
@@ -89,21 +88,21 @@ async def get_readings(reading_specifiers: list[ReadingSpecifier]) -> dict[SiteR
         is the readings 'value' scaled by the SiteReadingType's power_of_10_multiplier.
     """
     readings = {}
-    async with begin_session() as session:
-        for reading_specifier in reading_specifiers:
-            # There maybe more than one reading type per reading specifier, for example, for different phases
-            reading_types = await get_csip_aus_site_reading_types(
-                session=session,
-                uom=reading_specifier.uom,
-                location=reading_specifier.location,
-                kind=reading_specifier.kind,
-                qualifier=reading_specifier.qualifier,
-            )
-            for reading_type in reading_types:
-                reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
 
-                if reading_data:
-                    readings[reading_type] = scale_readings(reading_type=reading_type, readings=reading_data)
+    for reading_specifier in reading_specifiers:
+        # There maybe more than one reading type per reading specifier, for example, for different phases
+        reading_types = await get_csip_aus_site_reading_types(
+            session=session,
+            uom=reading_specifier.uom,
+            location=reading_specifier.location,
+            kind=reading_specifier.kind,
+            qualifier=reading_specifier.qualifier,
+        )
+        for reading_type in reading_types:
+            reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+
+            if reading_data:
+                readings[reading_type] = scale_readings(reading_type=reading_type, readings=reading_data)
 
     groups = group_reading_types(list(readings.keys()))
     merged_readings = merge_readings(readings=readings, groups=groups)
@@ -226,19 +225,3 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
     df["scaled_value"] = df["value"] * scale_factor  # type: ignore
 
     return df
-
-
-async def get_reading_counts() -> dict[SiteReadingType, int]:
-    """Determines the number of readings per reading type.
-
-    No grouping of equivalent SiteReadingTypes is performed (i.e. SiteReadingTypes that only differ
-    by their power of 10 multiplier are treated separately).
-
-    Returns:
-        A mapping containing all the SiteReadingTypes register in a utility server, along with the
-        number of readings of that type.
-    """
-    reading_counts = {}
-    async with begin_session() as session:
-        reading_counts = await get_reading_counts_grouped_by_reading_type(session=session)
-    return reading_counts

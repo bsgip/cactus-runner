@@ -148,7 +148,7 @@ async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> d
     return count_by_site_reading_type
 
 
-async def get_sites(session: AsyncSession) -> Sequence[Site] | None:
+async def get_sites(session: AsyncSession) -> Sequence[Site]:
     statement = (
         select(Site)
         .order_by(Site.site_id.asc())

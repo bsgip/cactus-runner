@@ -11,20 +11,21 @@ from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import check, reporting
-from cactus_runner.app.controls import get_controls
+from cactus_runner.app import check, reporting, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     begin_session,
     get_postgres_dsn,
 )
+from cactus_runner.app.envoy_common import (
+    get_reading_counts_grouped_by_reading_type,
+    get_sites,
+)
 from cactus_runner.app.log import LOG_FILE_CACTUS_RUNNER, LOG_FILE_ENVOY
 from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
-    get_reading_counts,
     get_readings,
 )
-from cactus_runner.app.sites import get_sites
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -159,6 +160,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     Populates and then returns the finished_zip_data for the active test procedure"""
 
+    now = datetime.now(timezone.utc)
     errors: list[str] = []  # For capturing basic error information to encode in the zip to alert about missing content
 
     active_test_procedure = runner_state.active_test_procedure
@@ -187,13 +189,13 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         errors.append(f"Failure generating active runner status: {exc}")
         json_status_summary = None
 
-    # Determine all criteria check results
     check_results = {}
+
+    # Determine all criteria check results
     if active_test_procedure.definition.criteria:
-        async with begin_session() as session:
-            check_results = await check.determine_check_results(
-                active_test_procedure.definition.criteria.checks, active_test_procedure, session
-            )
+        check_results = await check.determine_check_results(
+            active_test_procedure.definition.criteria.checks, active_test_procedure, session
+        )
 
     # Add a "virtual" check covering XSD errors in incoming requests
     xsd_error_counts = [len(rh.body_xml_errors) for rh in runner_state.request_history if rh.body_xml_errors]
@@ -205,13 +207,26 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         xsd_check = check.CheckResult(True, "No XSD errors detected in any requests.")
     check_results["all-requests-xsd-valid"] = xsd_check
 
-    try:
-        # Fetch PDF input data
-        readings = await get_readings(reading_specifiers=MANDATORY_READING_SPECIFIERS)
-        reading_counts = await get_reading_counts()
-        sites = await get_sites()
-        controls = await get_controls()
+    # Figure out the testing timeline
+    test_timeline: timeline.Timeline | None = None
+    if active_test_procedure.started_at is not None:
+        try:
+            timeline_interval_seconds = 20
+            test_timeline = await timeline.generate_timeline(
+                session, start=active_test_procedure.started_at, interval_seconds=timeline_interval_seconds, end=now
+            )
+            if not test_timeline.data_streams:
+                test_timeline = None
+        except Exception as exc:
+            logger.error("Error generating test timeline data.", exc_info=exc)
+            test_timeline = None
 
+    # Fetch raw DB data
+    sites = await get_sites(session)
+    readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
+    reading_counts = await get_reading_counts_grouped_by_reading_type(session)
+
+    try:
         # Generate the pdf (as bytes)
         pdf_data = reporting.pdf_report_as_bytes(
             runner_state=runner_state,
@@ -219,14 +234,14 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             readings=readings,
             reading_counts=reading_counts,
             sites=sites,
-            controls=controls,
+            timeline=test_timeline,
         )
     except Exception as exc:
         logger.error("Error generating PDF report. Omitting report from final zip.", exc_info=exc)
         errors.append(f"Error generating PDF report: {exc}")
         pdf_data = None
 
-    generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
+    generation_timestamp = now.replace(microsecond=0)
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
