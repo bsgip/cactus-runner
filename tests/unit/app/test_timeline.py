@@ -25,6 +25,7 @@ from cactus_runner.app.timeline import (
     Timeline,
     TimelineDataStream,
     decimal_to_watts,
+    duration_to_label,
     generate_control_data_streams,
     generate_default_control_data_streams,
     generate_offset_watt_values,
@@ -36,6 +37,16 @@ from cactus_runner.app.timeline import (
 )
 
 BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=timezone.utc)  # Used as an arbitrary - non aligned datetime
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [(0, "start"), (43, "43s"), (-20, "-20s"), (123, "2m3s"), (-123, "-2m3s"), (-180, "-3m"), (240, "4m")],
+)
+def test_duration_to_label(value, expected):
+    result = duration_to_label(value)
+    assert isinstance(result, str)
+    assert result == expected
 
 
 @pytest.mark.parametrize("value, expected", [(None, None), (Decimal("123"), 123), (Decimal("2.74"), 2)])

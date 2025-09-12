@@ -179,6 +179,20 @@ class PreconditionCheckEntry(JSONWizard):
 
 
 @dataclass
+class DataStreamPoint(JSONWizard):
+    watts: int | None  # The data point value (in watts)
+    offset: str  # Label for identifying the relative start - usually something like "2m20s"
+
+
+@dataclass
+class TimelineDataStreamEntry(JSONWizard):
+    label: str  # Descriptive label of this data stream
+    data: list[DataStreamPoint]
+    stepped: bool  # If True - this data should be presented as a stepped line chart
+    dashed: bool  # If True - this data should be a dashed line
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise
@@ -193,3 +207,5 @@ class RunnerStatus(JSONWizard):
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)
+    set_max_w: int | None = None  # Snapshot of the current MaxW DERSetting value of the active end device (if any)
+    timeline_data_streams: list[TimelineDataStreamEntry] | None = None  # Streaming timeline data snapshot

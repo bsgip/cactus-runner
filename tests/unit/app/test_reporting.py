@@ -23,13 +23,6 @@ from cactus_runner.models import (
 )
 
 
-@pytest.mark.parametrize("value, expected", [(0, "start"), (43, "43s"), (-20, "-20s"), (123, "2m3s"), (-123, "-2m3s")])
-def test_duration_to_label(value, expected):
-    result = duration_to_label(value)
-    assert isinstance(result, str)
-    assert result == expected
-
-
 def test_pdf_report_as_bytes():
     # Arrange
     definitions = TestProcedureConfig.from_resource()

@@ -50,6 +50,24 @@ class Timeline:
     data_streams: list[TimelineDataStream]
 
 
+def duration_to_label(duration_seconds: int) -> str:
+    """Simple method for turning a duration to a simple text label. eg 123 becomes '2m3s'"""
+    if duration_seconds == 0:
+        return "start"
+
+    abs_duration = abs(duration_seconds)
+    if abs_duration < 60:
+        return f"{duration_seconds}s"
+
+    mins = abs_duration // 60
+    seconds = abs_duration % 60
+    sign = "-" if duration_seconds < 0 else ""
+    if seconds == 0:
+        return f"{sign}{mins}m"
+    else:
+        return f"{sign}{mins}m{seconds}s"
+
+
 def decimal_to_watts(value: Decimal | None, negate: bool) -> int | None:
     if value is None:
         return None

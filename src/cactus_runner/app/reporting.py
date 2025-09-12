@@ -51,7 +51,7 @@ from reportlab.platypus import (
 from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
-from cactus_runner.app.timeline import Timeline
+from cactus_runner.app.timeline import Timeline, duration_to_label
 from cactus_runner.models import (
     ClientCertificateType,
     ClientInteraction,
@@ -936,19 +936,6 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
     fig = px.timeline(df, x_start="Start", x_end="Finish", y="Control")
     fig.update_yaxes(autorange="reversed")
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
-
-
-def duration_to_label(duration_seconds: int) -> str:
-    """Simple method for turning a duration to a simple text label"""
-    if duration_seconds == 0:
-        return "start"
-
-    abs_duration = abs(duration_seconds)
-    if abs_duration < 60:
-        return f"{duration_seconds}s"
-
-    sign = "-" if duration_seconds < 0 else ""
-    return f"{sign}{abs_duration // 60}m{abs_duration % 60}s"
 
 
 def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
