@@ -25,9 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
-    get_csip_aus_site_controls,
-    get_csip_aus_site_defaults,
     get_csip_aus_site_reading_types,
+    get_site_controls_active_deleted,
+    get_site_defaults_with_archive,
     get_site_readings,
 )
 
@@ -166,7 +166,10 @@ async def generate_readings_data_stream(
         # complexity and we should only be dealing with < 60 records)
         readings = await get_site_readings(session, srt)
         tree.update(
-            (Interval(r.time_period_start, r.time_period_start + timedelta(r.time_period_seconds), r) for r in readings)
+            (
+                Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
+                for r in readings
+            )
         )
 
     # Generate all the reading data
@@ -181,7 +184,7 @@ async def generate_control_data_streams(
     session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
 
-    all_controls = await get_csip_aus_site_controls(session)
+    all_controls = await get_site_controls_active_deleted(session)
     site_control_group_ids: set[int] = set((c.site_control_group_id for c in all_controls))
     all_data_streams: list[TimelineDataStream] = []
 
@@ -193,8 +196,7 @@ async def generate_control_data_streams(
             if control.site_control_group_id != site_control_group_id:
                 continue
 
-            site_control_group_ids.add(control.site_control_group_id)
-            end_time = control.start_time + timedelta(control.duration_seconds)
+            end_time = control.start_time + timedelta(seconds=control.duration_seconds)
             if isinstance(control, ArchiveDynamicOperatingEnvelope):
                 # If this is a deleted control we use a slightly different interval - we only report on start time until
                 # the deletion time
@@ -259,7 +261,7 @@ async def generate_control_data_streams(
 async def generate_default_control_data_streams(
     session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
-    all_defaults = await get_csip_aus_site_defaults(session)
+    all_defaults = await get_site_defaults_with_archive(session)
 
     intervals: list[Interval] = []
     for default_control in all_defaults:
@@ -271,7 +273,7 @@ async def generate_default_control_data_streams(
         else:
             # An active record is active from when it was last updated to infinity
             start_time = default_control.changed_time
-            end_time = datetime.max
+            end_time = datetime(9999, 1, 1, tzinfo=start.tzinfo)  # Suitably long time in the future that won't overflow
 
         intervals.append(Interval(start_time, end_time, default_control))
 

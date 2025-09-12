@@ -163,7 +163,7 @@ async def get_sites(session: AsyncSession) -> Sequence[Site] | None:
     return response.scalars().all()
 
 
-async def get_csip_aus_site_controls(
+async def get_site_controls_active_deleted(
     session: AsyncSession,
 ) -> list[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope]:
     """Includes both active and deleted/cancelled SiteControls. Updates are NOT included."""
@@ -197,7 +197,7 @@ async def get_csip_aus_site_controls(
     return list(chain(active_controls, deleted_controls))
 
 
-async def get_csip_aus_site_defaults(session: AsyncSession) -> list[DefaultSiteControl | ArchiveDefaultSiteControl]:
+async def get_site_defaults_with_archive(session: AsyncSession) -> list[DefaultSiteControl | ArchiveDefaultSiteControl]:
     """Fetches all DefaultSiteControl's for the active site, both current and historic (including update values)"""
     site = await get_active_site(session)
     if not site:

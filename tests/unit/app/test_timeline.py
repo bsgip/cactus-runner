@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
+from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
@@ -21,14 +22,20 @@ from intervaltree import Interval, IntervalTree
 
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.timeline import (
+    Timeline,
     TimelineDataStream,
     decimal_to_watts,
+    generate_control_data_streams,
+    generate_default_control_data_streams,
     generate_offset_watt_values,
     generate_readings_data_stream,
+    generate_timeline,
     highest_priority_entity,
     pow10_to_watts,
     reading_to_watts,
 )
+
+BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=timezone.utc)  # Used as an arbitrary - non aligned datetime
 
 
 @pytest.mark.parametrize("value, expected", [(None, None), (Decimal("-123"), -123), (Decimal("2.74"), 2)])
@@ -138,9 +145,6 @@ def test_highest_priority_entity(entities, expected_index):
         assert result is entities[expected_index]
         result = highest_priority_entity(reversed(intervals))
         assert result is entities[expected_index]
-
-
-BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=timezone.utc)
 
 
 @pytest.mark.parametrize(
@@ -257,10 +261,11 @@ async def test_generate_readings_data_stream(
     mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
 ):
     # Arrange
+    interval_seconds = 5
     mock_session = create_mock_session()
     srt1 = generate_class_instance(SiteReadingType, seed=101, power_of_ten_multiplier=-1, site_reading_type_id=1)
     srt2 = generate_class_instance(SiteReadingType, seed=202, power_of_ten_multiplier=1, site_reading_type_id=2)
-    mock_get_site_readings.return_value = [srt1, srt2]
+    mock_get_csip_aus_site_reading_types.return_value = [srt1, srt2]
     srt1_readings = [
         generate_class_instance(
             SiteReading,
@@ -287,13 +292,13 @@ async def test_generate_readings_data_stream(
             value=333,
             time_period_start=BASIS,
             time_period_seconds=5,
-        ),
+        ),  # This will be highest priority due to having the highest changed_time
     ]
     mock_get_site_readings.side_effect = lambda _, srt: srt1_readings if srt is srt1 else srt2_readings
 
     # Act
     result = await generate_readings_data_stream(
-        mock_session, "bar", ReadingLocation.DEVICE_READING, BASIS, BASIS + timedelta(seconds=10), 5
+        mock_session, "bar", ReadingLocation.DEVICE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
     )
 
     # Assert
@@ -301,10 +306,332 @@ async def test_generate_readings_data_stream(
     assert result.label == "bar"
     assert isinstance(result.offset_watt_values, list)
     assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
-    assert result.offset_watt_values == [22, 3330]
+    assert result.offset_watt_values == [3330, 22], "Values adjusted for pow10 in SiteReadingType"
 
     assert_mock_session(mock_session)
-    mock_get_site_readings.assert_called_once()
+    mock_get_csip_aus_site_reading_types.assert_called_once()
     mock_get_site_readings.assert_has_calls(
         [mock.call(mock_session, srt1), mock.call(mock_session, srt2)], any_order=True
     )
+
+
+def doe(
+    seed: int,
+    start: datetime,
+    duration: int,
+    deleted_time: datetime | None = None,
+    scg: int = 1,  # Site Control Group
+    imp_watts: int | None = None,
+    exp_watts: int | None = None,
+    load_watts: int | None = None,
+    gen_watts: int | None = None,
+) -> DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope:
+    """Utility function for reducing boilerplate"""
+    if deleted_time is None:
+        t = DynamicOperatingEnvelope
+        extra_kwargs = {}
+    else:
+        t = ArchiveDynamicOperatingEnvelope
+        extra_kwargs = {"deleted_time": deleted_time}
+
+    return generate_class_instance(
+        t,
+        seed=seed,
+        site_control_group_id=scg,
+        import_limit_active_watts=Decimal(imp_watts) if imp_watts is not None else None,
+        export_limit_watts=Decimal(exp_watts) if exp_watts is not None else None,
+        load_limit_active_watts=Decimal(load_watts) if load_watts is not None else None,
+        generation_limit_active_watts=Decimal(gen_watts) if gen_watts is not None else None,
+        start_time=start,
+        end_time=start + timedelta(seconds=duration),
+        duration_seconds=duration,
+        **extra_kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "controls, start, interval, end, expected",
+    [
+        ([], BASIS, 5, BASIS + timedelta(seconds=10), []),
+        (
+            [doe(101, BASIS, 5, imp_watts=1, exp_watts=2, load_watts=3, gen_watts=4)],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=10),
+            [[1, None], [2, None], [3, None], [4, None]],
+        ),
+        (
+            [
+                doe(
+                    101,
+                    BASIS,
+                    10,
+                    deleted_time=BASIS + timedelta(seconds=5),
+                    imp_watts=1,
+                    exp_watts=2,
+                    load_watts=3,
+                    gen_watts=4,
+                )
+            ],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=10),
+            [[1, None], [2, None], [3, None], [4, None]],
+        ),  # Control was active for only the first 5 seconds before being deleted
+        (
+            [
+                doe(101, BASIS, 5, imp_watts=11, exp_watts=None, load_watts=33, gen_watts=None),
+                doe(202, BASIS + timedelta(seconds=5), 5, imp_watts=None, exp_watts=22, load_watts=None, gen_watts=44),
+                doe(303, BASIS + timedelta(seconds=10), 5, imp_watts=99, exp_watts=99, load_watts=99, gen_watts=99),
+            ],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=10),
+            [[11, None], [None, 22], [33, None], [None, 44]],
+        ),  # Multiple Controls, some out of range of the interval period - no overlaps - with None values in controls
+        (
+            [
+                doe(101, BASIS, 5, imp_watts=11, exp_watts=12, load_watts=13, gen_watts=14),
+                doe(202, BASIS, 5, imp_watts=21, exp_watts=22, load_watts=23, gen_watts=24),
+                doe(
+                    303,
+                    BASIS,
+                    120,
+                    deleted_time=BASIS + timedelta(seconds=60),
+                    imp_watts=31,
+                    exp_watts=32,
+                    load_watts=33,
+                    gen_watts=34,
+                ),
+                doe(404, BASIS + timedelta(seconds=10), 5, imp_watts=41, exp_watts=42, load_watts=43, gen_watts=44),
+            ],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=20),
+            [[21, 31, 41, 31], [22, 32, 42, 32], [23, 33, 43, 33], [24, 34, 44, 34]],
+        ),  # Multiple Controls with overlaps
+        (
+            [
+                doe(101, BASIS, 60, scg=1, imp_watts=11, exp_watts=12, load_watts=13, gen_watts=14),
+                doe(202, BASIS, 5, scg=1, imp_watts=21, exp_watts=22, load_watts=23, gen_watts=24),
+                doe(
+                    303, BASIS + timedelta(seconds=5), 5, scg=2, imp_watts=31, exp_watts=32, load_watts=33, gen_watts=34
+                ),
+                doe(404, BASIS, 60, scg=3, imp_watts=41, exp_watts=42, load_watts=43, gen_watts=44),
+            ],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=10),
+            [
+                [21, 11],
+                [22, 12],
+                [23, 13],
+                [24, 14],  # SCG 1
+                [None, 31],
+                [None, 32],
+                [None, 33],
+                [None, 34],  # SCG 2
+                [41, 41],
+                [42, 42],
+                [43, 43],
+                [44, 44],  # SCG 3
+            ],
+        ),  # Multiple control groups - mix of overlapping
+    ],
+)
+@mock.patch("cactus_runner.app.timeline.get_site_controls_active_deleted")
+@pytest.mark.asyncio
+async def test_generate_control_data_streams(
+    mock_get_site_controls_active_deleted: mock.MagicMock, controls, start, interval, end, expected
+):
+    """Checks that generate_control_data_streams breaks down DOE data into seperate "DERProgram" streams.
+
+    expected has the form:
+    [
+        # These 4 lists will be repeated for EACH distinct SiteControlGroup
+        [opModImpLimW vals]
+        [opModExpLimW vals]
+        [opModLoadLimW vals]
+        [opModGenLimW vals]
+    ]
+    """
+    # Arrange
+    mock_session = create_mock_session()
+
+    mock_get_site_controls_active_deleted.return_value = controls
+
+    # Act
+    result = await generate_control_data_streams(mock_session, start, end, interval)
+
+    # Assert
+    assert_list_type(TimelineDataStream, result, len(expected))
+    assert len(set((ds.label for ds in result))) == len(result), "Expecting unique labels"
+    actual = [ds.offset_watt_values for ds in result]
+    assert expected == actual
+
+    assert_mock_session(mock_session)
+    mock_get_site_controls_active_deleted.assert_called_once_with(mock_session)
+
+
+def def_ctrl(
+    seed: int,
+    changed_time: datetime,
+    archive_time: datetime | None = None,
+    imp_watts: int | None = None,
+    exp_watts: int | None = None,
+    load_watts: int | None = None,
+    gen_watts: int | None = None,
+) -> DefaultSiteControl | ArchiveDefaultSiteControl:
+    """Utility function for reducing boilerplate"""
+    if archive_time is None:
+        t = DefaultSiteControl
+        extra_kwargs = {}
+    else:
+        t = ArchiveDefaultSiteControl
+        extra_kwargs = {"archive_time": archive_time, "deleted_time": None}
+
+    return generate_class_instance(
+        t,
+        seed=seed,
+        import_limit_active_watts=Decimal(imp_watts) if imp_watts is not None else None,
+        export_limit_active_watts=Decimal(exp_watts) if exp_watts is not None else None,
+        load_limit_active_watts=Decimal(load_watts) if load_watts is not None else None,
+        generation_limit_active_watts=Decimal(gen_watts) if gen_watts is not None else None,
+        changed_time=changed_time,
+        **extra_kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "defaults, start, interval, end, expected",
+    [
+        ([], BASIS, 5, BASIS + timedelta(seconds=10), []),
+        (
+            [def_ctrl(101, BASIS, imp_watts=1, exp_watts=2, load_watts=3, gen_watts=4)],
+            BASIS - timedelta(seconds=5),
+            5,
+            BASIS + timedelta(seconds=10),
+            [[None, 1, 1], [None, 2, 2], [None, 3, 3], [None, 4, 4]],
+        ),
+        (
+            [
+                def_ctrl(101, BASIS + timedelta(seconds=10), imp_watts=11, exp_watts=12, load_watts=13, gen_watts=14),
+                def_ctrl(
+                    202,
+                    BASIS,
+                    archive_time=BASIS + timedelta(seconds=10),
+                    imp_watts=21,
+                    exp_watts=None,
+                    load_watts=23,
+                    gen_watts=None,
+                ),
+                def_ctrl(
+                    303,
+                    BASIS,
+                    archive_time=BASIS + timedelta(seconds=5),
+                    imp_watts=None,
+                    exp_watts=32,
+                    load_watts=None,
+                    gen_watts=34,
+                ),
+            ],
+            BASIS,
+            5,
+            BASIS + timedelta(seconds=15),
+            [[None, 21, 11], [32, None, 12], [None, 23, 13], [34, None, 14]],
+        ),
+    ],
+)
+@mock.patch("cactus_runner.app.timeline.get_site_defaults_with_archive")
+@pytest.mark.asyncio
+async def test_generate_default_control_data_streams(
+    mock_get_site_defaults_with_archive: mock.MagicMock, defaults, start, interval, end, expected
+):
+
+    mock_session = create_mock_session()
+
+    mock_get_site_defaults_with_archive.return_value = defaults
+
+    # Act
+    result = await generate_default_control_data_streams(mock_session, start, end, interval)
+
+    # Assert
+    assert_list_type(TimelineDataStream, result, len(expected))
+    assert len(set((ds.label for ds in result))) == len(expected), "Expecting unique labels"
+    actual = [ds.offset_watt_values for ds in result]
+    assert expected == actual
+
+    assert_mock_session(mock_session)
+    mock_get_site_defaults_with_archive.assert_called_once_with(mock_session)
+
+
+@pytest.mark.parametrize(
+    "site_vals, device_vals, control_vals, default_vals, expected",
+    [
+        ([], [], [], [], []),
+        (
+            [None, None],
+            [None, None],
+            [[None, None], [None, None], [None, None], [None, None]],
+            [[None, None], [None, None]],
+            [],
+        ),
+        (
+            [None, 1],
+            [None, None],
+            [[None, None], [2, None], [None, 3], [None, None]],
+            [[None, None], [4, 4]],
+            [[None, 1], [2, None], [None, 3], [4, 4]],
+        ),
+    ],
+)
+@mock.patch("cactus_runner.app.timeline.generate_readings_data_stream")
+@mock.patch("cactus_runner.app.timeline.generate_control_data_streams")
+@mock.patch("cactus_runner.app.timeline.generate_default_control_data_streams")
+@pytest.mark.asyncio
+async def test_generate_timeline(
+    mock_generate_default_control_data_streams: mock.MagicMock,
+    mock_generate_control_data_streams: mock.MagicMock,
+    mock_generate_readings_data_stream: mock.MagicMock,
+    site_vals: list[int | None],
+    device_vals: list[int | None],
+    control_vals: list[list[int | None]],
+    default_vals: list[list[int | None]],
+    expected: list[list[int | None]],
+):
+    """Checks the top level behaviour of generate_timeline - Focusing on the culling of "superfluous" streams"""
+    # Arrange
+    start = BASIS
+    end = BASIS + timedelta(seconds=5)
+    interval = 5
+    mock_session = create_mock_session()
+
+    site_ds = generate_class_instance(TimelineDataStream, seed=101, offset_watt_values=site_vals)
+    device_ds = generate_class_instance(TimelineDataStream, seed=202, offset_watt_values=device_vals)
+    control_ds = [
+        generate_class_instance(TimelineDataStream, seed=300 + idx, offset_watt_values=vals)
+        for idx, vals in enumerate(control_vals)
+    ]
+    default_ds = [
+        generate_class_instance(TimelineDataStream, seed=400 + idx, offset_watt_values=vals)
+        for idx, vals in enumerate(default_vals)
+    ]
+
+    mock_generate_readings_data_stream.side_effect = lambda sesion, label, location, start, end, interval_seconds: (
+        site_ds if location == ReadingLocation.SITE_READING else device_ds
+    )
+    mock_generate_control_data_streams.return_value = control_ds
+    mock_generate_default_control_data_streams.return_value = default_ds
+
+    # Act
+    result = await generate_timeline(mock_session, start, interval, end)
+
+    # Assert
+    assert_mock_session(mock_session)
+    assert isinstance(result, Timeline)
+    assert_list_type(TimelineDataStream, result.data_streams, len(expected))
+    assert result.interval_seconds == interval
+    assert result.start == start
+
+    actual = [ds.offset_watt_values for ds in result.data_streams]
+    assert expected == actual
