@@ -12,12 +12,6 @@ from envoy.server.model.archive.site import ArchiveDefaultSiteControl
 from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.site import DefaultSiteControl
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.server.schema.sep2.types import (
-    DataQualifierType,
-    KindType,
-    RoleFlagsType,
-    UomType,
-)
 from intervaltree import Interval, IntervalTree
 
 from cactus_runner.app.envoy_common import ReadingLocation

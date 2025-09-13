@@ -11,7 +11,6 @@ from envoy_schema.server.schema.sep2.types import DeviceCategory
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.reporting import (
     device_category_to_string,
-    duration_to_label,
     pdf_report_as_bytes,
 )
 from cactus_runner.app.timeline import Timeline, TimelineDataStream

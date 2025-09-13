@@ -1,16 +1,24 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
+from assertical.asserts.type import assert_list_type
+from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions import Check, CSIPAusVersion
+from freezegun import freeze_time
 
 from cactus_runner.app import status
 from cactus_runner.app.check import CheckResult
+from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import (
+    ActiveTestProcedure,
     ClientInteraction,
     CriteriaEntry,
+    DataStreamPoint,
     RunnerStatus,
     StepStatus,
+    TimelineDataStreamEntry,
 )
 
 
@@ -30,27 +38,62 @@ def test_get_runner_status_summary(step_status, expected):
     assert status.get_runner_status_summary(step_status=step_status) == expected
 
 
+BASIS = datetime(2023, 5, 7, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    "resolve_max_w_result, timeline_streams_result, expected_max_w",
+    [
+        (123.45, [generate_class_instance(TimelineDataStreamEntry)], 123),
+        (123.45, Exception, None),
+        (Exception, [generate_class_instance(TimelineDataStreamEntry)], None),
+        (Exception, Exception, None),
+    ],
+)
+@freeze_time(BASIS)
 @pytest.mark.anyio
-async def test_get_active_runner_status(mocker):
+async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_streams_result, expected_max_w):
     # Arrange
     mock_session = create_mock_session()
     mock_run_check = mocker.patch("cactus_runner.app.status.run_check")
+    mock_resolve_set_max_w = mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w")
+    mock_get_timeline_streams = mocker.patch("cactus_runner.app.status.get_timeline_data_streams")
+
+    mock_run_check.return_value = CheckResult(True, "Details on Check 1")
+
+    if isinstance(resolve_max_w_result, type):
+        mock_resolve_set_max_w.side_effect = resolve_max_w_result()
+    else:
+        mock_resolve_set_max_w.return_value = resolve_max_w_result
+
+    if isinstance(timeline_streams_result, type):
+        mock_get_timeline_streams.side_effect = timeline_streams_result()
+    else:
+        mock_get_timeline_streams.return_value = timeline_streams_result
 
     expected_test_name = "TEST_NAME"
     expected_step_status = {"step_name": StepStatus.PENDING}
     expected_status_summary = "0/1 steps complete."
     expected_csip_aus_version = CSIPAusVersion.RELEASE_1_2
-    active_test_procedure = Mock()
-    active_test_procedure.name = expected_test_name
-    active_test_procedure.step_status = expected_step_status
-    active_test_procedure.listeners = []
-    active_test_procedure.csip_aus_version = expected_csip_aus_version
-    active_test_procedure.definition = Mock()
-    active_test_procedure.definition.criteria = Mock()
+    expected_started_at = BASIS - timedelta(seconds=123, microseconds=45)
+    expected_now_offset = duration_to_label(120)  # This is the interval aligned offset - for a 20s interval
+
+    mock_definition = Mock()
+    mock_definition.criteria = Mock()
     criteria_check = Check("check-1", {})
-    active_test_procedure.definition.criteria.checks = [criteria_check]
-    mock_run_check.return_value = CheckResult(True, "Details on Check 1")
-    active_test_procedure.definition.preconditions.checks = [criteria_check]  # reuse mocked criteria check
+    mock_definition.criteria.checks = [criteria_check]
+    mock_definition.preconditions.checks = [criteria_check]  # reuse mocked criteria check
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        name=expected_test_name,
+        step_status=expected_step_status,
+        csip_aus_version=expected_csip_aus_version,
+        definition=mock_definition,
+        listeners=[],
+        started_at=expected_started_at,
+        finished_zip_data=None,
+    )
 
     request_history = Mock()
     last_client_interaction = Mock()
@@ -73,6 +116,18 @@ async def test_get_active_runner_status(mocker):
     assert isinstance(runner_status.csip_aus_version, str)
     assert runner_status.csip_aus_version == expected_csip_aus_version
     assert runner_status.criteria == [CriteriaEntry(True, "check-1", "Details on Check 1")]
+    if expected_max_w is None:
+        assert runner_status.timeline is None or runner_status.timeline.set_max_w is None
+    else:
+        assert runner_status.timeline.set_max_w == expected_max_w
+
+    # If we have timeline data - ensure it's set as expected. Otherwise it should not be there at all
+    if not isinstance(timeline_streams_result, type):
+        assert runner_status.timeline.now_offset == expected_now_offset
+        assert runner_status.timeline.data_streams is timeline_streams_result
+    else:
+        assert runner_status.timeline is None
+
     assert_mock_session(mock_session)
 
 
@@ -112,3 +167,69 @@ def test_get_runner_status(example_client_interaction: ClientInteraction):
     assert runner_status.csip_aus_version == ""
     assert runner_status.step_status is None
     assert runner_status.request_history == []
+
+
+@pytest.mark.parametrize(
+    "interval_seconds, data_streams, expected_data_streams",
+    [
+        (123, [], []),
+        (
+            13,
+            [TimelineDataStream("label 1", [None, 123, -456, None], stepped=True, dashed=False)],
+            [
+                TimelineDataStreamEntry(
+                    "label 1",
+                    [
+                        DataStreamPoint(None, duration_to_label(0)),
+                        DataStreamPoint(123, duration_to_label(13)),
+                        DataStreamPoint(-456, duration_to_label(26)),
+                        DataStreamPoint(None, duration_to_label(39)),
+                    ],
+                    stepped=True,
+                    dashed=False,
+                )
+            ],
+        ),
+        (
+            7,
+            [
+                TimelineDataStream("label 11", [0, 1], stepped=False, dashed=True),
+                TimelineDataStream("label 22", [0, 0], stepped=True, dashed=False),
+            ],
+            [
+                TimelineDataStreamEntry(
+                    "label 11",
+                    [
+                        DataStreamPoint(0, duration_to_label(0)),
+                        DataStreamPoint(1, duration_to_label(7)),
+                    ],
+                    stepped=False,
+                    dashed=True,
+                ),
+                TimelineDataStreamEntry(
+                    "label 22",
+                    [
+                        DataStreamPoint(0, duration_to_label(0)),
+                        DataStreamPoint(0, duration_to_label(7)),
+                    ],
+                    stepped=True,
+                    dashed=False,
+                ),
+            ],
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_get_timeline_data_streams(mocker, interval_seconds, data_streams, expected_data_streams):
+    """Tests whether converting to the status timeline model raises any issues"""
+    mock_session = create_mock_session()
+    start = datetime(2024, 11, 5, tzinfo=timezone.utc)
+    end = datetime(2024, 11, 6, tzinfo=timezone.utc)
+
+    mock_generate_timeline = mocker.patch("cactus_runner.app.status.generate_timeline")
+    mock_generate_timeline.return_value = generate_class_instance(Timeline, data_streams=data_streams)
+
+    result = await status.get_timeline_data_streams(mock_session, start, interval_seconds, end)
+    assert_list_type(TimelineDataStreamEntry, result, len(expected_data_streams))
+    assert result == expected_data_streams
+    mock_generate_timeline.assert_called_once_with(mock_session, start, interval_seconds, end)

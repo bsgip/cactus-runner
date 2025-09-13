@@ -193,6 +193,13 @@ class TimelineDataStreamEntry(JSONWizard):
 
 
 @dataclass
+class TimelineStatus(JSONWizard):
+    data_streams: list[TimelineDataStreamEntry]  # The set of data streams that should be rendered on the timeline
+    set_max_w: int | None  # The currently set set_max_w (if any)
+    now_offset: str  # The name of the DataStreamPoint.offset that corresponds with "now" (when this was calculated)
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise
@@ -208,4 +215,4 @@ class RunnerStatus(JSONWizard):
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)
     set_max_w: int | None = None  # Snapshot of the current MaxW DERSetting value of the active end device (if any)
-    timeline_data_streams: list[TimelineDataStreamEntry] | None = None  # Streaming timeline data snapshot
+    timeline: TimelineStatus | None = None  # Streaming timeline data snapshot

@@ -215,6 +215,8 @@ async def test_status_steps_immediate_start(
     assert step_status_counts.get(StepStatus.ACTIVE, 0) == 1, "One step should initially be active"
     assert step_status_counts.get(StepStatus.RESOLVED, 0) == 0, "No steps should be resolved at the start"
 
+    assert status_response.timeline is not None, "Timeline should've generated something"
+
 
 @pytest.mark.slow
 @pytest.mark.anyio

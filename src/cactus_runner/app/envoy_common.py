@@ -5,10 +5,9 @@ from typing import Sequence
 
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
-    ArchiveSiteControlGroup,
 )
 from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.site import DefaultSiteControl, Site, SiteDER
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (

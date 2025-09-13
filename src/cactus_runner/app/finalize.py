@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app import check, reporting, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
-    begin_session,
     get_postgres_dsn,
 )
 from cactus_runner.app.envoy_common import (

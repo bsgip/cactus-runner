@@ -1,18 +1,26 @@
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
 from cactus_runner.app.log import LOG_FILE_ENVOY, read_log_file
+from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
+from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
     CriteriaEntry,
+    DataStreamPoint,
     PreconditionCheckEntry,
     RequestEntry,
     RunnerStatus,
     StepStatus,
+    TimelineDataStreamEntry,
+    TimelineStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_runner_status_summary(step_status: dict[str, StepStatus]):
@@ -91,6 +99,27 @@ async def get_current_instructions(active_test_procedure: ActiveTestProcedure) -
     return None
 
 
+async def get_timeline_data_streams(
+    session: AsyncSession, basis: datetime, interval_seconds: int, end: datetime
+) -> list[TimelineDataStreamEntry]:
+    """Takes a timeline snapshot for the active test procedure and then converts it to the JSON compatible equivalent
+    for use with status models"""
+
+    timeline = await generate_timeline(session, basis, interval_seconds, end)
+    return [
+        TimelineDataStreamEntry(
+            label=ds.label,
+            stepped=ds.stepped,
+            dashed=ds.dashed,
+            data=[
+                DataStreamPoint(val, duration_to_label(idx * interval_seconds))
+                for idx, val in enumerate(ds.offset_watt_values)
+            ],
+        )
+        for ds in timeline.data_streams
+    ]
+
+
 async def get_active_runner_status(
     session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
@@ -99,6 +128,28 @@ async def get_active_runner_status(
 ) -> RunnerStatus:
 
     step_status = active_test_procedure.step_status
+
+    # If there is a set max w available - return it - otherwise client likely has registered anything yet
+    try:
+        set_max_w = int(await resolve_named_variable_der_setting_max_w(session))
+    except Exception:
+        set_max_w = None
+
+    # Try and generate a timeline
+    timeline = None
+    try:
+        basis = active_test_procedure.started_at
+        if basis is not None:
+            interval_seconds = 20
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(seconds=120)
+
+            data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
+            now_offset = duration_to_label(((now - basis).seconds // interval_seconds) * interval_seconds)
+            timeline = TimelineStatus(data_streams=data_streams, set_max_w=set_max_w, now_offset=now_offset)
+    except Exception as exc:
+        logger.error("Error generating timeline", exc_info=exc)
+        timeline = None
 
     return RunnerStatus(
         timestamp_status=datetime.now(tz=timezone.utc),
@@ -114,6 +165,7 @@ async def get_active_runner_status(
         status_summary=get_runner_status_summary(step_status=step_status),
         step_status=step_status,
         request_history=request_history,
+        timeline=timeline,
     )
 
 
