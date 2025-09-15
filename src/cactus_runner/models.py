@@ -4,11 +4,8 @@ from datetime import datetime, timezone
 from enum import Enum, StrEnum, auto
 from typing import Any
 
-from cactus_test_definitions import (
-    CSIPAusVersion,
-    Event,
-    TestProcedure,
-)
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import Event, TestProcedure
 from dataclass_wizard import JSONWizard
 
 

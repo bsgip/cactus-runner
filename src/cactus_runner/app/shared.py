@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 
 from aiohttp import web
-from cactus_test_definitions import TestProcedures
+from cactus_test_definitions.client import TestProcedures
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import InitialisedCertificates, RunnerState

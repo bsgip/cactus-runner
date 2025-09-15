@@ -8,7 +8,7 @@ from typing import Annotated, Any, Iterable, Optional, Sequence
 import pydantic
 import pydantic.alias_generators
 import pydantic.fields
-from cactus_test_definitions.checks import Check
+from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper

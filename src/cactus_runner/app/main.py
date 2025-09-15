@@ -11,7 +11,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import web
-from cactus_test_definitions import TestProcedureConfig
+from cactus_test_definitions.client import TestProcedureConfig
 
 from cactus_runner import __version__
 from cactus_runner.app import event, handler

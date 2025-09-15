@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from cactus_test_definitions import Action
+from cactus_test_definitions.client import Action
 from envoy.server.model.site import Site
 from envoy_schema.admin.schema.config import (
     ControlDefaultRequest,

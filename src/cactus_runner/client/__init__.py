@@ -1,7 +1,8 @@
 import logging
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
-from cactus_test_definitions.test_procedures import CSIPAusVersion, TestProcedureId
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
 
 from cactus_runner.models import (
     ClientInteraction,

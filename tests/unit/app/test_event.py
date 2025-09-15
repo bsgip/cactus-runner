@@ -7,7 +7,7 @@ from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
-from cactus_test_definitions import Event
+from cactus_test_definitions.client import Event
 
 from cactus_runner.app import event
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState

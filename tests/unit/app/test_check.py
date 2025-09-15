@@ -6,8 +6,13 @@ import pytest
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
-from cactus_test_definitions import CHECK_PARAMETER_SCHEMA, Event, Step, TestProcedure
-from cactus_test_definitions.checks import Check
+from cactus_test_definitions.client import (
+    CHECK_PARAMETER_SCHEMA,
+    Check,
+    Event,
+    Step,
+    TestProcedure,
+)
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup

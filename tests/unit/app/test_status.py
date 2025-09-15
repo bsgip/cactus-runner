@@ -5,7 +5,8 @@ import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
-from cactus_test_definitions import Check, CSIPAusVersion
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import Check
 from freezegun import freeze_time
 
 from cactus_runner.app import status

@@ -4,7 +4,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
-from cactus_test_definitions import TestProcedureConfig
+from cactus_test_definitions.client import TestProcedureConfig
 from envoy.server.model import Site, SiteDER, SiteDERSetting, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DeviceCategory
 

@@ -5,7 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 from aiohttp import ConnectionTimeoutError
-from cactus_test_definitions import CSIPAusVersion, TestProcedureId
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
 
 from cactus_runner.client import RunnerClient, RunnerClientException
 from cactus_runner.models import (

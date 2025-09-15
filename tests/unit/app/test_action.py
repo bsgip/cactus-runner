@@ -7,7 +7,7 @@ from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
-from cactus_test_definitions import ACTION_PARAMETER_SCHEMA, Action, Event
+from cactus_test_definitions.client import ACTION_PARAMETER_SCHEMA, Action, Event
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.server import RuntimeServerConfig
 from envoy.server.model.site import DefaultSiteControl, Site

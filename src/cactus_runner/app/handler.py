@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import cast
 
 from aiohttp import web
-from cactus_test_definitions import Action, CSIPAusVersion
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import Action
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 

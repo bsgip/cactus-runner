@@ -1,6 +1,6 @@
 import asyncio
 
-from cactus_test_definitions import TestProcedureId
+from cactus_test_definitions.client import TestProcedureId
 
 from cactus_runner.client import (
     ClientSession,
