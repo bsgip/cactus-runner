@@ -236,9 +236,28 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             timeline=test_timeline,
         )
     except Exception as exc:
-        logger.error("Error generating PDF report. Omitting report from final zip.", exc_info=exc)
+        logger.error("Error generating PDF report.", exc_info=exc)
         errors.append(f"Error generating PDF report: {exc}")
         pdf_data = None
+
+    # Try generating the report a second time this time without any spacers
+    # which seem to be the source of pdf layout issues.
+    if pdf_data is None:
+        try:
+            # Generate the pdf (as bytes) this time excluding any spacers
+            pdf_data = reporting.pdf_report_as_bytes(
+                runner_state=runner_state,
+                check_results=check_results,
+                readings=readings,
+                reading_counts=reading_counts,
+                sites=sites,
+                timeline=test_timeline,
+                no_spacers=True,
+            )
+        except Exception as exc:
+            logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
+            errors.append(f"Error generating PDF report: {exc}")
+            pdf_data = None
 
     generation_timestamp = now.replace(microsecond=0)
 

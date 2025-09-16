@@ -41,6 +41,7 @@ from reportlab.platypus import (
     Flowable,
     Image,
     KeepTogether,
+    NullDraw,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -62,8 +63,21 @@ from cactus_runner.models import (
 
 logger = logging.getLogger(__name__)
 
+
+class ConditionalSpacer(Spacer):
+    """A Spacer that takes up a variable amount of vertical space.
+
+    It takes up the avilable space, up to but not exceeding
+    the requested height of the spacer.
+    """
+
+    def wrap(self, aW, aH):
+        height = min(self.height, aH - 1e-8)
+        return (aW, height)
+
+
 PAGE_WIDTH, PAGE_HEIGHT = A4
-DEFAULT_SPACER = Spacer(1, 0.25 * inch)
+DEFAULT_SPACER = ConditionalSpacer(1, 0.25 * inch)
 MARGIN = 0.5 * inch
 BANNER_HEIGHT = inch
 
@@ -124,7 +138,7 @@ class StyleSheet:
     subheading: ParagraphStyle
     table: TableStyle
     table_width: float
-    spacer: Spacer
+    spacer: Spacer | NullDraw
     date_format: str
     max_cell_length_chars: int
     truncation_marker: str
@@ -1252,8 +1266,11 @@ def pdf_report_as_bytes(
     reading_counts: dict[SiteReadingType, int],
     sites: Sequence[Site],
     timeline: Timeline | None,
+    no_spacers: bool = False,
 ) -> bytes:
     stylesheet = get_stylesheet()
+    if no_spacers:
+        stylesheet.spacer = NullDraw()
 
     if runner_state.active_test_procedure is None:
         raise ValueError("Unable to generate report - no active test procedure")

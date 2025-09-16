@@ -22,7 +22,8 @@ from cactus_runner.models import (
 )
 
 
-def test_pdf_report_as_bytes():
+@pytest.mark.parametrize("no_spacers", [True, False])
+def test_pdf_report_as_bytes(no_spacers):
     # Arrange
     definitions = TestProcedureConfig.from_resource()
     test_name = "ALL-01"
@@ -67,6 +68,7 @@ def test_pdf_report_as_bytes():
         reading_counts=reading_counts,
         sites=sites,
         timeline=timeline,
+        no_spacers=no_spacers,
     )
 
     # Assert - we are mainly checking that no uncaught exceptions are raised generating the pdf report
