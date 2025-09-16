@@ -6,11 +6,10 @@ from typing import override
 # Changing these log file paths requires updating cactus-deploy logconf.json files - these are baked into built images.
 # In theory, we could try and make this more dynamic but for practical reasons, moving these around shouldn't be a
 # common use case
-LOG_FILE_ENVOY_SERVER = "/shared/envoy.server.jsonl"
-LOG_FILE_ENVOY_ADMIN = "/shared/envoy.admin.jsonl"
-LOG_FILE_ENVOY_NOTIFICATION = "/shared/envoy.notification.jsonl"
-LOG_FILE_CACTUS_RUNNER = "/shared/cactus_runner.jsonl"
-LOG_FILE_UVICORN = "/shared/uvicorn.jsonl"
+LOG_FILE_ENVOY_SERVER = "/shared/envoy.server.log"
+LOG_FILE_ENVOY_ADMIN = "/shared/envoy.admin.log"
+LOG_FILE_ENVOY_NOTIFICATION = "/shared/envoy.notification.log"
+LOG_FILE_CACTUS_RUNNER = "/shared/cactus_runner.log"
 
 LOG_RECORD_BUILTIN_ATTRS = {
     "args",

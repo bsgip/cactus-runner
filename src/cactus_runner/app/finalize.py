@@ -25,7 +25,6 @@ from cactus_runner.app.log import (
     LOG_FILE_ENVOY_ADMIN,
     LOG_FILE_ENVOY_NOTIFICATION,
     LOG_FILE_ENVOY_SERVER,
-    LOG_FILE_UVICORN,
 )
 from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
@@ -87,7 +86,7 @@ def get_zip_contents(
         # Copy all log files into the archive - preserving the names
         for log_file_path in log_file_paths:
             log_file_name = get_file_name_no_extension(log_file_path)
-            destination = archive_dir / f"{log_file_name}{filename_infix}.jsonl"  # We are assuming .jsonl
+            destination = archive_dir / f"{log_file_name}{filename_infix}.log"  # We are assuming .jsonl
             try:
                 shutil.copyfile(log_file_path, destination)
             except Exception as exc:
@@ -303,7 +302,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             LOG_FILE_ENVOY_ADMIN,
             LOG_FILE_ENVOY_NOTIFICATION,
             LOG_FILE_CACTUS_RUNNER,
-            LOG_FILE_UVICORN,
         ],
         pdf_data=pdf_data,
         filename_infix=f"_{generation_timestamp.isoformat()}_{active_test_procedure.name}",
