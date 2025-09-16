@@ -151,6 +151,52 @@ def safely_get_error_zip(errors: list[str]) -> bytes:
         return f"Complete failure to generate output zip with data {errors}\nException to follow\n{exc}".encode()
 
 
+async def generate_pdf(
+    runner_state,
+    check_results,
+    readings,
+    reading_counts,
+    sites,
+    timeline,
+    errors,
+) -> bytes | None:
+    try:
+        # Generate the pdf (as bytes)
+        pdf_data = reporting.pdf_report_as_bytes(
+            runner_state=runner_state,
+            check_results=check_results,
+            readings=readings,
+            reading_counts=reading_counts,
+            sites=sites,
+            timeline=timeline,
+        )
+    except Exception as exc:
+        logger.error("Error generating PDF report.", exc_info=exc)
+        errors.append(f"Error generating PDF report: {exc}")
+        pdf_data = None
+
+    # Try generating the report a second time this time without any spacers
+    # which seem to be the source of pdf layout issues.
+    if pdf_data is None:
+        try:
+            # Generate the pdf (as bytes) this time excluding any spacers
+            pdf_data = reporting.pdf_report_as_bytes(
+                runner_state=runner_state,
+                check_results=check_results,
+                readings=readings,
+                reading_counts=reading_counts,
+                sites=sites,
+                timeline=timeline,
+                no_spacers=True,
+            )
+        except Exception as exc:
+            logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
+            errors.append(f"Error generating PDF report: {exc}")
+            pdf_data = None
+
+    return pdf_data
+
+
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
     """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
     contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState
@@ -225,39 +271,15 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
     reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
-    try:
-        # Generate the pdf (as bytes)
-        pdf_data = reporting.pdf_report_as_bytes(
-            runner_state=runner_state,
-            check_results=check_results,
-            readings=readings,
-            reading_counts=reading_counts,
-            sites=sites,
-            timeline=test_timeline,
-        )
-    except Exception as exc:
-        logger.error("Error generating PDF report.", exc_info=exc)
-        errors.append(f"Error generating PDF report: {exc}")
-        pdf_data = None
-
-    # Try generating the report a second time this time without any spacers
-    # which seem to be the source of pdf layout issues.
-    if pdf_data is None:
-        try:
-            # Generate the pdf (as bytes) this time excluding any spacers
-            pdf_data = reporting.pdf_report_as_bytes(
-                runner_state=runner_state,
-                check_results=check_results,
-                readings=readings,
-                reading_counts=reading_counts,
-                sites=sites,
-                timeline=test_timeline,
-                no_spacers=True,
-            )
-        except Exception as exc:
-            logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
-            errors.append(f"Error generating PDF report: {exc}")
-            pdf_data = None
+    pdf_data = await generate_pdf(
+        runner_state=runner_state,
+        check_results=check_results,
+        readings=readings,
+        reading_counts=reading_counts,
+        sites=sites,
+        timeline=test_timeline,
+        errors=errors,
+    )
 
     generation_timestamp = now.replace(microsecond=0)
 
