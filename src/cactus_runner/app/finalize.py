@@ -304,7 +304,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             LOG_FILE_CACTUS_RUNNER,
         ],
         pdf_data=pdf_data,
-        filename_infix=f"_{generation_timestamp.isoformat()}_{active_test_procedure.name}",
+        filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
         errors=errors,
     )
     return active_test_procedure.finished_zip_data
