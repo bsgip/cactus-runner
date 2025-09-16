@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
-from cactus_runner.app.log import LOG_FILE_ENVOY, read_log_file
+from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
@@ -156,7 +156,7 @@ async def get_active_runner_status(
         timestamp_initialise=active_test_procedure.initialised_at,
         timestamp_start=active_test_procedure.started_at,
         csip_aus_version=active_test_procedure.csip_aus_version.value,
-        log_envoy=read_log_file(LOG_FILE_ENVOY),
+        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
         criteria=await get_criteria_summary(session, active_test_procedure),
@@ -177,5 +177,5 @@ def get_runner_status(last_client_interaction: ClientInteraction) -> RunnerStatu
         csip_aus_version="",
         status_summary="No test procedure running",
         last_client_interaction=last_client_interaction,
-        log_envoy=read_log_file(LOG_FILE_ENVOY),
+        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER),
     )

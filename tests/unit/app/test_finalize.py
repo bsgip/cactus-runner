@@ -4,7 +4,27 @@ import string
 import tempfile
 import zipfile
 
+import pytest
+
 from cactus_runner.app import finalize
+
+
+@pytest.mark.parametrize(
+    "input, expected",
+    [
+        ("", ""),
+        ("/", ""),
+        ("/foo/bar/", "bar"),
+        ("/foo/bar", "bar"),
+        ("/foo/bar/example.pdf", "example"),
+        ("/foo.bar/baz/example.pdf", "example"),
+        ("/foo.bar/baz/example.with.dots.pdf", "example.with.dots"),
+    ],
+)
+def test_get_file_name_no_extension(input, expected):
+    actual = finalize.get_file_name_no_extension(input)
+    assert isinstance(actual, str)
+    assert actual == expected
 
 
 def test_get_zip_contents(mocker):
@@ -22,24 +42,26 @@ def test_get_zip_contents(mocker):
     subprocess_run_mock = mocker.patch.object(finalize.subprocess, "run")  # prevent db dump
 
     json_status_summary = random_string(length=100)
-    contents_of_logfile = bytes(random_string(length=100), encoding="utf-8")
+    contents_of_logfile1 = bytes(random_string(length=100), encoding="utf-8")
+    contents_of_logfile2 = bytes(random_string(length=100), encoding="utf-8")
     pdf_data = bytes(random_string(length=100), encoding="utf-8")  # not legimate pdf data
     errors = []
 
     with (
-        tempfile.NamedTemporaryFile(delete_on_close=False) as runner_logfile,
-        tempfile.NamedTemporaryFile(delete_on_close=False) as envoy_logfile,
+        tempfile.NamedTemporaryFile(delete_on_close=False) as logfile1,
+        tempfile.NamedTemporaryFile(delete_on_close=False) as logfile2,
     ):
-        runner_logfile.write(contents_of_logfile)
-        runner_logfile.close()
+        logfile1_name = logfile1.name
+        logfile1.write(contents_of_logfile1)
+        logfile1.close()
 
-        envoy_logfile.write(contents_of_logfile)
-        envoy_logfile.close()
+        logfile2_name = logfile2.name
+        logfile2.write(contents_of_logfile2)
+        logfile2.close()
 
         zip_contents = finalize.get_zip_contents(
             json_status_summary=json_status_summary,
-            runner_logfile=runner_logfile.name,
-            envoy_logfile=envoy_logfile.name,
+            log_file_paths=[logfile1_name, logfile2_name],
             pdf_data=pdf_data,
             errors=errors,
         )
@@ -58,7 +80,15 @@ def test_get_zip_contents(mocker):
     assert zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=filenames)) == bytes(
         json_status_summary, encoding="utf-8"
     )
-    assert zip.read(get_filename(prefix="CactusRunnerLog", filenames=filenames)) == contents_of_logfile
+
+    assert (
+        zip.read(get_filename(prefix=finalize.get_file_name_no_extension(logfile1_name), filenames=filenames))
+        == contents_of_logfile1
+    )
+    assert (
+        zip.read(get_filename(prefix=finalize.get_file_name_no_extension(logfile2_name), filenames=filenames))
+        == contents_of_logfile2
+    )
     subprocess_run_mock.assert_called_once()
     assert len(errors) == 0, "This shouldn't have been mutated"
 
@@ -112,8 +142,7 @@ def test_get_zip_contents_with_errors(mocker):
 
     zip_contents = finalize.get_zip_contents(
         json_status_summary=None,
-        runner_logfile="file-that-dne.txt",
-        envoy_logfile="file-that-dne-2.txt",
+        log_file_paths=["file-that-dne.txt", "file-that-dne-2.txt"],
         pdf_data=None,
         errors=errors,
     )
