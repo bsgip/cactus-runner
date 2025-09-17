@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 @dataclasses.dataclass
 class ResolvedParam:
     """A dataclass for holding all metadata related to a resolved parameter"""
+
     value: Any
     original_expression: BaseExpression | None = None
 
@@ -113,10 +114,7 @@ async def resolve_variable_expressions_from_parameters(
     output_parameters: dict[str, ResolvedParam] = {}
     for k, v in parameters.items():
         if is_resolvable_variable(v):
-            output_parameters[k] = ResolvedParam(
-                value=await resolve_variable(session, v),
-                original_expression=v
-            )
+            output_parameters[k] = ResolvedParam(value=await resolve_variable(session, v), original_expression=v)
         else:
             output_parameters[k] = ResolvedParam(value=v)
 

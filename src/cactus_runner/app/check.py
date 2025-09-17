@@ -406,7 +406,7 @@ async def check_der_settings_contents(
             # A boolean expression was evaluated for this field and potentially failed
             do_field_boolean_expression_evaluated_check(soft_checker, der_settings, field, ogl_exp)
         elif isinstance(raw_value, bool):
-            # A set/unset check 
+            # A set/unset check
             do_field_exists_check(soft_checker, der_settings, field, raw_value)
 
     return soft_checker.finalize()
