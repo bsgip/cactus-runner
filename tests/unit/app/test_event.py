@@ -10,6 +10,7 @@ from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions.client import Event
 
 from cactus_runner.app import event
+from cactus_runner.app import evaluator
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 
 
@@ -104,7 +105,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/dcap"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -124,7 +125,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
             Listener(
                 step="step",
-                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -136,7 +137,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
             ),
@@ -148,7 +149,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
                 enabled_time=None,
             ),
@@ -160,7 +161,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="wait", parameters={"duration_seconds": 300}),
+                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
             ),
@@ -175,7 +176,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -190,7 +191,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="POST-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="POST-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -205,7 +206,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="PUT-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="PUT-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -221,7 +222,11 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             Listener(
                 step="step",
                 event=Event(
-                    type="GET-request-received", parameters={"endpoint": "/foo/bar", "serve_request_first": False}
+                    type="GET-request-received",
+                    parameters={
+                        "endpoint": evaluator.ResolvedParam("/foo/bar"),
+                        "serve_request_first": evaluator.ResolvedParam(False),
+                    },
                 ),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
@@ -238,7 +243,11 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             Listener(
                 step="step",
                 event=Event(
-                    type="GET-request-received", parameters={"endpoint": "/foo/bar", "serve_request_first": True}
+                    type="GET-request-received",
+                    parameters={
+                        "endpoint": evaluator.ResolvedParam("/foo/bar"),
+                        "serve_request_first": evaluator.ResolvedParam(True),
+                    },
                 ),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
@@ -254,7 +263,9 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/my/endppoint/1"}),
+                event=Event(
+                    type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/my/endppoint/1")}
+                ),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -269,7 +280,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -284,7 +295,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -299,7 +310,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -314,7 +325,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -329,7 +340,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/bar"}),
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
                 enabled_time=None,
             ),
@@ -344,7 +355,9 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
             ),
             Listener(
                 step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": "/foo/*/bar/*"}),
+                event=Event(
+                    type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/*/bar/*")}
+                ),
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
@@ -352,7 +365,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
         ),
     ],
 )
-@patch("cactus_runner.app.event.resolve_variable_expressions_from_parameters")
+@patch("cactus_runner.app.event.evaluator.resolve_variable_expressions_from_parameters")
 @pytest.mark.anyio
 async def test_is_listener_triggerable(
     mock_resolve_variable_expressions_from_parameters: MagicMock,

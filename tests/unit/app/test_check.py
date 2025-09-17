@@ -1,6 +1,7 @@
 import unittest.mock as mock
+import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -13,6 +14,7 @@ from cactus_test_definitions.client import (
     Step,
     TestProcedure,
 )
+from cactus_test_definitions import variable_expressions
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
@@ -69,6 +71,7 @@ from cactus_runner.app.check import (
 )
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.models import ActiveTestProcedure, Listener
+from cactus_runner.app import evaluator
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
@@ -393,31 +396,54 @@ async def test_check_end_device_lfdi(
     assert_check_result(result, expected)
 
 
+DERKey = Literal["site_der_setting", "site_der_rating"]
+
+
 def der_bool_param_scenario(
-    der_key: str,
+    der_key: DERKey,
     der_type: type,
     param: str,
     param_value: bool,
     db_property: str,
     db_property_value: Any,
     expected: bool,
-) -> tuple[list, dict[str, bool], bool]:
-    """Convenience for generating scenarios for testing the der settings/capability boolean param checks"""
-    der_props = {der_key: generate_class_instance(der_type, **{db_property: db_property_value})}
-    # raise Exception(f"der_key={der_key} der={der}")
-    return pytest.param(
-        [
-            generate_class_instance(
-                Site,
-                seed=101,
-                aggregator_id=1,
-                site_ders=[generate_class_instance(SiteDER, **der_props)],
-            )
-        ],
-        {param: param_value},
-        expected,
-        id=f"boolcheck-{param}-{param_value}-{db_property}-{db_property_value}-expecting-{expected}",
-    )
+) -> Any:
+    """Convenience for generating scenarios for testing the der settings/capability boolean param checks.
+
+    Returns: pytest ParameterSet to be used in pytest.mark.parametrize
+    """
+    der_props: dict[DERKey, SiteDERSetting | SiteDERRating] = {
+        der_key: generate_class_instance(der_type, **{db_property: db_property_value})
+    }
+
+    if der_key == "site_der_rating":
+        return pytest.param(
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[generate_class_instance(SiteDER, site_der_rating=der_props[der_key])],
+                )
+            ],
+            {param: evaluator.ResolvedParam(param_value)},
+            expected,
+            id=f"boolcheck-{param}-{param_value}-{db_property}-{db_property_value}-expecting-{expected}",
+        )
+    if der_key == "site_der_setting":
+        return pytest.param(
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[generate_class_instance(SiteDER, site_der_setting=der_props[der_key])],
+                )
+            ],
+            {param: evaluator.ResolvedParam(param_value)},
+            expected,
+            id=f"boolcheck-{param}-{param_value}-{db_property}-{db_property_value}-expecting-{expected}",
+        )
 
 
 DERSETTING_BOOL_PARAM_SCENARIOS = [
@@ -477,7 +503,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"setGradW": 12345},
+            {"setGradW": evaluator.ResolvedParam(12345, variable_expressions.Constant(12345))},
             True,
         ),
         (
@@ -493,7 +519,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"setGradW": 1234},
+            {"setGradW": evaluator.ResolvedParam(1234)},
             False,
         ),  # setGradW doesn't match value
         (
@@ -547,7 +573,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesEnabled_set": "03"},
+            {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -564,7 +590,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesEnabled_set": "03"},
+            {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -581,7 +607,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesEnabled_set": "03"},
+            {"modesEnabled_set": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -598,7 +624,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesEnabled_set": "03"},
+            {"modesEnabled_set": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -615,7 +641,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesEnabled_unset": "03"},
+            {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -632,7 +658,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesEnabled_unset": "03"},
+            {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 set on actual value
         (
@@ -649,7 +675,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesEnabled_unset": "03"},
+            {"modesEnabled_unset": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -666,7 +692,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesEnabled_unset": "03"},
+            {"modesEnabled_unset": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 set on actual value
         *DERSETTING_BOOL_PARAM_SCENARIOS,
@@ -780,7 +806,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesSupported_set": "03"},
+            {"doeModesSupported_set": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -797,7 +823,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesSupported_set": "03"},
+            {"doeModesSupported_set": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -814,7 +840,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesSupported_set": "03"},
+            {"modesSupported_set": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -831,7 +857,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesSupported_set": "03"},
+            {"modesSupported_set": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 not set on actual value
         (
@@ -848,7 +874,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesSupported_unset": "03"},
+            {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -865,7 +891,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"doeModesSupported_unset": "03"},
+            {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 set on actual value
         (
@@ -882,7 +908,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesSupported_unset": "03"},
+            {"modesSupported_unset": evaluator.ResolvedParam("03")},
             True,
         ),
         (
@@ -899,7 +925,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     ],
                 )
             ],
-            {"modesSupported_unset": "03"},
+            {"modesSupported_unset": evaluator.ResolvedParam("03")},
             False,
         ),  # Bit flag 1 set on actual value
         *DERRATING_BOOL_PARAM_SCENARIOS,
@@ -2362,3 +2388,394 @@ def test_timestamp_on_minute_boundary(timestamp_str: str, expected: bool):
 )
 def test_merge_check_results(checkresults: list[CheckResult], expected: CheckResult):
     assert merge_checks(checkresults) == expected
+
+
+@pytest.mark.parametrize(
+    "existing_sites, resolved_params, expected, msg_regex",
+    [
+        ([], {}, False, r"[Nn]o [Ee]nd[Dd]evice is currently registered"),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
+                        )
+                    ],
+                )
+            ],
+            {"setGradW": evaluator.ResolvedParam(1234)},
+            False,
+            r"setGradW [0-9]+ doesn't match (expected)?[: ]+[0-9]+",
+        ),  # setGradW doesn't match value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(SiteDER, site_der_rating=generate_class_instance(SiteDERRating))
+                    ],
+                )
+            ],
+            {},
+            False,
+            r"No DERSetting found for [Ee]nd[Dd]evice [0-9]+",
+        ),  # Is setting DERCapability - not DERSetting
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[generate_class_instance(SiteDER)],
+                )
+            ],
+            {},
+            False,
+            r"No DERSetting found for [Ee]nd[Dd]evice [0-9]+",
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                )
+            ],
+            {},
+            False,
+            r"No DERSetting found for [Ee]nd[Dd]evice [0-9]+",
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
+            False,
+            r"doeModesEnabled_set.* minimum flag .* check hi.* failed",
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled_set": evaluator.ResolvedParam("03")},
+            False,
+            r"modesEnabled_set.* minimum flag .* check hi.* failed",
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
+            False,
+            r"doeModesEnabled_unset.* minimum flag .* check lo.* failed",
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesEnabled_unset": evaluator.ResolvedParam("03")},
+            False,
+            r"modesEnabled_unset.* minimum flag .* check lo.* failed",
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
+                        )
+                    ],
+                )
+            ],
+            {
+                "setMaxVA": evaluator.ResolvedParam(
+                    False,
+                    variable_expressions.Expression(
+                        variable_expressions.OperationType.EQ,
+                        variable_expressions.NamedVariable(
+                            variable_expressions.NamedVariableType.DERSETTING_SET_MAX_VA
+                        ),
+                        variable_expressions.Constant(54321),
+                    ),
+                )
+            },
+            False,
+            r"setMaxVA (must|MUST) satisfy (expression)?.*setMaxVA ?== ?54321.*currently set as[: ]{1} ?12345",
+        ),  # Expression boolean not met
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
+                        )
+                    ],
+                )
+            ],
+            {
+                "setMaxVA": evaluator.ResolvedParam(
+                    False,
+                    None,
+                )
+            },
+            False,
+            r"setMaxVA (MUST|must).* unset.* currently.*:? 12345",
+        ),  # Set boolean not met
+    ],
+)
+@pytest.mark.anyio
+async def test_check_der_settings_contents_error_messages_meaningful(
+    pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
+):
+    async with generate_async_session(pg_base_config) as session:
+        session.add_all(existing_sites)
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await check_der_settings_contents(session, resolved_params)
+        assert_check_result(result, expected)
+        assert result.description is not None
+        assert (
+            re.search(msg_regex, result.description) is not None
+        ), f"'{msg_regex}' not found in '{result.description}'"
+
+
+@pytest.mark.parametrize(
+    "existing_sites, resolved_params, expected, msg_regex",
+    [
+        ([], {}, False, r"[Nn]o [Ee]nd ?[Dd]evice is currently registered"),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(SiteDER, site_der_setting=generate_class_instance(SiteDERSetting))
+                    ],
+                )
+            ],
+            {},
+            False,
+            r"[Nn]o DERCapability found for [Ee]nd ?[Dd]evice [0-9]+",
+        ),  # Is setting DERSetting not DERCapability
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[generate_class_instance(SiteDER)],
+                )
+            ],
+            {},
+            False,
+            r"[Nn]o DERCapability found for [Ee]nd ?[Dd]evice [0-9]+",
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                )
+            ],
+            {},
+            False,
+            r"[Nn]o DERCapability found for [Ee]nd ?[Dd]evice [0-9]+",
+        ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported_set": evaluator.ResolvedParam("03")},
+            False,
+            r"doeModesSupported_set.* minimum flag .* check hi.* failed",
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported_set": evaluator.ResolvedParam("03")},
+            False,
+            r"modesSupported_set.* minimum flag .* check hi.* failed",
+        ),  # Bit flag 1 not set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
+            False,
+            r"doeModesSupported_unset.* minimum flag .* check lo.* failed",
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
+                        )
+                    ],
+                )
+            ],
+            {"modesSupported_unset": evaluator.ResolvedParam("03")},
+            False,
+            r"modesSupported_unset.* minimum flag .* check lo.* failed",
+        ),  # Bit flag 1 set on actual value
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
+                        )
+                    ],
+                )
+            ],
+            {
+                "rtgMaxVA": evaluator.ResolvedParam(
+                    False,
+                    variable_expressions.Expression(
+                        variable_expressions.OperationType.EQ,
+                        variable_expressions.NamedVariable(
+                            variable_expressions.NamedVariableType.DERCAPABILITY_RTG_MAX_VA
+                        ),
+                        variable_expressions.Constant(54321),
+                    ),
+                )
+            },
+            False,
+            r"rtgMaxVA (must|MUST) satisfy (expression)?.*rtgMaxVA ?== ?54321.*currently set as[: ]{1} ?12345",
+        ),  # Expression boolean not met
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
+                        )
+                    ],
+                )
+            ],
+            {
+                "rtgMaxVA": evaluator.ResolvedParam(
+                    False,
+                    None,
+                )
+            },
+            False,
+            r"rtgMaxVA (MUST|must).* unset.* currently.*:? 12345",
+        ),  # Set boolean not met
+    ],
+)
+@pytest.mark.anyio
+async def test_check_der_capability_contents_error_messages_meaningful(
+    pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
+):
+    async with generate_async_session(pg_base_config) as session:
+        session.add_all(existing_sites)
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await check_der_capability_contents(session, resolved_params)
+        assert_check_result(result, expected)
+        assert result.description is not None
+        assert (
+            re.search(msg_regex, result.description) is not None
+        ), f"'{msg_regex}' not found in '{result.description}'"

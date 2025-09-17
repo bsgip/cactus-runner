@@ -10,9 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.evaluator import (
-    resolve_variable_expressions_from_parameters,
-)
+from cactus_runner.app import evaluator
 from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -118,15 +116,17 @@ async def is_listener_triggerable(
         if HTTPMethod(expected_method_string) != trigger.client_request.method:
             return False
 
-        resolved_params = await resolve_variable_expressions_from_parameters(session, listener.event.parameters)
-        endpoint = resolved_params.get("endpoint", "")
-        serve_request_first = resolved_params.get("serve_request_first", False)
+        resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
+            session, listener.event.parameters
+        )
+        endpoint = resolved_params.get("endpoint", evaluator.ResolvedParam(""))
+        serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
 
-        if not does_endpoint_match(trigger.client_request, endpoint):
+        if not does_endpoint_match(trigger.client_request, endpoint.value):
             return False
 
         # Make sure that we are listening to the correct before/after serving event
-        if serve_request_first:
+        if serve_request_first.value:
             return trigger.type == EventTriggerType.CLIENT_REQUEST_AFTER
         else:
             return trigger.type == EventTriggerType.CLIENT_REQUEST_BEFORE
@@ -134,10 +134,12 @@ async def is_listener_triggerable(
     # If this listener is a wait event and the current trigger is time based
     if listener.event.type == "wait" and trigger.type == EventTriggerType.TIME:
 
-        resolved_params = await resolve_variable_expressions_from_parameters(session, listener.event.parameters)
-        duration_seconds = resolved_params.get("duration_seconds", 0)
+        resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
+            session, listener.event.parameters
+        )
+        duration_seconds = resolved_params.get("duration_seconds", evaluator.ResolvedParam(0))
 
-        return (trigger.time - listener.enabled_time).seconds >= duration_seconds
+        return (trigger.time - listener.enabled_time).seconds >= duration_seconds.value
 
     # This event type / trigger doesn't match
     return False

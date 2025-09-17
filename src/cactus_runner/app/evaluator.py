@@ -1,5 +1,7 @@
 from typing import Any
 
+import dataclasses
+
 from cactus_runner.app import resolvers
 
 from cactus_test_definitions.variable_expressions import (
@@ -8,9 +10,17 @@ from cactus_test_definitions.variable_expressions import (
     NamedVariable,
     NamedVariableType,
     OperationType,
+    BaseExpression,
 )
 from cactus_test_definitions.errors import UnresolvableVariableError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@dataclasses.dataclass
+class ResolvedParam:
+    """A dataclass for holding all metadata related to a resolved parameter"""
+    value: Any
+    original_expression: BaseExpression | None = None
 
 
 def is_resolvable_variable(v: Any) -> bool:
@@ -93,18 +103,21 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
 
 async def resolve_variable_expressions_from_parameters(
     session: AsyncSession, parameters: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, ResolvedParam]:
     """Iterates parameters, finding any resolvable variables and then calling resolve_variable on it.
 
     parameters will NOT be mutated, a cloned set of "resolved" parameters (shallow copy) will be returned.
 
     raises UnresolvableVariableError on failure"""
 
-    output_parameters: dict[str, Any] = {}
+    output_parameters: dict[str, ResolvedParam] = {}
     for k, v in parameters.items():
         if is_resolvable_variable(v):
-            output_parameters[k] = await resolve_variable(session, v)
+            output_parameters[k] = ResolvedParam(
+                value=await resolve_variable(session, v),
+                original_expression=v
+            )
         else:
-            output_parameters[k] = v
+            output_parameters[k] = ResolvedParam(value=v)
 
     return output_parameters

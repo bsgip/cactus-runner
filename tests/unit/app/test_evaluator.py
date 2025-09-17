@@ -169,9 +169,9 @@ async def test_resolve_variable_expressions_from_parameters(
     for k, input_val in input_dict.items():
         assert k in actual_dict
         if k in variable_keys:
-            assert actual_dict[k] is MOCK_RESOLVED_VALUE, "Resolved variables should be... resolved"
+            assert actual_dict[k].value is MOCK_RESOLVED_VALUE, "Resolved variables should be... resolved"
         else:
-            assert actual_dict[k] is input_val, "All other variables/params should be shallow copied across"
+            assert actual_dict[k].value is input_val, "All other variables/params should be shallow copied across"
 
     assert_mock_session(mock_session)
     assert mock_resolve_variable.call_count == len(variable_keys)

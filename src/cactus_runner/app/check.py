@@ -9,6 +9,7 @@ import pydantic
 import pydantic.alias_generators
 import pydantic.fields
 from cactus_test_definitions.client import Check
+from cactus_test_definitions import variable_expressions
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
@@ -35,6 +36,7 @@ from cactus_runner.app.envoy_common import (
 )
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
+    ResolvedParam,
 )
 from cactus_runner.models import ActiveTestProcedure, ClientCertificateType
 
@@ -274,6 +276,50 @@ async def check_end_device_contents(
     return CheckResult(True, None)
 
 
+def do_field_boolean_expression_evaluated_check(
+    soft_checker: SoftChecker,
+    db_entity: SiteDERSetting | SiteDERRating,
+    field: pydantic.fields.FieldInfo,
+    original_expression: variable_expressions.BaseExpression,
+) -> None:
+    """Checks that a boolean expression is appropriately evaluated for a field within a specified database entity.
+
+    Depends on the type annotation having a SiteReadingTypeProperty ot allow the mapping of field to a specific property
+    in db_entity.
+
+    Args:
+        soft_checker: Object for holding errors from the check
+        db_entity: The object whose properties are interrogated
+        field: The field info with Annotated metadata containing a SiteReadingTypeProperty. If not metadata - no check
+        original_expression: The expression that the evaluation occurred on
+    """
+    if not field.metadata:
+        # If we don't have metadata - nothing we can check
+        return
+
+    property: SiteReadingTypeProperty | None = None
+    for m in field.metadata:
+        if isinstance(m, SiteReadingTypeProperty):
+            property = m
+            break
+
+    if property is None:
+        # If we don't have metadata - nothing we can check
+        return
+
+    actual_value = getattr(db_entity, property.name, None)
+    if actual_value is None:
+        soft_checker.add(
+            f"{field.alias} must satisfy expression '{original_expression.expression_representation()}' "
+            "but is currently not set"
+        )
+    else:
+        soft_checker.add(
+            f"{field.alias} must satisfy expression '{original_expression.expression_representation()}' "
+            f"but is currently set as: {actual_value}"
+        )
+
+
 def do_field_exists_check(
     soft_checker: SoftChecker,
     db_entity: SiteDERSetting | SiteDERRating,
@@ -304,12 +350,14 @@ def do_field_exists_check(
 
     actual_value = getattr(db_entity, property.name, None)
     if expected_to_be_set and actual_value is None:
-        soft_checker.add(f"{field.alias} MUST be set but is currently missing.")
+        soft_checker.add(f"{field.alias} MUST be set but is currently missing")
     elif not expected_to_be_set and actual_value is not None:
-        soft_checker.add(f"{field.alias} MUST be unset but is currently specified as: {actual_value}.")
+        soft_checker.add(f"{field.alias} MUST be unset but is currently specified as: {actual_value}")
 
 
-async def check_der_settings_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_der_settings_contents(
+    session: AsyncSession, resolved_parameters: dict[str, ResolvedParam]
+) -> CheckResult:
     """Implements the der-settings-contents check
 
     Returns pass if DERSettings has been submitted for the active site"""
@@ -326,7 +374,7 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
 
     # Validate and return model instance
-    params = ParamsDERSettingsContents.model_validate(resolved_parameters)
+    params = ParamsDERSettingsContents.model_validate({k: v.value for k, v in resolved_parameters.items()})
 
     # Create soft checker for parameter checks
     soft_checker = SoftChecker()
@@ -334,6 +382,7 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
     # Perform parameter checks
     for k in params.model_fields_set:
         raw_value: Any = getattr(params, k)
+        field = params.__pydantic_fields__[k]
         if k == "set_grad_w" and der_settings.grad_w != params.set_grad_w:
             soft_checker.add(f"DERSetting.setGradW {der_settings.grad_w} doesn't match expected {params.set_grad_w}")
         elif k in ["doe_modes_enabled_set", "modes_enabled_set"]:
@@ -348,14 +397,24 @@ async def check_der_settings_contents(session: AsyncSession, resolved_parameters
             if (getattr(der_settings, k.rstrip("_unset")) & params_val) != 0:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERSetting.{field.alias} minimum flag setting check lo (==0) failed")
+        elif (
+            raw_value is False
+            and field.alias is not None
+            and resolved_parameters.get(field.alias) is not None
+            and (ogl_exp := resolved_parameters[field.alias].original_expression) is not None
+        ):
+            # A boolean expression was evaluated for this field and potentially failed
+            do_field_boolean_expression_evaluated_check(soft_checker, der_settings, field, ogl_exp)
         elif isinstance(raw_value, bool):
-            field = params.__pydantic_fields__[k]
+            # A set/unset check 
             do_field_exists_check(soft_checker, der_settings, field, raw_value)
 
     return soft_checker.finalize()
 
 
-async def check_der_capability_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_der_capability_contents(
+    session: AsyncSession, resolved_parameters: dict[str, ResolvedParam]
+) -> CheckResult:
     """Implements the der-capability-contents check
 
     Returns pass if DERCapability has been submitted for the active site"""
@@ -372,7 +431,7 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
         return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}.")
 
     # Validate and return model instance
-    params = ParamsDERCapabilityContents.model_validate(resolved_parameters)
+    params = ParamsDERCapabilityContents.model_validate({k: v.value for k, v in resolved_parameters.items()})
 
     # Create soft checker for parameter checks
     soft_checker = SoftChecker()
@@ -380,6 +439,7 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
     # Perform parameter checks
     for k in params.model_fields_set:
         raw_value: Any = getattr(params, k)
+        field = params.__pydantic_fields__[k]
         if k in ["doe_modes_supported_set", "modes_supported_set"]:
             # Bitwise-and checks
             params_val = int(raw_value, 16)
@@ -393,8 +453,15 @@ async def check_der_capability_contents(session: AsyncSession, resolved_paramete
             if (getattr(der_rating, k.rstrip("_unset")) & params_val) != 0:
                 field = params.__pydantic_fields__[k]
                 soft_checker.add(f"DERCapability.{field.alias} minimum flag setting check lo (==0) failed")
+        elif (
+            raw_value is False
+            and field.alias is not None
+            and resolved_parameters.get(field.alias) is not None
+            and (ogl_exp := resolved_parameters[field.alias].original_expression) is not None
+        ):
+            # A boolean expression was evaluated for this field and failed
+            do_field_boolean_expression_evaluated_check(soft_checker, der_rating, field, ogl_exp)
         elif isinstance(raw_value, bool):
-            field = params.__pydantic_fields__[k]
             do_field_exists_check(soft_checker, der_rating, field, raw_value)
 
     return soft_checker.finalize()
@@ -925,7 +992,8 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
         UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
         FailedCheckError: Raised if this function encounters an exception while running the check.
     """
-    resolved_parameters = await resolve_variable_expressions_from_parameters(session, check.parameters)
+    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(session, check.parameters)
+    resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen
     try:
@@ -938,10 +1006,10 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
                 check_result = await check_end_device_contents(active_test_procedure, session, resolved_parameters)
 
             case "der-settings-contents":
-                check_result = await check_der_settings_contents(session, resolved_parameters)
+                check_result = await check_der_settings_contents(session, resolved_with_metadata_parameters)
 
             case "der-capability-contents":
-                check_result = await check_der_capability_contents(session, resolved_parameters)
+                check_result = await check_der_capability_contents(session, resolved_with_metadata_parameters)
 
             case "der-status-contents":
                 check_result = await check_der_status_contents(session, resolved_parameters)
