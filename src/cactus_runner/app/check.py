@@ -8,8 +8,8 @@ from typing import Annotated, Any, Iterable, Optional, Sequence
 import pydantic
 import pydantic.alias_generators
 import pydantic.fields
-from cactus_test_definitions.client import Check
 from cactus_test_definitions import variable_expressions
+from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
@@ -35,8 +35,8 @@ from cactus_runner.app.envoy_common import (
     get_csip_aus_site_reading_types,
 )
 from cactus_runner.app.evaluator import (
-    resolve_variable_expressions_from_parameters,
     ResolvedParam,
+    resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.models import ActiveTestProcedure, ClientCertificateType
 
@@ -851,7 +851,7 @@ async def check_subscription_contents(resolved_parameters: dict[str, Any], sessi
 
     # Decode the href so we know what to look for in the DB
     try:
-        resource_type, _, resource_id = SubscriptionMapper.parse_resource_href(subscribed_resource)
+        resource_type, scoped_site_id, resource_id = SubscriptionMapper.parse_resource_href(subscribed_resource)
     except InvalidMappingError as exc:
         logger.error(f"check_subscription_contents: Caught InvalidMappingError for {subscribed_resource}", exc_info=exc)
         return CheckResult(False, f"Unable to interpret resource {subscribed_resource}: {exc.message}")
@@ -860,7 +860,7 @@ async def check_subscription_contents(resolved_parameters: dict[str, Any], sessi
         await session.execute(
             select(Subscription).where(
                 (Subscription.aggregator_id == active_site.aggregator_id)
-                & (Subscription.scoped_site_id == active_site.site_id)
+                & (Subscription.scoped_site_id == scoped_site_id)
                 & (Subscription.resource_type == resource_type)
                 & (Subscription.resource_id == resource_id)
             )

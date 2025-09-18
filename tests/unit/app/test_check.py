@@ -1928,8 +1928,39 @@ async def test_check_subscription_contents_success(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        subs = (await session.execute(select(Subscription))).scalars().all()
-        print(subs)
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, True)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_success_unscoped(pg_base_config):
+    """check_subscription_contents should succeed if there is an unscoped subscription - eg to /edev"""
+
+    resolved_params = {"subscribed_resource": "/edev"}
+
+    # Fill up the DB with subscriptions
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
+        session.add(agg2)
+
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        session.add(site1)
+        await session.flush()
+
+        # Should match
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=202,
+                resource_type=SubscriptionResource.SITE,
+                resource_id=None,
+                aggregator=agg1,
+                scoped_site_id=None,
+            )
+        )
+
+        await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
         actual = await check_subscription_contents(resolved_params, session)
