@@ -12,7 +12,7 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from envoy.server.model.site import Site
+from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app.database import remove_database_connection
@@ -42,7 +42,7 @@ URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
     "test_procedure_id, csip_aus_version, sub_domain, aggregator_cert, device_cert, expect_immediate_start",
     [
         (TestProcedureId.ALL_01, CSIPAusVersion.BETA_1_3_STORAGE, None, RAW_CERT_1, None, True),
-        (TestProcedureId.ALL_06, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2, False),
+        (TestProcedureId.GEN_01, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2, False),
     ],
 )
 @pytest.mark.slow
@@ -75,7 +75,15 @@ async def test_client_interactions(
     # matter)
     async with generate_async_session(pg_base_config) as session:
         agg_id = 1 if aggregator_cert is not None else 0
-        session.add(generate_class_instance(Site, aggregator_id=agg_id, site_id=None))
+        new_site = generate_class_instance(Site, aggregator_id=agg_id, site_id=None)
+        session.add(new_site)
+
+        new_der = generate_class_instance(SiteDER, site=new_site)
+        session.add(new_der)
+
+        new_der_settings = generate_class_instance(SiteDERSetting, site_der=new_der, max_w_multiplier=0)
+        session.add(new_der_settings)
+
         await session.commit()
 
     # Interrogate start response (if it's an immediate start - you shouldn't be able to start it - it should be started)
