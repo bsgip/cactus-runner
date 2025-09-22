@@ -294,7 +294,7 @@ async def action_register_end_device(
         and aggregator_lfdi is not None
         and aggregator_sfdi is not None
     ):
-        lfdi = aggregator_lfdi[0:32] + f"{active_test_procedure.pen:08X}"
+        lfdi = aggregator_lfdi[0:32] + f"{active_test_procedure.pen:08}"
         sfdi = aggregator_sfdi
     else:
         lfdi = active_test_procedure.client_lfdi

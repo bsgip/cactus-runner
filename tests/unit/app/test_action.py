@@ -626,14 +626,14 @@ async def test_action_register_aggregator_end_device_device_cert(
             1234,
             "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
             123,
-            "3E4F45AB31EDFE5B67E343E5E4562E31000004D2",
+            "3E4F45AB31EDFE5B67E343E5E4562E3100001234",
             123,
         ),
         (
-            2684359314,
+            99999999,
             "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
             16726121139,
-            "3E4F45AB31EDFE5B67E343E5E4562E31A0001292",
+            "3E4F45AB31EDFE5B67E343E5E4562E3199999999",
             16726121139,
         ),
         (
