@@ -9,8 +9,7 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions.client import Event
 
-from cactus_runner.app import event
-from cactus_runner.app import evaluator
+from cactus_runner.app import evaluator, event
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 
 
@@ -130,6 +129,18 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
             False,  # This was enabled after the event trigger (negative time)
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 5, 5, tzinfo=timezone.utc),
+            ),
+            False,  # This was enabled shortly after the event trigger (negative time)
         ),
         (
             event.EventTrigger(

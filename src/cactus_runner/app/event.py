@@ -7,10 +7,10 @@ from http import HTTPMethod
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app import evaluator
 from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ async def is_listener_triggerable(
         )
         duration_seconds = resolved_params.get("duration_seconds", evaluator.ResolvedParam(0))
 
-        return (trigger.time - listener.enabled_time).seconds >= duration_seconds.value
+        return (trigger.time - listener.enabled_time).total_seconds() >= duration_seconds.value
 
     # This event type / trigger doesn't match
     return False
