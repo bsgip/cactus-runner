@@ -19,7 +19,7 @@ def runner_status_fixture():
         timestamp_initialise=datetime(2022, 4, 6, tzinfo=timezone.utc),
         timestamp_start=datetime(2022, 4, 7, tzinfo=timezone.utc),
         log_envoy="log for\nenvoy",
-        status_summary="status summery here",
+        status_summary="status summary here",
         last_client_interaction=ClientInteraction(
             interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(timezone.utc)
         ),

@@ -5,7 +5,15 @@ import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.client import TestProcedureConfig
-from envoy.server.model import Site, SiteDER, SiteDERSetting, SiteReadingType
+from envoy.server.model import (
+    Site,
+    SiteDER,
+    SiteDERSetting,
+    SiteReadingType,
+    SiteDERRating,
+    SiteDERAvailability,
+    SiteDERStatus,
+)
 from envoy_schema.server.schema.sep2.types import DeviceCategory
 
 from cactus_runner.app.check import CheckResult
@@ -189,6 +197,55 @@ def test_pdf_report_as_bytes_with_timeline(has_set_max_w):
         reading_counts=reading_counts,
         sites=sites,
         timeline=timeline,
+    )
+
+    # Assert - we are mainly checking that no uncaught exceptions are raised generating the pdf report
+    assert len(report_bytes) > 0
+
+
+def test_pdf_report_unset_params():
+
+    # Arrange
+    definitions = TestProcedureConfig.from_resource()
+    test_name = "ALL-01"
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        name=test_name,
+        definition=definitions.test_procedures[test_name],
+        step_status={"1": StepStatus.PENDING},
+        finished_zip_data=None,
+        run_id=None,
+    )
+    runner_state = RunnerState(
+        active_test_procedure=active_test_procedure,
+        request_history=[],
+    )
+
+    check_results = {}
+    readings = {}
+    reading_counts = {}
+    site_ders = [
+        generate_class_instance(
+            SiteDER,
+            site_der_setting=generate_class_instance(
+                SiteDERSetting, max_w_value=6, max_w_multiplier=3, optional_is_none=True
+            ),
+            site_der_rating=generate_class_instance(SiteDERRating, optional_is_none=True),
+            site_der_availability=generate_class_instance(SiteDERAvailability, optional_is_none=True),
+            site_der_status=generate_class_instance(SiteDERStatus, optional_is_none=True),
+        )
+    ]
+
+    sites = [generate_class_instance(Site, site_ders=site_ders)]
+
+    # Act
+    report_bytes = pdf_report_as_bytes(
+        runner_state=runner_state,
+        check_results=check_results,
+        readings=readings,
+        reading_counts=reading_counts,
+        sites=sites,
+        timeline=None,
     )
 
     # Assert - we are mainly checking that no uncaught exceptions are raised generating the pdf report

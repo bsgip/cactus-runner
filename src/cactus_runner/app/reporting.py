@@ -673,6 +673,10 @@ def generate_communications_section(
     return elements
 
 
+def get_non_null_attributes(obj: object, attributes_to_include: list[str]) -> list[str]:
+    return [attribute for attribute in attributes_to_include if getattr(obj, attribute) is not None]
+
+
 def generate_der_table_data(obj: object, attributes_to_include: list[str]) -> list:
     def attribute_short_form(attribute: str) -> str:
         suffix = "_value"
@@ -691,6 +695,20 @@ def generate_der_table_data(obj: object, attributes_to_include: list[str]) -> li
         [attribute_short_form(attribute), attribute_value(obj, attribute)] for attribute in attributes_to_include
     ]
     return table_data
+
+
+def make_null_attributes_paragraph(attributes_to_include: list[str], non_null_attributes: list[str]) -> Paragraph:
+    null_attributes = [attr.strip() for attr in attributes_to_include if attr not in non_null_attributes]
+
+    paragraph = Paragraph(
+        f"Optional elements which have not been set: {', '.join(null_attributes)}",
+        style=ParagraphStyle(
+            name="TableFootNote",
+            fontSize=6,
+            leading=6,  # keeps line spacing tight (single spaced)
+        ),
+    )
+    return paragraph
 
 
 def generate_site_der_rating_table(site_der_rating: SiteDERRating, stylesheet: StyleSheet) -> list[Flowable]:
@@ -725,12 +743,15 @@ def generate_site_der_rating_table(site_der_rating: SiteDERRating, stylesheet: S
         "der_type",
         "doe_modes_supported",
     ]
-    table_data = generate_der_table_data(site_der_rating, attributes_to_include)
+    non_null_attributes = get_non_null_attributes(site_der_rating, attributes_to_include)
+    null_attributes_paragraph = make_null_attributes_paragraph(attributes_to_include, non_null_attributes)
+    table_data = generate_der_table_data(site_der_rating, non_null_attributes)
     table_data.insert(0, ["DER Rating", "Value"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.5, 0.5]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
+    elements.append(null_attributes_paragraph)
     elements.append(stylesheet.spacer)
     return elements
 
@@ -770,12 +791,15 @@ def generate_site_der_setting_table(site_der_setting: SiteDERSetting, stylesheet
         "v_ref_ofs_value",
         "doe_modes_enabled",
     ]
-    table_data = generate_der_table_data(site_der_setting, attributes_to_include)
+    non_null_attributes = get_non_null_attributes(site_der_setting, attributes_to_include)
+    null_attributes_paragraph = make_null_attributes_paragraph(attributes_to_include, non_null_attributes)
+    table_data = generate_der_table_data(site_der_setting, non_null_attributes)
     table_data.insert(0, ["DER Setting", "Value"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.5, 0.5]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
+    elements.append(null_attributes_paragraph)
     elements.append(stylesheet.spacer)
     return elements
 
@@ -794,12 +818,15 @@ def generate_site_der_availability_table(
         "estimated_var_avail_value",
         "estimated_w_avail_value",
     ]
-    table_data = generate_der_table_data(site_der_availability, attributes_to_include)
+    non_null_attributes = get_non_null_attributes(site_der_availability, attributes_to_include)
+    null_attributes_paragraph = make_null_attributes_paragraph(attributes_to_include, non_null_attributes)
+    table_data = generate_der_table_data(site_der_availability, non_null_attributes)
     table_data.insert(0, ["DER Availability", "Value"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.5, 0.5]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
+    elements.append(null_attributes_paragraph)
     elements.append(stylesheet.spacer)
     return elements
 
@@ -827,12 +854,15 @@ def generate_site_der_status_table(site_der_status: SiteDERStatus, stylesheet: S
         "storage_connect_status",
         "storage_connect_status_time",
     ]
-    table_data = generate_der_table_data(site_der_status, attributes_to_include)
+    non_null_attributes = get_non_null_attributes(site_der_status, attributes_to_include)
+    null_attributes_paragraph = make_null_attributes_paragraph(attributes_to_include, non_null_attributes)
+    table_data = generate_der_table_data(site_der_status, non_null_attributes)
     table_data.insert(0, ["DER Status", "Value"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.5, 0.5]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     elements.append(table)
+    elements.append(null_attributes_paragraph)
     elements.append(stylesheet.spacer)
     return elements
 
