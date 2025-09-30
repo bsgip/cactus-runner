@@ -651,7 +651,7 @@ def generate_requests_with_validation_errors_table(
         request_description = f"{str(req.method)} {req.path} {req.status}"
         validation_errors = "\n".join(req.body_xml_errors)
 
-        # Limit to a reason size the validation error information
+        # Limit to a reasonable size the validation error information
         if len(validation_errors) > stylesheet.max_cell_length_chars:
             validation_errors = validation_errors[: stylesheet.max_cell_length_chars] + stylesheet.truncation_marker
 
