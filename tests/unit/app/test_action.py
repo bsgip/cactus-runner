@@ -604,7 +604,7 @@ async def test_action_register_aggregator_end_device_device_cert(
         sites = (await session.execute(select(Site))).scalars().all()
         assert len(sites) == 1
         site_1 = sites[0]
-        assert site_1.lfdi == active_test_procedure.client_lfdi
+        assert site_1.lfdi == active_test_procedure.client_lfdi.upper(), "Always store the uppercase lfdi"
         assert site_1.sfdi == active_test_procedure.client_sfdi
         if pin is not None:
             assert site_1.registration_pin == pin
@@ -618,6 +618,13 @@ async def test_action_register_aggregator_end_device_device_cert(
         (
             0,
             "3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX",
+            16726121139,
+            "3E4F45AB31EDFE5B67E343E5E4562E3100000000",
+            16726121139,
+        ),
+        (
+            0,
+            "3e4f45ab31edfe5b67e343e5e4562e31xxxxxxxx",
             16726121139,
             "3E4F45AB31EDFE5B67E343E5E4562E3100000000",
             16726121139,
@@ -651,7 +658,7 @@ async def test_action_register_aggregator_end_device_agg_cert(
     pen: int,
     agg_lfdi: str | None,
     agg_sfdi: int | None,
-    expected_lfdi: int | None,
+    expected_lfdi: str | None,
     expected_sfdi: int | None,
 ):
     """Checks that an aggregator"""
@@ -682,9 +689,9 @@ async def test_action_register_aggregator_end_device_agg_cert(
         site_1 = sites[0]
 
         if expected_lfdi is None:
-            assert site_1.lfdi == active_test_procedure.client_lfdi
+            assert site_1.lfdi == active_test_procedure.client_lfdi.upper(), "Always expect uppercase LFDI"
         else:
-            assert site_1.lfdi == expected_lfdi
+            assert site_1.lfdi == expected_lfdi.upper(), "Always expect uppercase LFDI"
 
         if expected_sfdi is None:
             assert site_1.sfdi == active_test_procedure.client_sfdi

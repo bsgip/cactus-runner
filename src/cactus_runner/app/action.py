@@ -307,7 +307,7 @@ async def action_register_end_device(
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,
-            lfdi=lfdi,
+            lfdi=lfdi.upper(),
             sfdi=sfdi,
             device_category=0,
             registration_pin=registration_pin if registration_pin is not None else 1,
