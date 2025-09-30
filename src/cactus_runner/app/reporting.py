@@ -622,15 +622,22 @@ def generate_requests_with_errors_table(requests_with_errors: dict[int, RequestE
     data = [
         [
             i,
-            req.timestamp,
-            f"{str(req.method)} {req.path}",
-            f"{req.status.name.replace("_", " ").title()} ({req.status.value})",
+            req.timestamp.strftime("%Y-%m-%d %H:%M"),
+            f"{req.method} {req.path}",
+            f"{req.status.name.replace('_', ' ').title()} ({req.status.value})",
         ]
         for i, req in requests_with_errors.items()
     ]
 
     data.insert(0, ["#", "Time (UTC)", "Request", "Error Status"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.45, 0.2, 0.25]]
+
+    column_widths = [
+        int(0.07 * stylesheet.table_width),  # #
+        int(0.28 * stylesheet.table_width),  # Time
+        int(0.55 * stylesheet.table_width),  # Request
+        int(0.20 * stylesheet.table_width),  # Error Status
+    ]
+
     table = Table(data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     return table
