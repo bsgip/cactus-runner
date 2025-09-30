@@ -624,7 +624,7 @@ def def_ctrl(
                 def_ctrl(101, BASIS + timedelta(seconds=10), imp_watts=11, exp_watts=12, load_watts=13, gen_watts=14),
                 def_ctrl(
                     202,
-                    BASIS,
+                    BASIS + timedelta(seconds=5),
                     archive_time=BASIS + timedelta(seconds=10),
                     imp_watts=21,
                     exp_watts=None,
