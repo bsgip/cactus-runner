@@ -538,7 +538,7 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
     # Style the legend
     fig.update_layout(
         legend_title_text=None,
-        legend=dict(entrywidth=120, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.3),
+        legend=dict(entrywidth=200, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.3),
     )
 
     # Add horizontal bands delineating each stage
