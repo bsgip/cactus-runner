@@ -128,7 +128,7 @@ def test_reading_to_watts(srts, reading, expected):
                 ),
             ],
             0,
-        ),  # Active entities always take precedence
+        ),  # Active entities always take precedence over deleted archive records
         (
             [
                 generate_class_instance(
@@ -143,6 +143,48 @@ def test_reading_to_watts(srts, reading, expected):
             ],
             2,
         ),  # changed_time is tiebreaker
+        (
+            [
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc)
+                ),
+                generate_class_instance(
+                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                ),
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=303,
+                    deleted_time=None,
+                    changed_time=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                ),
+            ],
+            2,
+        ),  # Archive records take precedence
+        (
+            [
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=101,
+                    deleted_time=None,
+                    archive_time=datetime(2021, 1, 2, tzinfo=timezone.utc),  # highest archive time for tiebreak
+                ),
+                generate_class_instance(
+                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                ),
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=303,
+                    deleted_time=None,
+                    archive_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                ),
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=404,
+                    archive_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                ),
+            ],
+            0,
+        ),  # Archive time is tiebreaker on archive records
     ],
 )
 def test_highest_priority_entity(entities, expected_index):
@@ -335,19 +377,27 @@ def doe(
     start: datetime,
     duration: int,
     deleted_time: datetime | None = None,
+    archive_time: datetime | None = None,
     scg: int = 1,  # Site Control Group
     imp_watts: int | None = None,
     exp_watts: int | None = None,
     load_watts: int | None = None,
     gen_watts: int | None = None,
+    superseded: bool = False,
 ) -> DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope:
     """Utility function for reducing boilerplate"""
-    if deleted_time is None:
-        t = DynamicOperatingEnvelope
-        extra_kwargs = {}
-    else:
+
+    extra_kwargs = {}
+    t = DynamicOperatingEnvelope
+
+    if archive_time is not None:
         t = ArchiveDynamicOperatingEnvelope
-        extra_kwargs = {"deleted_time": deleted_time}
+        extra_kwargs = {"archive_time": archive_time}
+
+    if deleted_time is not None:
+        t = ArchiveDynamicOperatingEnvelope
+        if archive_time is None:
+            extra_kwargs = {"deleted_time": deleted_time, "archive_time": deleted_time}
 
     return generate_class_instance(
         t,
@@ -360,6 +410,7 @@ def doe(
         start_time=start,
         end_time=start + timedelta(seconds=duration),
         duration_seconds=duration,
+        superseded=superseded,
         **extra_kwargs,
     )
 
@@ -452,9 +503,49 @@ def doe(
                 [-44, -44],  # SCG 3
             ],
         ),  # Multiple control groups - mix of overlapping
+        (
+            [
+                doe(
+                    101,
+                    BASIS,
+                    60,
+                    imp_watts=11,
+                    exp_watts=21,
+                    load_watts=31,
+                    gen_watts=41,
+                    superseded=True,
+                ),  # This is the "updated" long DERControl
+                doe(
+                    101,
+                    BASIS,
+                    60,
+                    archive_time=BASIS + timedelta(seconds=10),
+                    imp_watts=21,
+                    exp_watts=22,
+                    load_watts=23,
+                    gen_watts=24,
+                    superseded=False,
+                ),  # This is the "archive" long DERControl - containing the original values
+                doe(
+                    202,
+                    BASIS + timedelta(seconds=10),
+                    20,
+                    deleted_time=BASIS + timedelta(seconds=20),
+                    imp_watts=31,
+                    exp_watts=32,
+                    load_watts=33,
+                    gen_watts=34,
+                    superseded=False,
+                ),  # This is the short DERControl that appeared, ran for a bit and then was cancelled
+            ],
+            BASIS,
+            10,
+            BASIS + timedelta(seconds=40),
+            [[21, 31, None, None], [-22, -32, None, None], [23, 33, None, None], [-24, -34, None, None]],
+        ),  # Long control that gets superseded by a short control that is cancelled partway through.
     ],
 )
-@mock.patch("cactus_runner.app.timeline.get_site_controls_active_deleted")
+@mock.patch("cactus_runner.app.timeline.get_site_controls_active_archived")
 @pytest.mark.asyncio
 async def test_generate_control_data_streams(
     mock_get_site_controls_active_deleted: mock.MagicMock, controls, start, interval, end, expected

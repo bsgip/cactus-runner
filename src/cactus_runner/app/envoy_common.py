@@ -162,10 +162,10 @@ async def get_sites(session: AsyncSession) -> Sequence[Site]:
     return response.scalars().all()
 
 
-async def get_site_controls_active_deleted(
+async def get_site_controls_active_archived(
     session: AsyncSession,
 ) -> list[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope]:
-    """Includes both active and deleted/cancelled SiteControls. Updates are NOT included."""
+    """Includes both active, deleted/cancelled and updated SiteControls."""
     site = await get_active_site(session)
     if not site:
         return []
@@ -183,10 +183,7 @@ async def get_site_controls_active_deleted(
     deleted_controls = (
         (
             await session.execute(
-                select(ArchiveDynamicOperatingEnvelope).where(
-                    (ArchiveDynamicOperatingEnvelope.site_id == site.site_id)
-                    & (ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None))
-                )
+                select(ArchiveDynamicOperatingEnvelope).where(ArchiveDynamicOperatingEnvelope.site_id == site.site_id)
             )
         )
         .scalars()

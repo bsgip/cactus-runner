@@ -24,7 +24,7 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_csip_aus_site_reading_types,
     get_reading_counts_grouped_by_reading_type,
-    get_site_controls_active_deleted,
+    get_site_controls_active_archived,
     get_site_defaults_with_archive,
     get_site_readings,
 )
@@ -479,16 +479,16 @@ async def test_get_site_defaults_with_archive(pg_base_config):
 
 
 @pytest.mark.anyio
-async def test_get_site_controls_active_deleted_empty_db(pg_empty_config):
+async def test_get_site_controls_active_archived_empty_db(pg_empty_config):
     async with generate_async_session(pg_empty_config) as session:
-        result = await get_site_controls_active_deleted(session)
+        result = await get_site_controls_active_archived(session)
         assert isinstance(result, list)
         assert len(result) == 0
 
 
 @pytest.mark.anyio
-async def test_get_site_controls_active_deleted(pg_base_config):
-    """Really simple test - can get_site_controls_active_deleted fetch all active/archive controls for a site"""
+async def test_get_site_controls_active_archived(pg_base_config):
+    """Really simple test - can get_site_controls_active_archived fetch all active/archive controls for a site"""
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
@@ -543,9 +543,9 @@ async def test_get_site_controls_active_deleted(pg_base_config):
 
     # Act / Assert
     async with generate_async_session(pg_base_config) as session:
-        result = await get_site_controls_active_deleted(session)
+        result = await get_site_controls_active_archived(session)
         assert isinstance(result, list)
-        assert len(result) == 4
+        assert len(result) == 5
 
         assert (
             len(
@@ -577,6 +577,18 @@ async def test_get_site_controls_active_deleted(pg_base_config):
                     filter(
                         lambda sc: isinstance(sc, DynamicOperatingEnvelope)
                         and sc.import_limit_active_watts == Decimal("3.33"),
+                        result,
+                    )
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda sc: isinstance(sc, ArchiveDynamicOperatingEnvelope)
+                        and sc.import_limit_active_watts == Decimal("4.44"),
                         result,
                     )
                 )

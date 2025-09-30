@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_csip_aus_site_reading_types,
-    get_site_controls_active_deleted,
+    get_site_controls_active_archived,
     get_site_defaults_with_archive,
     get_site_readings,
 )
@@ -87,33 +87,67 @@ def reading_to_watts(srts: Sequence[SiteReadingType], r: SiteReading) -> int:
     raise ValueError(f"Couldn't find SiteReadingType with ID {r.site_reading_type_id}")
 
 
+def entity_to_priority(entity: Any) -> int:
+    """this function will calculate the entity priority which follows these rules:
+
+    1) an ArchiveBase (deletion) descendent is ALWAYS lower priority when compared to other types.
+        * Tiebreaks are handled on changed_time (which should be present for all types we care about)
+    2) a "regular" non archived row
+        * Tiebreaks are handled on changed_time (which should be present for all types we care about)
+    3) an ArchiveBase (non deletion) descendent is highest priority ONLY from its start time to archive time (otherwise
+       it can be ignored)
+        * Tiebreaks here are done by taking the highest archive time"""
+    if isinstance(entity, ArchiveBase):
+        if entity.deleted_time is None:
+            return 3  # Archive records
+        else:
+            return 1  # Deleted records
+    else:
+        return 2  # normal record
+
+
 def highest_priority_entity(entities: set[Interval]) -> Any:
-    """this function will take the highest priority entity which follows these rules:
+    """this function will take the highest priority entity which follows these priorities:
 
-    1) an ArchiveBase descendent is ALWAYS lower priority when compared to non ArchiveBase descendent.
-    2) Tiebreaks are then evaluated on changed_time (present for all types we care about)
-
+    This priority mapping is done by entity_to_priority
     """
     highest_entity: Any | None = None
+    highest_priority: int = -1
 
     for e in entities:
         current_entity = e.data
-        if highest_entity is None:
-            # If this is the first thing we've seen - it's the highest priority so far
-            highest_entity = e.data
+        current_entity_priority = entity_to_priority(current_entity)
+        if current_entity_priority > highest_priority:
+            highest_entity = current_entity
+            highest_priority = current_entity_priority
             continue
 
-        is_highest_archive = isinstance(highest_entity, ArchiveBase)
-        is_current_archive = isinstance(current_entity, ArchiveBase)
-        if is_highest_archive and not is_current_archive:
-            # If current is the first non archive entity we've seen - it becomes the highest
-            highest_entity = current_entity
-        elif is_highest_archive is is_current_archive:
+        if current_entity_priority < highest_priority:
+            continue
+
+        # At this point - we've got something at the same priority - we need to tiebreak
+        if (
+            isinstance(current_entity, ArchiveBase)
+            and current_entity.deleted_time is None
+            and isinstance(highest_entity, ArchiveBase)
+            and current_entity.deleted_time is None
+        ):
+            # if we have two archive records (not deletion records) - Take the one with the higher archive time
+            if (
+                current_entity.archive_time
+                and highest_entity.archive_time
+                and current_entity.archive_time > highest_entity.archive_time
+            ):
+                highest_entity = current_entity
+                continue
+        else:
+            # For all other cases - we use changed time as the tiebreaker
             # Tiebreak on changed_time
             if getattr(current_entity, "changed_time", datetime.min) > getattr(
                 highest_entity, "changed_time", datetime.min
             ):
                 highest_entity = current_entity
+                continue
 
     if highest_entity is None:
         raise ValueError("entities is empty")
@@ -188,7 +222,7 @@ async def generate_control_data_streams(
     session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
 
-    all_controls = await get_site_controls_active_deleted(session)
+    all_controls = await get_site_controls_active_archived(session)
     site_control_group_ids: set[int] = set((c.site_control_group_id for c in all_controls))
     all_data_streams: list[TimelineDataStream] = []
 
@@ -200,6 +234,11 @@ async def generate_control_data_streams(
             if control.site_control_group_id != site_control_group_id:
                 continue
 
+            # Don't render any superseded controls - we will instead show the archive values for when it WASN'T
+            # superseded (if applicable)
+            if control.superseded:
+                continue
+
             end_time = control.start_time + timedelta(seconds=control.duration_seconds)
             if isinstance(control, ArchiveDynamicOperatingEnvelope):
                 # If this is a deleted control we use a slightly different interval - we only report on start time until
@@ -207,6 +246,13 @@ async def generate_control_data_streams(
                 if control.deleted_time is not None and control.deleted_time > control.start_time:
                     end_time = min(control.deleted_time, end_time)  # In case the control was deleted AFTER it finished
                     intervals.append(Interval(control.start_time, end_time, control))
+
+                # If this is an archive control (non deletion) we use a slightly different interval - we only report
+                # on start time until the archive time (the moment the values stopped being relevant)
+                if control.archive_time is not None and control.archive_time > control.start_time:
+                    end_time = min(control.archive_time, end_time)  # In case the control was archived AFTER it finished
+                    intervals.append(Interval(control.start_time, end_time, control))
+
             else:
                 # For regular controls - we can just take the start / end times as the time that's valid
                 intervals.append(Interval(control.start_time, end_time, control))
