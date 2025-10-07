@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import random
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -322,6 +323,12 @@ def test_pdf_report_unset_params():
 
 def test_pdf_report_char_overflow():
 
+    # Make a long char generator
+    words = """nuclear reactor burped electrons confused technician googled how turbine caffeine engineer duct taped
+     solar panel batteries achieved sentience demanding snacks retired grid operator stress eating donuts""".split()
+
+    long_description = " ".join(random.choices(words, k=80))
+
     # Arrange
     definitions = TestProcedureConfig.from_resource()
     test_name = "ALL-01"
@@ -355,12 +362,17 @@ def test_pdf_report_char_overflow():
 
     runner_state = RunnerState(
         active_test_procedure=active_test_procedure,
-        request_history=[generate_class_instance(RequestEntry) for _ in range(NUM_REQUESTS)],
+        request_history=[
+            generate_class_instance(RequestEntry, body_xml_errors=long_description) for _ in range(NUM_REQUESTS)
+        ],
         client_interactions=client_interactions,
     )
 
     NUM_CHECK_RESULTS = 3
-    check_results = {f"check{i}": generate_class_instance(CheckResult, passed=False) for i in range(NUM_CHECK_RESULTS)}
+    check_results = {
+        f"check{i}": generate_class_instance(CheckResult, description=long_description, passed=False)
+        for i in range(NUM_CHECK_RESULTS)
+    }
 
     NUM_READING_TYPES = 3
     sample_readings = pd.DataFrame({"scaled_value": [Decimal(1.0)], "time_period_start": [datetime.now(timezone.utc)]})
