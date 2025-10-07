@@ -397,13 +397,14 @@ def test_pdf_report_char_overflow():
     # Assert - we are mainly checking that no uncaught exceptions are raised generating the pdf report
     assert len(report_bytes) > 0
 
-    import tempfile
-    import uuid
-    import subprocess
+    # To run locally:
+    # import tempfile
+    # import uuid
+    # import subprocess
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False
-    ) as temp_file:
-        temp_file.write(report_bytes)
-        temp_file.flush()
-        subprocess.run(["xdg-open", temp_file.name])
+    # with tempfile.NamedTemporaryFile(
+    #     suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False
+    # ) as temp_file:
+    #     temp_file.write(report_bytes)
+    #     temp_file.flush()
+    #     subprocess.run(["xdg-open", temp_file.name])
