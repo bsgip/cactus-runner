@@ -607,7 +607,7 @@ async def do_check_readings_for_types(
                 (
                     f"No MirrorMeterReading has sufficient readings. {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s) checked."  # noqa: E501
                     f"Closest was MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} with {highest_found_count}/{minimum_count} readings."  # noqa: E501
-                    f"Total: {sum(count_by_srt_id.values())} readings were sent of correct uom, role flag, kind, and data_qualifier."  # noqa: E501
+                    f"Total: {sum(count_by_srt_id.values())} readings were sent of correct uom, role flag, kind, and data qualifier for this test."  # noqa: E501
                 ),
             )
 
