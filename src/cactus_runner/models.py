@@ -197,6 +197,19 @@ class TimelineStatus(JSONWizard):
 
 
 @dataclass
+class EndDeviceMetadata(JSONWizard):  # All optional as a device may not always be registered
+    edevid: int | None = None  # Should always be 1, but nice to check
+    lfdi: str | None = None
+    sfdi: int | None = None
+    nmi: str | None = None
+    aggregator_id: int | None = None
+    set_max_w: int | None = None
+    doe_modes_enabled: int | None = None
+    device_category: int | None = None
+    timezone_id: str | None = None
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise
@@ -211,5 +224,5 @@ class RunnerStatus(JSONWizard):
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
     step_status: dict[str, StepStatus] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)
-    set_max_w: int | None = None  # Snapshot of the current MaxW DERSetting value of the active end device (if any)
     timeline: TimelineStatus | None = None  # Streaming timeline data snapshot
+    end_device_metadata: EndDeviceMetadata | None = None  # Snapshot of current active end device (if any)

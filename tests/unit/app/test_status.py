@@ -121,6 +121,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         assert runner_status.timeline is None or runner_status.timeline.set_max_w is None
     else:
         assert runner_status.timeline.set_max_w == expected_max_w
+    assert runner_status.end_device_metadata is None
 
     # If we have timeline data - ensure it's set as expected. Otherwise it should not be there at all
     if not isinstance(timeline_streams_result, type):
@@ -156,6 +157,84 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=expected_step_status)
     assert_mock_session(mock_session)
+
+
+@pytest.mark.anyio
+async def test_get_active_runner_status_with_end_device_metadata(mocker):
+    """Test that EndDeviceMetadata is correctly populated from active site"""
+    # Arrange
+    mock_session = create_mock_session()
+    mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
+    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
+    mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
+
+    mock_get_active_site = mocker.patch("cactus_runner.app.status.get_active_site")
+
+    # Mock site with metadata
+    mock_site_der_setting = Mock(doe_modes_enabled=7)
+    mock_site_der = Mock(site_der_setting=mock_site_der_setting)
+    mock_site = Mock(
+        site_id=42,
+        lfdi="aabbccddeeff00112233445566778899aabbccdd",
+        sfdi=1234567890,
+        nmi="1234567890A",
+        aggregator_id=10,
+        device_category=1,
+        timezone_id="Australia/Sydney",
+        site_ders=[mock_site_der],
+    )
+    mock_get_active_site.return_value = mock_site
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        name="TEST_NAME",
+        step_status={},
+        csip_aus_version=CSIPAusVersion.RELEASE_1_2,
+        definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
+        listeners=[],
+        started_at=None,
+        finished_zip_data=None,
+    )
+
+    # Act
+    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+
+    # Assert
+    metadata = runner_status.end_device_metadata
+    assert metadata.edevid == 42
+    assert metadata.lfdi == "aabbccddeeff00112233445566778899aabbccdd"
+    assert metadata.sfdi == 1234567890
+    assert metadata.nmi == "1234567890A"
+    assert metadata.aggregator_id == 10
+    assert metadata.set_max_w == 5000
+    assert metadata.doe_modes_enabled == 7
+    assert metadata.device_category == 1
+    assert metadata.timezone_id == "Australia/Sydney"
+
+
+@pytest.mark.anyio
+async def test_get_active_runner_status_end_device_metadata_handles_errors(mocker):
+    """Test that EndDeviceMetadata is None when get_active_site raises an exception"""
+    mock_session = create_mock_session()
+    mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
+    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
+    mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
+    mocker.patch("cactus_runner.app.status.get_active_site", side_effect=Exception("DB error"))
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        name="TEST_NAME",
+        step_status={},
+        csip_aus_version=CSIPAusVersion.RELEASE_1_2,
+        definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
+        listeners=[],
+        started_at=None,
+        finished_zip_data=None,
+    )
+
+    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+
+    assert runner_status.end_device_metadata is None
 
 
 def test_get_runner_status(example_client_interaction: ClientInteraction):

@@ -2,8 +2,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from envoy.server.model.site import Site
 from cactus_runner.app.check import run_check
+from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
@@ -12,6 +13,7 @@ from cactus_runner.models import (
     ClientInteraction,
     CriteriaEntry,
     DataStreamPoint,
+    EndDeviceMetadata,
     PreconditionCheckEntry,
     RequestEntry,
     RunnerStatus,
@@ -130,6 +132,7 @@ async def get_active_runner_status(
     step_status = active_test_procedure.step_status
 
     # If there is a set max w available - return it - otherwise client likely has registered anything yet
+    # This is used by both timeline and EndDeviceMetadata classes
     try:
         set_max_w = int(await resolve_named_variable_der_setting_max_w(session))
     except Exception:
@@ -151,6 +154,33 @@ async def get_active_runner_status(
         logger.error("Error generating timeline", exc_info=exc)
         timeline = None
 
+    # Populate EndDeviceMetadata from active site
+    end_device_metadata = None
+    try:
+        active_site: Site | None = await get_active_site(session)
+        if active_site is not None:
+            # Get doe_modes_enabled from the first site_der if available
+            doe_modes_enabled = None
+            if active_site.site_ders:
+                first_site_der = active_site.site_ders[0]
+                if first_site_der.site_der_setting is not None:
+                    doe_modes_enabled = first_site_der.site_der_setting.doe_modes_enabled
+
+            end_device_metadata = EndDeviceMetadata(
+                edevid=active_site.site_id,
+                lfdi=active_site.lfdi,
+                sfdi=active_site.sfdi,
+                nmi=active_site.nmi,
+                aggregator_id=active_site.aggregator_id,
+                set_max_w=set_max_w,
+                doe_modes_enabled=doe_modes_enabled,
+                device_category=active_site.device_category,
+                timezone_id=active_site.timezone_id,
+            )
+    except Exception as exc:
+        logger.error("Error getting end device metadata", exc_info=exc)
+        end_device_metadata = None
+
     return RunnerStatus(
         timestamp_status=datetime.now(tz=timezone.utc),
         timestamp_initialise=active_test_procedure.initialised_at,
@@ -166,6 +196,7 @@ async def get_active_runner_status(
         step_status=step_status,
         request_history=request_history,
         timeline=timeline,
+        end_device_metadata=end_device_metadata,
     )
 
 
