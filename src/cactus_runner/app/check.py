@@ -604,7 +604,11 @@ async def do_check_readings_for_types(
         else:
             return CheckResult(
                 False,
-                f"Highest Reading count was {highest_found_count} / {minimum_count} from {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s).",  # noqa: E501
+                (
+                    f"No MirrorMeterReading has sufficient readings. {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s) checked."  # noqa: E501
+                    f"Closest was MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} with {highest_found_count}/{minimum_count} readings."  # noqa: E501
+                    f"Total: {sum(count_by_srt_id.values())} readings were sent of correct uom, role flag, kind, and data qualifier for this test."  # noqa: E501
+                ),
             )
 
     return CheckResult(True, None)
@@ -633,11 +637,11 @@ async def do_check_readings_on_minute_boundary(
         if aligned_count != total_count:
             return CheckResult(
                 False,
-                f"Only {aligned_count}/{total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoints(s) and {total_mmrs} MirrorMeterReadings(s).",  # noqa: E501
+                f"Only {aligned_count}/{total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s). Seconds and milliseconds fields must be 0.",  # noqa: E501
             )
         return CheckResult(
             True,
-            f"All {total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoints(s) and {total_mmrs} MirrorMeterReadings(s).",  # noqa: E501
+            f"All {total_count} reading(s) align on minute boundaries from {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s).",  # noqa: E501
         )
 
     return CheckResult(True, None)

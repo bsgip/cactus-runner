@@ -21,8 +21,8 @@ classifiers = [
 ]
 dependencies = [
   "aiohttp>=3.11.12,<4",
-  "cactus-test-definitions @ git+https://github.com/bsgip/cactus-test-definitions.git@main",
-  "envoy @ git+https://github.com/bsgip/envoy.git@main",
+  "cactus-test-definitions==1.1.0",
+  "envoy @ git+https://github.com/bsgip/envoy.git@v1.0.0",
   "psycopg[binary]>=3.2.5,<4",
   "asyncpg>=0.30.0,<1",
   "reportlab>=4.4.1,<5",

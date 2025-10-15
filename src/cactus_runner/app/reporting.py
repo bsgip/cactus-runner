@@ -535,7 +535,7 @@ def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_tes
     # Style the legend
     fig.update_layout(
         legend_title_text=None,
-        legend=dict(entrywidth=120, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.15),
+        legend=dict(entrywidth=200, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.3),
     )
 
     # Add horizontal bands delineating each stage
@@ -619,15 +619,22 @@ def generate_requests_with_errors_table(requests_with_errors: dict[int, RequestE
     data = [
         [
             i,
-            req.timestamp,
-            f"{str(req.method)} {req.path}",
-            f"{req.status.name.replace("_", " ").title()} ({req.status.value})",
+            req.timestamp.strftime("%Y-%m-%d %H:%M"),
+            f"{req.method} {req.path}",
+            f"{req.status.name.replace('_', ' ').title()} ({req.status.value})",
         ]
         for i, req in requests_with_errors.items()
     ]
 
     data.insert(0, ["#", "Time (UTC)", "Request", "Error Status"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.45, 0.2, 0.25]]
+
+    column_widths = [
+        int(0.07 * stylesheet.table_width),  # #
+        int(0.28 * stylesheet.table_width),  # Time
+        int(0.55 * stylesheet.table_width),  # Request
+        int(0.20 * stylesheet.table_width),  # Error Status
+    ]
+
     table = Table(data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     return table
@@ -641,7 +648,7 @@ def generate_requests_with_validation_errors_table(
         request_description = f"{str(req.method)} {req.path} {req.status}"
         validation_errors = "\n".join(req.body_xml_errors)
 
-        # Limit to a reason size the validation error information
+        # Limit to a reasonable size the validation error information
         if len(validation_errors) > stylesheet.max_cell_length_chars:
             validation_errors = validation_errors[: stylesheet.max_cell_length_chars] + stylesheet.truncation_marker
 

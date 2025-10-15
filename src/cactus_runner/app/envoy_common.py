@@ -43,6 +43,27 @@ async def get_active_site(session: AsyncSession) -> Site | None:
     return site
 
 
+async def get_active_site_with_der_settings(session: AsyncSession) -> Site | None:
+    """Get the active site with site_ders and site_der_setting eagerly loaded.
+
+    The active site is interpreted as the LAST site created/modified by the client.
+    If there is no site - return None
+    """
+    stmt = (
+        select(Site)
+        .options(selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting))
+        .order_by(Site.changed_time.desc())
+        .limit(1)
+    )
+    site = (await session.execute(stmt)).scalar_one_or_none()
+
+    if site:
+        logger.debug(f"get_active_site_with_der_settings: Resolved site {site.site_id} as the active site / EndDevice")
+    else:
+        logger.error("get_active_site_with_der_settings: There are no sites registered.")
+    return site
+
+
 async def get_csip_aus_site_reading_types(
     session: AsyncSession,
     uom: UomType,
