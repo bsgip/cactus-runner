@@ -1298,7 +1298,7 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
             count,
         ]
 
-        # Validate columns that need checking (site_type, uom, data_qualifier, kind)
+        # Validate columns that need checking (site_type, uom, data_qualifier, kind, phase)
         for col_idx in [2, 3, 4, 5, 6]:
             error_msg = validate_cell(reading_type, col_idx, row_idx)
             if error_msg:
@@ -1307,11 +1307,25 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
 
         table_data.append(row_data)
 
-    # Create and style table
-    table_data.insert(0, ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings received"])
+    # Add header row
+    table_data.insert(0, ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings Received"])
+
+    # Create table with column widths
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.1, 0.1, 0.2, 0.15, 0.1, 0.1, 0.2]]
     table = Table(table_data, colWidths=column_widths)
+
+    # Apply existing table style
     table.setStyle(stylesheet.table)
+
+    # Override row backgrounds - white with grey horizontal lines instead of alternating colors
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.Color(0.85, 0.85, 0.85)),
+            ]
+        )
+    )
 
     # Apply red background to error cells
     for row_idx, col_idx in error_cells:

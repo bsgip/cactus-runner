@@ -16,6 +16,7 @@ from envoy.server.model import (
     RoleFlagsType,
     KindType,
     DataQualifierType,
+    UomType,
 )
 from envoy_schema.server.schema.sep2.types import DeviceCategory
 
@@ -478,11 +479,18 @@ def test_pdf_report_everything_set():
     # Must match NUM_READING_TYPES
     reading_counts = {
         generate_class_instance(
-            SiteReadingType, mrid="longmridfortest", kind=KindType.POWER, role_flags=ReadingLocation.SITE_READING
+            SiteReadingType,
+            mrid="longmridfortest",
+            uom=UomType.REAL_POWER_WATT,
+            kind=KindType.POWER,
+            role_flags=ReadingLocation.SITE_READING,
         ): 10,
-        generate_class_instance(SiteReadingType, kind=KindType.POWER, role_flags=ReadingLocation.DEVICE_READING): 20,
+        generate_class_instance(
+            SiteReadingType, uom=UomType.VOLTAGE, kind=KindType.POWER, role_flags=ReadingLocation.DEVICE_READING
+        ): 20,
         generate_class_instance(
             SiteReadingType,
+            uom=UomType.VOLTS_SQUARED,
             kind=KindType.CURRENCY,
             data_qualifier=DataQualifierType.AVERAGE,
             role_flags=RoleFlagsType.IS_PEV,
