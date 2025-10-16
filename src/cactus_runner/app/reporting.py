@@ -1007,57 +1007,57 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
         )
 
     # 2. ADD STEP COMPLETION MARKERS (colored ticks)
-    # if timeline.step_completions:
-    #     # Group completions by step for legend
-    #     step_groups: dict = {}
-    #     for completion in timeline.step_completions:
-    #         if completion.step_name not in step_groups:
-    #             step_groups[completion.step_name] = []
-    #         step_groups[completion.step_name].append(completion)
+    if runner_state.active_test_procedure and runner_state.active_test_procedure.step_status:
+        # Collect completed steps with their timestamps
+        completed_steps = []
+        for step_name, step_info in runner_state.active_test_procedure.step_status.items():
+            if step_info.completed_at:
+                completed_steps.append((step_name, step_info.completed_at))
 
-    #     # Color palette for steps (reusing plotly defaults for consistency)
-    #     colors = px.colors.qualitative.Plotly
+        if completed_steps:
+            # Group by step name (in case there are duplicates, though unlikely)
+            step_groups: dict = {}
+            for step_name, completed_at in completed_steps:
+                if step_name not in step_groups:
+                    step_groups[step_name] = []
+                step_groups[step_name].append(completed_at)
 
-    #     for step_idx, (step_name, completions) in enumerate(step_groups.items()):
-    #         step_color = colors[step_idx % len(colors)]
+            # Color palette for steps (reusing plotly defaults for consistency)
+            colors = px.colors.qualitative.Plotly
 
-    #         # Convert completion timestamps to x-axis positions
-    #         x_positions = []
-    #         for completion in completions:
-    #             time_offset = (completion.timestamp - timeline.start).total_seconds()
-    #             bin_index = int(time_offset / timeline.interval_seconds)
-    #             if 0 <= bin_index < num_intervals:
-    #                 x_positions.append(x_labels[bin_index])
+            for step_idx, (step_name, timestamps) in enumerate(step_groups.items()):
+                step_color = colors[step_idx % len(colors)]
 
-    #         if x_positions:
-    #             # Find max y value for positioning ticks above bars
-    #             max_requests = max(request_counts) if request_counts else 1
-    #             tick_y = max_requests * 1.15  # Place ticks 15% above max bar
+                # Convert completion timestamps to x-axis positions
+                x_positions = []
+                for completed_at in timestamps:
+                    time_offset = (completed_at - timeline.start).total_seconds()
+                    bin_index = int(time_offset / timeline.interval_seconds)
+                    if 0 <= bin_index < num_intervals:
+                        x_positions.append(x_labels[bin_index])
 
-    #             fig.add_trace(
-    #                 go.Scatter(
-    #                     x=x_positions,
-    #                     y=[tick_y] * len(x_positions),
-    #                     mode="markers",
-    #                     name=step_name,
-    #                     marker=dict(
-    #                         symbol="line-ns", size=15, color=step_color, line=dict(width=3)  # Vertical tick mark
-    #                     ),
-    #                     hovertemplate=f"{step_name}<extra></extra>",
-    #                 )
-    #             )
+                if x_positions:
+                    # Find max y value for positioning ticks above bars
+                    max_requests = max(request_counts) if request_counts else 1
+                    tick_y = max_requests * 1.15  # Place ticks 15% above max bar
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_positions,
+                            y=[tick_y] * len(x_positions),
+                            mode="markers",
+                            name=step_name,
+                            marker=dict(
+                                symbol="line-ns", size=15, color=step_color, line=dict(width=3)  # Vertical tick mark
+                            ),
+                            hovertemplate=f"{step_name}<extra></extra>",
+                        )
+                    )
 
     # 3. CONFIGURE LAYOUT
-    fig.update_xaxes(
-        title="Time",
-        type="category",  # Match timeline chart's categorical x-axis
-    )
+    fig.update_xaxes(title="Time", type="category")
 
-    fig.update_yaxes(
-        title="Activity",
-        showticklabels=True,
-        showgrid=False,
-    )
+    fig.update_yaxes(title="Activity", showticklabels=True, showgrid=False)
 
     fig.update_layout(
         height=250,  # Roughly 1/4 of typical timeline chart height
