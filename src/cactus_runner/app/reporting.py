@@ -1197,21 +1197,6 @@ def truncate_mrid(mrid: str) -> str:
     return mrid[:7] + "..." if len(mrid) > 7 else mrid
 
 
-def format_cell_value(value, is_error: bool) -> str | Paragraph:
-    """
-    Format a cell value, highlighting it with red background if there's an error.
-
-    Returns:
-        Formatted value (Paragraph with red background if error, original value otherwise)
-    """
-    if is_error:
-        return Paragraph(
-            f"<para backColor='red'><font color='white'>{value}</font></para>",
-            style=ParagraphStyle(name="ErrorCell", fontSize=10, leading=12),
-        )
-    return value
-
-
 def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> str | None:
     """
     Validates a cell value and returns an error message if invalid.
@@ -1228,7 +1213,7 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
     if col_idx == 2:  # Site type
         site_type = get_site_type(reading_type.role_flags)
         if site_type == "unknown":
-            return f"Row {row_num}: Site type is unknown. Check the RoleFlagsType."
+            return "Site type is unknown - check the RoleFlagsType field"
 
     elif col_idx == 3:  # UOM
         try:
@@ -1238,9 +1223,9 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
                 UomType.FREQUENCY_HZ,
                 UomType.VOLTAGE,
             ]:
-                return f"Row {row_num}: UOM {reading_type.uom}, {reading_type.uom.name} is not supported"
+                return f"UOM {reading_type.uom.name} ({reading_type.uom}) is not supported"
         except (ValueError, TypeError):
-            return f"Row {row_num}: Invalid UOM value"
+            return "Invalid UOM value"
 
     elif col_idx == 4:  # Data qualifier
         try:
@@ -1251,13 +1236,13 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
                 DataQualifierType.MAXIMUM,
                 DataQualifierType.MINIMUM,
             ]:
-                return f"Row {row_num}: Data qualifier {qualifier}, {qualifier.name} is not supported"
+                return f"Data qualifier {qualifier.name} ({qualifier}) is not supported"
         except (ValueError, TypeError):
-            return f"Row {row_num}: Invalid data qualifier value"
+            return "Invalid data qualifier value"
 
     elif col_idx == 5:  # Kind
         if reading_type.kind != KindType.POWER:
-            return f"Row {row_num}: KindType is expected to be Power (37)"
+            return "KindType is expected to be Power (37)"
 
     elif col_idx == 6 and reading_type.uom == UomType.VOLTAGE:  # Phase (Only applicable to voltage readings)
         phase = reading_type.phase
@@ -1267,16 +1252,30 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
             PhaseCode.PHASE_BN,
             PhaseCode.PHASE_CN_S2N,
         ]:
-            return (
-                f"Row {row_num}: Phase (for voltage) has specific requirements - {phase},{phase.name} is not supported"
-            )
+            return f"Phase (for voltage) has specific requirements - {phase.name} ({phase}) is not supported"
 
     return None
+
+
+def format_cell_value(value, is_error: bool) -> str | Paragraph:
+    """
+    Format a cell value, highlighting it with red background if there's an error.
+
+    Returns:
+        Formatted value (Paragraph with red background if error, original value otherwise)
+    """
+    if is_error:
+        return Paragraph(
+            f"<para backColor='red'><font color='white'>{value}</font></para>",
+            style=ParagraphStyle(name="ErrorCell", fontSize=10, leading=12),
+        )
+    return value
 
 
 def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet) -> list[Flowable]:
     """
     Generate reading count table with validation and error highlighting.
+    Errors are displayed as merged rows immediately below the affected data row.
 
     Args:
         reading_counts: Dictionary mapping SiteReadingType to count
@@ -1286,14 +1285,16 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
         List of Flowable elements for the report
     """
     elements: list[Flowable] = []
-    issues: list[str] = []
 
-    # Track which cells have errors
+    # Track which cells have errors and collect error messages per row
     error_cells: set[tuple[int, int]] = set()
+    row_errors: dict[int, list[str]] = {}
 
     # Build table data and collect validation issues
     table_data = []
-    for row_idx, (reading_type, count) in enumerate(reading_counts.items(), start=1):
+    table_row_idx = 1  # Start after header
+
+    for data_row_idx, (reading_type, count) in enumerate(reading_counts.items(), start=1):
         row_data = [
             reading_type.site_reading_type_id,
             truncate_mrid(reading_type.mrid),
@@ -1306,25 +1307,36 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
         ]
 
         # Validate columns that need checking (site_type, uom, data_qualifier, kind, phase)
+        current_row_errors = []
         for col_idx in [2, 3, 4, 5, 6]:
-            error_msg = validate_cell(reading_type, col_idx, row_idx)
+            error_msg = validate_cell(reading_type, col_idx, data_row_idx)
             if error_msg:
-                issues.append(error_msg)
-                error_cells.add((row_idx, col_idx))
+                current_row_errors.append(error_msg)
+                error_cells.add((table_row_idx, col_idx))
 
         table_data.append(row_data)
 
-    # Add header row
+        # If there are errors, add an error row immediately after
+        if current_row_errors:
+            row_errors[table_row_idx] = current_row_errors
+            table_row_idx += 1
+            # Add merged error row
+            error_text = ", ".join(current_row_errors)
+            table_data.append([error_text, "", "", "", "", "", "", ""])
+
+        table_row_idx += 1
+
+    # Add header row at the beginning
     table_data.insert(0, ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings Received"])
 
     # Create table with column widths
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.1, 0.1, 0.2, 0.15, 0.1, 0.1, 0.2]]
     table = Table(table_data, colWidths=column_widths)
 
-    # Apply existing table style
+    # Apply the base stylesheet style first
     table.setStyle(stylesheet.table)
 
-    # Override row backgrounds - white with grey horizontal lines instead of alternating colors
+    # Apply base white background and grid lines
     table.setStyle(
         TableStyle(
             [
@@ -1334,7 +1346,17 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
         )
     )
 
-    # Apply red background to error cells
+    # Remove grey lines between data rows and their error rows
+    for data_row_idx in row_errors.keys():
+        table.setStyle(
+            TableStyle(
+                [
+                    ("LINEBELOW", (0, data_row_idx), (-1, data_row_idx), 0, colors.white),
+                ]
+            )
+        )
+
+    # Apply red background to error cells in data rows
     for row_idx, col_idx in error_cells:
         table.setStyle(
             TableStyle(
@@ -1345,21 +1367,30 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
             )
         )
 
-    elements.append(table)
-
-    # Add issues to footer if any were found
-    if issues:
-        issues_paragraph = Paragraph(
-            f"<b>Potential reading format issues:</b> {'; '.join(issues)}",
-            style=ParagraphStyle(
-                name="IssuesFootNote",
-                fontSize=6,
-                leading=7,
-                textColor=WARNING_COLOR,
-                spaceAfter=2,
-            ),
+    # Apply styling to error message rows
+    for data_row_idx in row_errors.keys():
+        error_row_idx = data_row_idx + 1
+        table.setStyle(
+            TableStyle(
+                [
+                    # Span the error message across all columns
+                    ("SPAN", (0, error_row_idx), (7, error_row_idx)),
+                    # Style the error row - white background like other cells
+                    ("BACKGROUND", (0, error_row_idx), (7, error_row_idx), colors.white),
+                    ("TEXTCOLOR", (0, error_row_idx), (7, error_row_idx), colors.red),
+                    ("FONTSIZE", (0, error_row_idx), (7, error_row_idx), 6),
+                    ("TOPPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                    ("BOTTOMPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                    # Indent to align with second column (first column width)
+                    ("LEFTPADDING", (0, error_row_idx), (0, error_row_idx), column_widths[0]),
+                    ("ALIGNMENT", (0, error_row_idx), (7, error_row_idx), "LEFT"),
+                    # Make error rows smaller in height
+                    ("ROWHEIGHT", (0, error_row_idx), (7, error_row_idx), 12),
+                ]
+            )
         )
-        elements.append(issues_paragraph)
+
+    elements.append(table)
 
     # Add standard footnote
     footnote = Paragraph(
