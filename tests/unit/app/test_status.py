@@ -168,7 +168,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
 
-    mock_get_active_site = mocker.patch("cactus_runner.app.status.get_active_site_with_der_settings")
+    mock_get_active_site = mocker.patch("cactus_runner.app.status.get_active_site")
 
     # Mock site with metadata
     mock_site_der_setting = Mock(doe_modes_enabled=7)
@@ -219,7 +219,7 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
     mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
-    mocker.patch("cactus_runner.app.status.get_active_site_with_der_settings", side_effect=Exception("DB error"))
+    mocker.patch("cactus_runner.app.status.get_active_site", side_effect=Exception("DB error"))
 
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
