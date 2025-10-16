@@ -19,19 +19,21 @@ from cactus_runner.models import (
     DataStreamPoint,
     RunnerStatus,
     StepInfo,
-    StepStatus,
     TimelineDataStreamEntry,
 )
+
+PENDING_STEP = StepInfo()
+RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
 
 
 @pytest.mark.parametrize(
     "step_status,expected",
     [
         ({}, "0/0 steps complete."),
-        ({"step_name": StepStatus.PENDING}, "0/1 steps complete."),
-        ({"step_name": StepStatus.RESOLVED}, "1/1 steps complete."),
+        ({"step_name": PENDING_STEP}, "0/1 steps complete."),
+        ({"step_name": RESOLVED_STEP}, "1/1 steps complete."),
         (
-            {"step_1": StepStatus.RESOLVED, "step_2": StepStatus.RESOLVED, "step_3": StepStatus.PENDING},
+            {"step_1": RESOLVED_STEP, "step_2": RESOLVED_STEP, "step_3": PENDING_STEP},
             "2/3 steps complete.",
         ),
     ],

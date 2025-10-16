@@ -287,8 +287,8 @@ async def init_handler(request: web.Request):  # noqa: C901
     for step_name, step in definition.steps.items():
         listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
 
-    # Set steps to pending
-    step_status = {step: StepInfo(started_at=datetime.now(tz=timezone.utc)) for step in definition.steps.keys()}
+    # Set steps to pending (no created/finished time)
+    step_status = {step: StepInfo() for step in definition.steps.keys()}
 
     # Set 'active_test_procedure' to the requested test procedure
     active_test_procedure = ActiveTestProcedure(
