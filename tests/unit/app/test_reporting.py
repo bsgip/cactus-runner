@@ -564,7 +564,11 @@ def test_pdf_report_everything_set():
             role_flags=ReadingLocation.SITE_READING,
         ): 10,
         generate_class_instance(
-            SiteReadingType, uom=UomType.VOLTAGE, kind=KindType.POWER, role_flags=ReadingLocation.DEVICE_READING
+            SiteReadingType,
+            uom=UomType.FREQUENCY_HZ,
+            data_qualifier=DataQualifierType.AVERAGE,
+            kind=KindType.POWER,
+            role_flags=ReadingLocation.DEVICE_READING,
         ): 20,
         generate_class_instance(
             SiteReadingType,

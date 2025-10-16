@@ -1272,28 +1272,18 @@ def format_cell_value(value, is_error: bool) -> str | Paragraph:
     return value
 
 
-def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet) -> list[Flowable]:
+def generate_reading_count_table(reading_counts, stylesheet):
     """
     Generate reading count table with validation and error highlighting.
     Errors are displayed as merged rows immediately below the affected data row.
-
-    Args:
-        reading_counts: Dictionary mapping SiteReadingType to count
-        stylesheet: StyleSheet for table formatting
-
-    Returns:
-        List of Flowable elements for the report
     """
-    elements: list[Flowable] = []
-
-    # Track which cells have errors and collect error messages per row
-    error_cells: set[tuple[int, int]] = set()
-    row_errors: dict[int, list[str]] = {}
-
-    # Build table data and collect validation issues
+    elements = []
+    error_cells = set()
+    row_errors = {}
     table_data = []
-    table_row_idx = 1  # Start after header
+    table_row_idx = 1  # start after header
 
+    # Build table data and validation results
     for data_row_idx, (reading_type, count) in enumerate(reading_counts.items(), start=1):
         row_data = [
             reading_type.site_reading_type_id,
@@ -1306,7 +1296,6 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
             count,
         ]
 
-        # Validate columns that need checking (site_type, uom, data_qualifier, kind, phase)
         current_row_errors = []
         for col_idx in [2, 3, 4, 5, 6]:
             error_msg = validate_cell(reading_type, col_idx, data_row_idx)
@@ -1316,93 +1305,73 @@ def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], sty
 
         table_data.append(row_data)
 
-        # If there are errors, add an error row immediately after
         if current_row_errors:
             row_errors[table_row_idx] = current_row_errors
+            # Only 7 columns for the error row (exclude grey column)
+            error_row = [", ".join(current_row_errors)] + [""] * 6
+            table_data.append(error_row)
+            table_row_idx += 2
+        else:
             table_row_idx += 1
-            # Add merged error row
-            error_text = ", ".join(current_row_errors)
-            table_data.append([error_text, "", "", "", "", "", "", ""])
 
-        table_row_idx += 1
+    headers = [
+        "/MUP",
+        "MMR",
+        "Site type",
+        "Unit",
+        "Data Qualifier",
+        "Kind",
+        "Phase",
+        "# Readings Received",
+    ]
+    table_data.insert(0, headers)
 
-    # Add header row at the beginning
-    table_data.insert(0, ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings Received"])
+    fractions = [0.1, 0.1, 0.1, 0.2, 0.15, 0.09, 0.09, 0.22]
+    column_widths = [int(f * stylesheet.table_width) for f in fractions]
 
-    # Create table with column widths
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.1, 0.1, 0.1, 0.2, 0.15, 0.1, 0.1, 0.2]]
-    table = Table(table_data, colWidths=column_widths)
+    styles = [
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.Color(0.85, 0.85, 0.85)),
+    ]
 
-    # Apply the base stylesheet style first
-    table.setStyle(stylesheet.table)
-
-    # Apply base white background and grid lines
-    table.setStyle(
-        TableStyle(
+    # Error row styling
+    for data_row_idx in row_errors:
+        error_row_idx = data_row_idx + 1
+        styles.extend(
             [
-                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.Color(0.85, 0.85, 0.85)),
+                ("LINEBELOW", (0, data_row_idx), (-1, data_row_idx), 0, colors.white),
+                ("BACKGROUND", (0, error_row_idx), (6, error_row_idx), colors.white),
+                ("TEXTCOLOR", (0, error_row_idx), (6, error_row_idx), colors.red),
+                ("FONTSIZE", (0, error_row_idx), (6, error_row_idx), 6),
+                ("TOPPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                ("BOTTOMPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                ("LEFTPADDING", (0, error_row_idx), (0, error_row_idx), column_widths[0]),
+                ("ALIGNMENT", (0, error_row_idx), (6, error_row_idx), "LEFT"),
+                ("ROWHEIGHT", (0, error_row_idx), (6, error_row_idx), 12),
             ]
         )
-    )
 
-    # Remove grey lines between data rows and their error rows
-    for data_row_idx in row_errors.keys():
-        table.setStyle(
-            TableStyle(
-                [
-                    ("LINEBELOW", (0, data_row_idx), (-1, data_row_idx), 0, colors.white),
-                ]
-            )
-        )
-
-    # Apply red background to error cells in data rows
+    # Error cell highlighting
     for row_idx, col_idx in error_cells:
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), colors.Color(1, 0.9, 0.9)),
-                    ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.red),
-                ]
-            )
+        styles.extend(
+            [
+                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), colors.Color(1, 0.9, 0.9)),
+                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.red),
+            ]
         )
 
-    # Apply styling to error message rows
-    for data_row_idx in row_errors.keys():
-        error_row_idx = data_row_idx + 1
-        table.setStyle(
-            TableStyle(
-                [
-                    # Span the error message across all columns
-                    ("SPAN", (0, error_row_idx), (7, error_row_idx)),
-                    # Style the error row - white background like other cells
-                    ("BACKGROUND", (0, error_row_idx), (7, error_row_idx), colors.white),
-                    ("TEXTCOLOR", (0, error_row_idx), (7, error_row_idx), colors.red),
-                    ("FONTSIZE", (0, error_row_idx), (7, error_row_idx), 6),
-                    ("TOPPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
-                    ("BOTTOMPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
-                    # Indent to align with second column (first column width)
-                    ("LEFTPADDING", (0, error_row_idx), (0, error_row_idx), column_widths[0]),
-                    ("ALIGNMENT", (0, error_row_idx), (7, error_row_idx), "LEFT"),
-                    # Make error rows smaller in height
-                    ("ROWHEIGHT", (0, error_row_idx), (7, error_row_idx), 12),
-                ]
-            )
-        )
+    # Create and style table
+    table = Table(table_data, colWidths=column_widths)
+    table.setStyle(stylesheet.table)
+    table.setStyle(TableStyle(styles))
 
     elements.append(table)
 
-    # Add standard footnote
     footnote = Paragraph(
         "For more information, see Standards Australia SA TS 5573:2025, Table 8.1.",
-        style=ParagraphStyle(
-            name="TableFootNote",
-            fontSize=6,
-            leading=6,
-        ),
+        ParagraphStyle(name="TableFootNote", fontSize=6, leading=6),
     )
-    elements.append(footnote)
-    elements.append(stylesheet.spacer)
+    elements.extend([footnote, stylesheet.spacer])
 
     return elements
 
