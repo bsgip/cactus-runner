@@ -645,15 +645,15 @@ def test_pdf_report_everything_set():
     assert len(report_bytes) > 0
 
     # Optional: Save and open the PDF for visual inspection
-    import uuid
-    import tempfile
-    import os
-    import subprocess
+    # import uuid
+    # import tempfile
+    # import os
+    # import subprocess
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False
-    ) as temp_file:
-        temp_file.write(report_bytes)
-        temp_file.flush()
-        print(f"Saved comprehensive PDF report: {os.path.basename(temp_file.name)}")
-        subprocess.run(["xdg-open", temp_file.name])
+    # with tempfile.NamedTemporaryFile(
+    #     suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False
+    # ) as temp_file:
+    #     temp_file.write(report_bytes)
+    #     temp_file.flush()
+    #     print(f"Saved comprehensive PDF report: {os.path.basename(temp_file.name)}")
+    #     subprocess.run(["xdg-open", temp_file.name])
