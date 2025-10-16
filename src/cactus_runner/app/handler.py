@@ -36,7 +36,7 @@ from cactus_runner.models import (
     RequestEntry,
     RunnerState,
     StartResponseBody,
-    StepStatus,
+    StepInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -287,6 +287,9 @@ async def init_handler(request: web.Request):  # noqa: C901
     for step_name, step in definition.steps.items():
         listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
 
+    # Set steps to pending
+    step_status = {step: StepInfo(started_at=datetime.now(tz=timezone.utc)) for step in definition.steps.keys()}
+
     # Set 'active_test_procedure' to the requested test procedure
     active_test_procedure = ActiveTestProcedure(
         name=requested_test_procedure,
@@ -295,7 +298,7 @@ async def init_handler(request: web.Request):  # noqa: C901
         initialised_at=datetime.now(tz=timezone.utc),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
-        step_status={step: StepStatus.PENDING for step in definition.steps.keys()},
+        step_status=step_status,
         client_lfdi=client_lfdi,
         client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
         client_aggregator_id=client_aggregator_id,

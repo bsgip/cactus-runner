@@ -33,6 +33,7 @@ from cactus_runner.models import (
     ClientCertificateType,
     Listener,
     RunnerState,
+    StepInfo,
     StepStatus,
 )
 
@@ -75,7 +76,12 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
 
 def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
     return RunnerState(
-        generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None, listeners=listeners),
+        generate_class_instance(
+            ActiveTestProcedure,
+            step_status={listener.step: StepInfo() for listener in listeners},
+            finished_zip_data=None,
+            listeners=listeners,
+        ),
         [],
         None,
     )
@@ -101,7 +107,9 @@ async def test_action_enable_steps():
     assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
     for step in steps_to_enable:
-        assert runner_state.active_test_procedure.step_status[step] == StepStatus.ACTIVE, "Check we update step_status"
+        assert (
+            runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.ACTIVE
+        ), "Check we update step_status"
 
 
 @pytest.mark.parametrize(
@@ -158,7 +166,7 @@ async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[
     assert steps_to_disable == original_steps_to_disable  # check we are mutating 'steps_to_diable'
     for step in steps_to_disable:
         assert (
-            runner_state.active_test_procedure.step_status[step] == StepStatus.RESOLVED
+            runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.RESOLVED
         ), "Check we update step_status"
 
 

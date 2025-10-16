@@ -23,6 +23,20 @@ class StepStatus(Enum):
     RESOLVED = auto()  # The step has been full resolved
 
 
+@dataclass
+class StepInfo:
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    def get_step_status(self) -> StepStatus:
+        if self.completed_at:
+            return StepStatus.RESOLVED
+        elif self.started_at:
+            return StepStatus.ACTIVE
+        else:
+            return StepStatus.PENDING
+
+
 class ClientCertificateType(StrEnum):
     AGGREGATOR = "Aggregator"
     DEVICE = "Device"
@@ -36,7 +50,7 @@ class ActiveTestProcedure:
     initialised_at: datetime  # When did the test initialise - timezone aware
     started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
     listeners: list[Listener]
-    step_status: dict[str, StepStatus]
+    step_status: dict[str, StepInfo]
     client_certificate_type: ClientCertificateType  # Human readable text to identify source of cert.
     client_aggregator_id: int  # What aggregator ID will be the client operating as? (0 for device certs)
     client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
@@ -222,7 +236,7 @@ class RunnerStatus(JSONWizard):
     precondition_checks: list[PreconditionCheckEntry] = field(default_factory=list)
     instructions: list[str] | None = field(default=None)
     test_procedure_name: str = field(default="-")  # '-' represents no active procedure
-    step_status: dict[str, StepStatus] | None = field(default=None)
+    step_status: dict[str, StepInfo] | None = field(default=None)
     request_history: list[RequestEntry] = field(default_factory=list)
     timeline: TimelineStatus | None = None  # Streaming timeline data snapshot
     end_device_metadata: EndDeviceMetadata | None = None  # Snapshot of current active end device (if any)

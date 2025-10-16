@@ -1007,45 +1007,45 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
         )
 
     # 2. ADD STEP COMPLETION MARKERS (colored ticks)
-    if hasattr(timeline, "step_completions") and timeline.step_completions:
-        # Group completions by step for legend
-        step_groups: dict = {}
-        for completion in timeline.step_completions:
-            if completion.step_name not in step_groups:
-                step_groups[completion.step_name] = []
-            step_groups[completion.step_name].append(completion)
+    # if timeline.step_completions:
+    #     # Group completions by step for legend
+    #     step_groups: dict = {}
+    #     for completion in timeline.step_completions:
+    #         if completion.step_name not in step_groups:
+    #             step_groups[completion.step_name] = []
+    #         step_groups[completion.step_name].append(completion)
 
-        # Color palette for steps (reusing plotly defaults for consistency)
-        colors = px.colors.qualitative.Plotly
+    #     # Color palette for steps (reusing plotly defaults for consistency)
+    #     colors = px.colors.qualitative.Plotly
 
-        for step_idx, (step_name, completions) in enumerate(step_groups.items()):
-            step_color = colors[step_idx % len(colors)]
+    #     for step_idx, (step_name, completions) in enumerate(step_groups.items()):
+    #         step_color = colors[step_idx % len(colors)]
 
-            # Convert completion timestamps to x-axis positions
-            x_positions = []
-            for completion in completions:
-                time_offset = (completion.timestamp - timeline.start).total_seconds()
-                bin_index = int(time_offset / timeline.interval_seconds)
-                if 0 <= bin_index < num_intervals:
-                    x_positions.append(x_labels[bin_index])
+    #         # Convert completion timestamps to x-axis positions
+    #         x_positions = []
+    #         for completion in completions:
+    #             time_offset = (completion.timestamp - timeline.start).total_seconds()
+    #             bin_index = int(time_offset / timeline.interval_seconds)
+    #             if 0 <= bin_index < num_intervals:
+    #                 x_positions.append(x_labels[bin_index])
 
-            if x_positions:
-                # Find max y value for positioning ticks above bars
-                max_requests = max(request_counts) if request_counts else 1
-                tick_y = max_requests * 1.15  # Place ticks 15% above max bar
+    #         if x_positions:
+    #             # Find max y value for positioning ticks above bars
+    #             max_requests = max(request_counts) if request_counts else 1
+    #             tick_y = max_requests * 1.15  # Place ticks 15% above max bar
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_positions,
-                        y=[tick_y] * len(x_positions),
-                        mode="markers",
-                        name=step_name,
-                        marker=dict(
-                            symbol="line-ns", size=15, color=step_color, line=dict(width=3)  # Vertical tick mark
-                        ),
-                        hovertemplate=f"{step_name}<extra></extra>",
-                    )
-                )
+    #             fig.add_trace(
+    #                 go.Scatter(
+    #                     x=x_positions,
+    #                     y=[tick_y] * len(x_positions),
+    #                     mode="markers",
+    #                     name=step_name,
+    #                     marker=dict(
+    #                         symbol="line-ns", size=15, color=step_color, line=dict(width=3)  # Vertical tick mark
+    #                     ),
+    #                     hovertemplate=f"{step_name}<extra></extra>",
+    #                 )
+    #             )
 
     # 3. CONFIGURE LAYOUT
     fig.update_xaxes(
@@ -1262,13 +1262,13 @@ def generate_page_elements(
         )
     )
 
-    # Devices Section
-    page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
-
     # Timeline Section
     page_elements.extend(
         generate_timeline_section(timeline=timeline, runner_state=runner_state, sites=sites, stylesheet=stylesheet)
     )
+
+    # Devices Section
+    page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
     # Readings Section
     page_elements.extend(
