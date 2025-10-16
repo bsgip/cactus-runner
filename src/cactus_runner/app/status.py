@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from envoy.server.model.site import Site
 from cactus_runner.app.check import run_check
-from cactus_runner.app.envoy_common import get_active_site_with_der_settings
+from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
@@ -157,7 +157,7 @@ async def get_active_runner_status(
     # Populate EndDeviceMetadata from active site
     end_device_metadata = None
     try:
-        active_site: Site | None = await get_active_site_with_der_settings(session)
+        active_site: Site | None = await get_active_site(session, include_der_settings=True)
         if active_site is not None:
             # Get doe_modes_enabled from the first site_der if available
             doe_modes_enabled = None
