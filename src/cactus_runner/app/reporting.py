@@ -58,6 +58,7 @@ from cactus_runner.models import (
     ClientInteractionType,
     RequestEntry,
     RunnerState,
+    StepStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -770,22 +771,10 @@ def generate_device_overview_table(
 
     # Convert device category to a useful string
     device_data = [
-        [
-            "NMI",
-            site.nmi if site.nmi else "Unspecified",
-        ],
-        [
-            "LFDI",
-            site.lfdi,
-        ],
-        [
-            "Device Category",
-            device_category_to_string(device_category=DeviceCategory(site.device_category)),
-        ],
-        [
-            "Site Generation",
-            generation_method,
-        ],
+        ["NMI", site.nmi if site.nmi else "Unspecified"],
+        ["LFDI", site.lfdi],
+        ["Device Category", device_category_to_string(device_category=DeviceCategory(site.device_category))],
+        ["Site Generation", generation_method],
     ]
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.5]]
     table = Table(device_data, colWidths=column_widths)
@@ -1011,7 +1000,7 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
         # Collect completed steps with their timestamps
         completed_steps = []
         for step_name, step_info in runner_state.active_test_procedure.step_status.items():
-            if step_info.completed_at:
+            if step_info.get_step_status() == StepStatus.RESOLVED:
                 completed_steps.append((step_name, step_info.completed_at))
 
         if completed_steps:
@@ -1048,21 +1037,34 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
                             mode="markers",
                             name=step_name,
                             marker=dict(
-                                symbol="line-ns", size=15, color=step_color, line=dict(width=3)  # Vertical tick mark
+                                symbol="circle", size=20, color=step_color, line=dict(color=step_color, width=2)
                             ),
                             hovertemplate=f"{step_name}<extra></extra>",
+                        )
+                    )
+
+                    # Add checkmark symbol on top of the circle
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_positions,
+                            y=[tick_y] * len(x_positions),
+                            mode="text",
+                            text=["✓"] * len(x_positions),
+                            textfont=dict(size=14, color="white"),
+                            showlegend=False,
+                            hoverinfo="skip",
                         )
                     )
 
     # 3. CONFIGURE LAYOUT
     fig.update_xaxes(title="Time", type="category")
 
-    fig.update_yaxes(title="Activity", showticklabels=True, showgrid=False)
+    fig.update_yaxes(title="Requests", showticklabels=True, showgrid=False)
 
     fig.update_layout(
-        height=250,  # Roughly 1/4 of typical timeline chart height
+        height=200,  # Roughly 1/4 of typical timeline chart height
         legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
-        margin=dict(t=20, b=80),  # Extra bottom margin for legend
+        margin=dict(t=0, b=80),  # Extra bottom margin for legend
         barmode="overlay",  # Allow overlapping if needed
     )
 
