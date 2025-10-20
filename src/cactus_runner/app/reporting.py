@@ -65,6 +65,8 @@ logger = logging.getLogger(__name__)
 
 WITNESS_TEST_CLASSES: list[str] = ["DER-A", "DER-G", "DER-L"]  # Classes from section 14 of sa-ts-5573-2025
 
+CHART_MARGINS = dict(l=80, r=20, t=40, b=80)
+
 
 class ConditionalSpacer(Spacer):
     """A Spacer that takes up a variable amount of vertical space.
@@ -860,8 +862,10 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
 
 def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
     fig = go.Figure()
+
+    # Add data streams with numeric x-axis
     for ds in timeline.data_streams:
-        x_data = [duration_to_label(timeline.interval_seconds * i) for i in range(len(ds.offset_watt_values))]
+        x_data = list(range(len(ds.offset_watt_values)))
         y_data = ds.offset_watt_values
         line_shape = "hv" if ds.stepped else "linear"
         line = {"dash": "dash"} if ds.dashed else {}
@@ -948,9 +952,22 @@ def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
             ]
         )
 
-    fig.update_xaxes(title="Time")
+    # Generate x-axis labels
+    num_intervals = max(len(ds.offset_watt_values) for ds in timeline.data_streams) if timeline.data_streams else 0
+    x_labels = [duration_to_label(timeline.interval_seconds * i) for i in range(num_intervals)]
+
+    fig.update_xaxes(
+        title="Time",
+        type="linear",
+        tickmode="array",
+        tickvals=list(range(num_intervals)),
+        ticktext=x_labels,
+        range=[0, max(num_intervals - 1, 1)],
+    )
+
     fig.update_yaxes(title="Watts", zeroline=True)
     fig.update_layout(
+        margin=dict(b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         shapes=shapes,
         annotations=annotations,
@@ -959,41 +976,80 @@ def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
+def _add_step_completion_markers(
+    fig: go.Figure, runner_state: RunnerState, timeline: Timeline, num_intervals: int
+) -> None:
+    """Add vertical lines marking when test steps were completed."""
+    if not (runner_state.active_test_procedure and runner_state.active_test_procedure.step_status):
+        return
+
+    # Collect completed steps with their timestamps
+    completed_steps = [
+        (step_name, step_info.completed_at)
+        for step_name, step_info in runner_state.active_test_procedure.step_status.items()
+        if step_info.get_step_status() == StepStatus.RESOLVED
+    ]
+
+    if not completed_steps:
+        return
+
+    # Group timestamps by step name
+    step_groups: dict[str, list] = {}
+    for step_name, completed_at in completed_steps:
+        step_groups.setdefault(step_name, []).append(completed_at)
+
+    colors = px.colors.qualitative.Plotly
+
+    # Add vertical lines for each step completion
+    for step_idx, (step_name, timestamps) in enumerate(step_groups.items()):
+        step_color = colors[step_idx % len(colors)]
+
+        # Calculate interval positions for all timestamps
+        x_positions = []
+        for completed_at in timestamps:
+            time_offset = (completed_at - timeline.start).total_seconds()
+            interval_position = time_offset / timeline.interval_seconds
+            if 0 <= interval_position <= num_intervals:
+                x_positions.append(interval_position)
+
+        # Add a line for each occurrence
+        for i, x_pos in enumerate(x_positions):
+            fig.add_trace(
+                go.Scatter(
+                    x=[x_pos, x_pos],
+                    y=[0.05, 0.95],
+                    mode="lines",
+                    name=step_name,
+                    line=dict(color=step_color, width=3),
+                    showlegend=(i == 0),  # Only show legend for first occurrence
+                    hovertemplate=f"{step_name}<extra></extra>",
+                )
+            )
+
+
 def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -> Image:
     """
     Generates a horizontal activity chart showing request activity and step completions.
-    This chart shares the same x-axis (time) scale as the timeline chart above it.
+    This chart shares the same x-axis (time) scale as the timeline chart above it. (must manually keep the axix identical, it is not a shared axis)
     """
     fig = go.Figure()
 
-    # Calculate time range to match timeline chart
+    # Calculate time range
     num_intervals = max(len(ds.offset_watt_values) for ds in timeline.data_streams) if timeline.data_streams else 0
-    x_labels = [duration_to_label(timeline.interval_seconds * i) for i in range(num_intervals)]
-
-    # 1. CREATE REQUEST VERTICAL LINES (thin lines at exact timestamps)
-    # Calculate total timeline duration for positioning
     total_duration = timeline.interval_seconds * num_intervals
 
-    # Group requests by proximity to create heat mapping effect
-    # Use a small window (e.g., 0.5% of line width) to detect overlaps
-    line_width_seconds = total_duration * 0.002  # Line represents ~0.2% of timeline
-    overlap_window = line_width_seconds / 2
+    # Add request lines - one line per request at precise position
+    request_positions = []
 
-    # Count overlapping requests at each timestamp
-    request_density = {}
     for request_entry in runner_state.request_history:
         time_offset = (request_entry.timestamp - timeline.start).total_seconds()
         if 0 <= time_offset <= total_duration:
-            # Round to overlap window to group nearby requests
-            bucket = round(time_offset / overlap_window) * overlap_window
-            request_density[bucket] = request_density.get(bucket, 0) + 1
+            # Convert time offset to precise interval position (float)
+            interval_position = time_offset / timeline.interval_seconds
+            request_positions.append(interval_position)
 
-    # Add vertical lines for each request position
-    if request_density:
-        # Determine color intensity based on density (darker = more requests)
-        max_density = max(request_density.values())
-
-        # Add a dummy trace for legend
+    if request_positions:
+        # Add legend entry for requests
         fig.add_trace(
             go.Scatter(
                 x=[None],
@@ -1005,87 +1061,35 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
             )
         )
 
-        for time_offset, density in request_density.items():
-            # Calculate x position as fraction of timeline
-            x_position = time_offset / timeline.interval_seconds
-
-            # Calculate color intensity (darker grey for more overlaps)
-            # Map density to grey scale: 1 request = light grey, max = medium grey
-            grey_intensity = 0.3 + (0.4 * (density / max_density))  # Range: 0.3 to 0.7
-            color = f"rgba(0, 0, 0, {grey_intensity})"
-
+        # Add request lines at their precise positions
+        # Overlapping lines will naturally create darker appearance
+        for interval_position in request_positions:
             fig.add_trace(
                 go.Scatter(
-                    x=[x_position, x_position],
+                    x=[interval_position, interval_position],
                     y=[0.05, 0.95],
                     mode="lines",
-                    line=dict(color=color, width=2),
+                    line=dict(color="rgba(0, 0, 0, 0.4)", width=2),
                     showlegend=False,
-                    hovertemplate=f"{density} request(s)<extra></extra>",
+                    hovertemplate="Request<extra></extra>",
                 )
             )
 
-    # 2. ADD STEP COMPLETION MARKERS (colored vertical bars)
-    if runner_state.active_test_procedure and runner_state.active_test_procedure.step_status:
-        # Collect completed steps with their timestamps
-        completed_steps = []
-        for step_name, step_info in runner_state.active_test_procedure.step_status.items():
-            if step_info.get_step_status() == StepStatus.RESOLVED:
-                completed_steps.append((step_name, step_info.completed_at))
+    # Add step completion markers
+    _add_step_completion_markers(fig, runner_state, timeline, num_intervals)
 
-        if completed_steps:
-            # Group by step name (in case there are duplicates, though unlikely)
-            step_groups: dict = {}
-            for step_name, completed_at in completed_steps:
-                if step_name not in step_groups:
-                    step_groups[step_name] = []
-                step_groups[step_name].append(completed_at)
-
-            # Color palette for steps (reusing plotly defaults for consistency)
-            colors = px.colors.qualitative.Plotly
-
-            for step_idx, (step_name, timestamps) in enumerate(step_groups.items()):
-                step_color = colors[step_idx % len(colors)]
-
-                # Convert completion timestamps to x-axis positions
-                x_positions = []
-                for completed_at in timestamps:
-                    time_offset = (completed_at - timeline.start).total_seconds()
-                    x_position = time_offset / timeline.interval_seconds
-                    if 0 <= x_position <= num_intervals:
-                        x_positions.append(x_position)
-
-                if x_positions:
-                    # Create vertical bars for each completion
-                    for x_pos in x_positions:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=[x_pos, x_pos],
-                                y=[0.05, 0.95],
-                                mode="lines",
-                                name=step_name,
-                                line=dict(color=step_color, width=3),
-                                showlegend=(x_pos == x_positions[0]),  # Only show in legend once
-                                hovertemplate=f"{step_name}<extra></extra>",
-                            )
-                        )
-
-    # 3. CONFIGURE LAYOUT
     fig.update_xaxes(
-        title="Time",
+        title="",
         type="linear",
-        range=[0, num_intervals],
         tickmode="array",
         tickvals=list(range(num_intervals)),
-        ticktext=x_labels,
+        ticktext=[],
+        showticklabels=False,
+        range=[0, max(num_intervals - 1, 1)],  # CRITICAL: Match top chart range exactly
     )
-
     fig.update_yaxes(title="", showticklabels=False, showgrid=False, range=[0, 1])
-
     fig.update_layout(
-        height=150,
-        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5),
-        margin=dict(t=0, b=80),  # Extra bottom margin for legend
+        height=150, legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=80)
     )
 
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
