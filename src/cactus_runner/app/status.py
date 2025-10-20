@@ -158,7 +158,7 @@ async def get_active_runner_status(
     # Populate EndDeviceMetadata from active site
     end_device_metadata = None
     try:
-        active_site: Site | None = await get_active_site(session)
+        active_site: Site | None = await get_active_site(session, include_der_settings=True)
         if active_site is not None:
             # Get doe_modes_enabled from the first site_der if available
             doe_modes_enabled = None

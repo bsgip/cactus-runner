@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from http import HTTPStatus
 from typing import Sequence
-
+from reportlab.lib import colors
 import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px  # type: ignore
@@ -21,12 +21,7 @@ from envoy.server.model import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReadingType
-from envoy_schema.server.schema.sep2.types import (
-    DataQualifierType,
-    DeviceCategory,
-    PhaseCode,
-    UomType,
-)
+from envoy_schema.server.schema.sep2.types import DataQualifierType, DeviceCategory, PhaseCode, UomType, KindType
 from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -51,6 +46,7 @@ from reportlab.platypus import (
 
 from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app.check import CheckResult
+from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.timeline import Timeline, duration_to_label
 from cactus_runner.models import (
     ClientCertificateType,
@@ -60,6 +56,7 @@ from cactus_runner.models import (
     RunnerState,
     StepStatus,
 )
+from envoy_schema.server.schema.sep2.types import RoleFlagsType
 
 logger = logging.getLogger(__name__)
 
@@ -1167,19 +1164,197 @@ def reading_description(srt: SiteReadingType, exclude_mup: bool = False) -> str:
     return description
 
 
-def generate_reading_count_table(reading_counts: dict[SiteReadingType, int], stylesheet: StyleSheet) -> list[Flowable]:
-    elements: list[Flowable] = []
+def get_site_type(role_flags: RoleFlagsType) -> str:
+    """Convert role flags to 'site' or 'device' based on ReadingLocation bitmask."""
 
-    table_data = [
-        [reading_type.site_reading_type_id, reading_description(reading_type, exclude_mup=True), count]
-        for reading_type, count in reading_counts.items()
+    if (role_flags & ReadingLocation.SITE_READING) == ReadingLocation.SITE_READING:
+        return "site"
+    elif (role_flags & ReadingLocation.DEVICE_READING) == ReadingLocation.DEVICE_READING:
+        return "device"
+
+    return "unknown"
+
+
+def truncate_mrid(mrid: str) -> str:
+    return mrid[:7] + "..." if len(mrid) > 7 else mrid
+
+
+def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> str | None:
+    """
+    Validates a cell value and returns an error message if invalid.
+    These validation steps come from SA TS 5573:2025, Table 8.1
+
+    Args:
+        reading_type: The SiteReadingType object
+        col_idx: Column index (0-based)
+        row_num: Row number for error message (1-based, excluding header)
+
+    Returns:
+        Error message string if invalid, None if valid
+    """
+    if col_idx == 2:  # Site type
+        site_type = get_site_type(reading_type.role_flags)
+        if site_type == "unknown":
+            return "Site type is unknown - check the RoleFlagsType field"
+
+    elif col_idx == 3:  # UOM
+        try:
+            if reading_type.uom not in [
+                UomType.REAL_POWER_WATT,
+                UomType.REACTIVE_POWER_VAR,
+                UomType.FREQUENCY_HZ,
+                UomType.VOLTAGE,
+            ]:
+                return f"UOM {reading_type.uom.name} ({reading_type.uom}) is not supported"
+        except (ValueError, TypeError):
+            return "Invalid UOM value"
+
+    elif col_idx == 4:  # Data qualifier
+        try:
+            qualifier = reading_type.data_qualifier
+            if qualifier not in [
+                DataQualifierType.AVERAGE,
+                DataQualifierType.STANDARD,
+                DataQualifierType.MAXIMUM,
+                DataQualifierType.MINIMUM,
+            ]:
+                return f"Data qualifier {qualifier.name} ({qualifier}) is not supported"
+        except (ValueError, TypeError):
+            return "Invalid data qualifier value"
+
+    elif col_idx == 5:  # Kind
+        if reading_type.kind != KindType.POWER:
+            return "KindType is expected to be Power (37)"
+
+    elif col_idx == 6 and reading_type.uom == UomType.VOLTAGE:  # Phase (Only applicable to voltage readings)
+        phase = reading_type.phase
+        if phase not in [
+            PhaseCode.PHASE_ABC,
+            PhaseCode.PHASE_AN_S1N,
+            PhaseCode.PHASE_BN,
+            PhaseCode.PHASE_CN_S2N,
+        ]:
+            return f"Phase (for voltage) has specific requirements - {phase.name} ({phase}) is not supported"
+
+    return None
+
+
+def format_cell_value(value, is_error: bool) -> str | Paragraph:
+    """
+    Format a cell value, highlighting it with red background if there's an error.
+
+    Returns:
+        Formatted value (Paragraph with red background if error, original value otherwise)
+    """
+    if is_error:
+        return Paragraph(
+            f"<para backColor='red'><font color='white'>{value}</font></para>",
+            style=ParagraphStyle(name="ErrorCell", fontSize=10, leading=12),
+        )
+    return value
+
+
+def generate_reading_count_table(reading_counts, stylesheet):
+    """
+    Generate reading count table with validation and error highlighting.
+    Errors are displayed as merged rows immediately below the affected data row.
+    """
+    elements = []
+    error_cells = set()
+    row_errors = {}
+    table_data = []
+    table_row_idx = 1  # start after header
+
+    # Build table data and validation results
+    for data_row_idx, (reading_type, count) in enumerate(reading_counts.items(), start=1):
+        row_data = [
+            reading_type.site_reading_type_id,
+            truncate_mrid(reading_type.mrid),
+            get_site_type(reading_type.role_flags),
+            reading_type.uom.name.lower(),
+            str(reading_type.data_qualifier),
+            reading_type.kind,
+            reading_type.phase,
+            count,
+        ]
+
+        current_row_errors = []
+        for col_idx in [2, 3, 4, 5, 6]:
+            error_msg = validate_cell(reading_type, col_idx, data_row_idx)
+            if error_msg:
+                current_row_errors.append(error_msg)
+                error_cells.add((table_row_idx, col_idx))
+
+        table_data.append(row_data)
+
+        if current_row_errors:
+            row_errors[table_row_idx] = current_row_errors
+            # Only 7 columns for the error row (exclude grey column)
+            error_row = [", ".join(current_row_errors)] + [""] * 6
+            table_data.append(error_row)
+            table_row_idx += 2
+        else:
+            table_row_idx += 1
+
+    headers = [
+        "/MUP",
+        "MMR",
+        "Site type",
+        "Unit",
+        "Data Qualifier",
+        "Kind",
+        "Phase",
+        "# Readings Received",
     ]
-    table_data.insert(0, ["/mup", "Description", "Number received"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.13, 0.63, 0.24]]
+    table_data.insert(0, headers)
+
+    fractions = [0.1, 0.1, 0.1, 0.2, 0.15, 0.09, 0.09, 0.22]
+    column_widths = [int(f * stylesheet.table_width) for f in fractions]
+
+    styles = [
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.Color(0.85, 0.85, 0.85)),
+    ]
+
+    # Error row styling
+    for data_row_idx in row_errors:
+        error_row_idx = data_row_idx + 1
+        styles.extend(
+            [
+                ("LINEBELOW", (0, data_row_idx), (-1, data_row_idx), 0, colors.white),
+                ("BACKGROUND", (0, error_row_idx), (6, error_row_idx), colors.white),
+                ("TEXTCOLOR", (0, error_row_idx), (6, error_row_idx), colors.red),
+                ("FONTSIZE", (0, error_row_idx), (6, error_row_idx), 6),
+                ("TOPPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                ("BOTTOMPADDING", (0, error_row_idx), (-1, error_row_idx), 2),
+                ("LEFTPADDING", (0, error_row_idx), (0, error_row_idx), column_widths[0]),
+                ("ALIGNMENT", (0, error_row_idx), (6, error_row_idx), "LEFT"),
+                ("ROWHEIGHT", (0, error_row_idx), (6, error_row_idx), 12),
+            ]
+        )
+
+    # Error cell highlighting
+    for row_idx, col_idx in error_cells:
+        styles.extend(
+            [
+                ("BACKGROUND", (col_idx, row_idx), (col_idx, row_idx), colors.Color(1, 0.9, 0.9)),
+                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.red),
+            ]
+        )
+
+    # Create and style table
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
+    table.setStyle(TableStyle(styles))
+
     elements.append(table)
-    elements.append(stylesheet.spacer)
+
+    footnote = Paragraph(
+        "For more information, see Standards Australia SA TS 5573:2025, Table 8.1.",
+        ParagraphStyle(name="TableFootNote", fontSize=6, leading=6),
+    )
+    elements.extend([footnote, stylesheet.spacer])
+
     return elements
 
 

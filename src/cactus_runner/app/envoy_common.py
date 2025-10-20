@@ -31,15 +31,29 @@ class ReadingLocation(IntEnum):
     DEVICE_READING = int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_DER | RoleFlagsType.IS_SUBMETER)
 
 
-async def get_active_site(session: AsyncSession) -> Site | None:
-    """We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
+async def get_active_site(session: AsyncSession, include_der_settings: bool = False) -> Site | None:
+    """
+    Get the "active" site - interpreted as the last site created/modified by the client.
 
-    If there is no site - return None"""
-    site = (await session.execute(select(Site).order_by(Site.changed_time.desc()).limit(1))).scalar_one_or_none()
+    Args:
+        session: Database session
+        include_der_settings: If True, eagerly load SiteDER and related settings
+
+    Returns:
+        The most recently modified Site, or None if no sites exist
+    """
+    stmt = select(Site).order_by(Site.changed_time.desc()).limit(1)
+
+    if include_der_settings:
+        stmt = stmt.options(selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting))
+
+    site = (await session.execute(stmt)).scalar_one_or_none()
+
     if site:
         logger.debug(f"get_active_site: Resolved site {site.site_id} as the active site / EndDevice")
     else:
         logger.error("get_active_site: There are no sites registered.")
+
     return site
 
 
