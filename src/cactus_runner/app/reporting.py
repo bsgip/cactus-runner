@@ -1030,7 +1030,8 @@ def _add_step_completion_markers(
 def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -> Image:
     """
     Generates a horizontal activity chart showing request activity and step completions.
-    This chart shares the same x-axis (time) scale as the timeline chart above it. (must manually keep the axix identical, it is not a shared axis)
+    This chart shares the same x-axis (time) scale as the timeline chart above it.
+    We must manually keep the axis identical, it is not a shared axis.
     """
     fig = go.Figure()
 
