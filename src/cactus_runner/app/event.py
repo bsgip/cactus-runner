@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
+from cactus_runner.app.env import MOUNT_POINT
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import Listener, RunnerState
 
@@ -65,30 +66,31 @@ def does_endpoint_match(request: ClientRequestDetails, match: str) -> bool:
     seperated by '/'). It will NOT partially match
 
     eg:
-    match=/edev/*/derp/1  would match /some/prefix/edev/123/derp/1
-    match=/edev/1*3/derp/1  would NOT match /some/prefix/edev/123/derp/1
+    match=/edev/*/derp/1  would match /edev/123/derp/1
+    match=/edev/1*3/derp/1  would NOT match /edev/123/derp/1
 
+    NOTE: This function expects paths WITHOUT any mount point prefix - those should be stripped before calling.
+    """
 
-    Will be tolerant to path prefixes on the incoming request."""
-
-    # If we don't have a wildcard - we can do a really simply method for matching
+    # If we don't have a wildcard - do an EXACT match
     WILDCARD = "*"
     if WILDCARD not in match:
-        return request.path.endswith(match)
+        return request.path == match
 
     # Otherwise we need to do a component by component comparison
-    # Noting that there may be a variable prefix that the runner doesn't know about
-    # To handle this - we start the comparison matching in reverse
     request_components = list(filter(None, request.path.split("/")))  # Remove empty strings
     match_components = list(filter(None, match.split("/")))  # Remove empty strings
-    compared_component_count = 0
-    for request_component, match_component in zip(reversed(request_components), reversed(match_components)):
+
+    # Must have same number of components for a match
+    if len(request_components) != len(match_components):
+        return False
+
+    # Compare each component
+    for request_component, match_component in zip(request_components, match_components):
         if match_component != WILDCARD and request_component != match_component:
             return False
 
-        compared_component_count += 1
-
-    return compared_component_count == len(match_components)
+    return True
 
 
 async def is_listener_triggerable(
@@ -203,16 +205,26 @@ def generate_time_trigger() -> EventTrigger:
 
 
 def generate_client_request_trigger(request: web.Request, before_serving: bool) -> EventTrigger:
-    """Generates an EventTrigger representing the specified web.Request
+    """
+    Generates an EventTrigger representing the specified web.Request
+
+    NOTE: We also strip the MOUNT_POINT from the path to allow strict matching
 
     Args:
         request: The request to interrogate (body will NOT be read)
         before_serving: Is this an event trigger for BEFORE the request is served to envoy (True) or after (False)"""
+    # Strip MOUNT_POINT from the path before storing
+    path_without_mount = request.path
+    if path_without_mount.startswith(MOUNT_POINT):
+        path_without_mount = path_without_mount[len(MOUNT_POINT) :]  # noqa: E203
+        # Ensure path still has leading slash
+        if not path_without_mount or not path_without_mount.startswith("/"):
+            path_without_mount = "/" + path_without_mount
 
     trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
     return EventTrigger(
         type=trigger_type,
         time=datetime.now(timezone.utc),
         single_listener=True,
-        client_request=ClientRequestDetails(HTTPMethod(request.method), request.path),
+        client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount),
     )
