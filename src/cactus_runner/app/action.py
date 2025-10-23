@@ -23,13 +23,7 @@ from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.app.finalize import finish_active_test
-from cactus_runner.models import (
-    ActiveTestProcedure,
-    ClientCertificateType,
-    Listener,
-    RunnerState,
-    StepStatus,
-)
+from cactus_runner.models import ActiveTestProcedure, ClientCertificateType, Listener, RunnerState
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +60,9 @@ async def action_enable_steps(
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-steps: Enabling step {listener.step}")
-            listener.enabled_time = datetime.now(tz=timezone.utc)
-            active_test_procedure.step_status[listener.step] = StepStatus.ACTIVE
+            dt_now = datetime.now(tz=timezone.utc)
+            listener.enabled_time = dt_now
+            active_test_procedure.step_status[listener.step].started_at = dt_now
 
 
 async def action_remove_steps(
@@ -97,7 +92,7 @@ async def action_remove_steps(
     for listener in listeners_to_remove:
         logger.info(f"ACTION remove-steps: Removing listener: {listener}")
         active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
-        active_test_procedure.step_status[listener.step] = StepStatus.RESOLVED
+        active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=timezone.utc)
 
 
 async def action_finish_test(runner_state: RunnerState, session: AsyncSession):

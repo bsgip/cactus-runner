@@ -22,6 +22,7 @@ from cactus_runner.models import (
     InitResponseBody,
     RunnerStatus,
     StartResponseBody,
+    StepInfo,
     StepStatus,
 )
 from tests.integration.certificate1 import (
@@ -109,7 +110,7 @@ async def test_client_interactions(
     assert status_response.test_procedure_name == test_procedure_id.value
     assert status_response.csip_aus_version == csip_aus_version.value
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
-    assert_dict_type(str, StepStatus, status_response.step_status)
+    assert_dict_type(str, StepInfo, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
 
     # Interrogate a finalize response (assume we don't fire off any CSIP requests)
@@ -214,11 +215,13 @@ async def test_status_steps_immediate_start(
         assert init_response.is_started, "ALL-01 should be immediate start"
 
         status_response = await RunnerClient.status(session)
+
     assert isinstance(status_response, RunnerStatus)
-    assert_dict_type(str, StepStatus, status_response.step_status)
+    assert all(isinstance(s, StepInfo) for s in status_response.step_status.values())
 
     step_status_counts: dict[StepStatus, int] = {}
-    for status in status_response.step_status.values():
+    for step_info in status_response.step_status.values():
+        status = step_info.get_step_status()
         step_status_counts[status] = step_status_counts.get(status, 0) + 1
 
     assert step_status_counts.get(StepStatus.ACTIVE, 0) == 1, "One step should initially be active"

@@ -114,7 +114,7 @@ async def test_all_07_full(cactus_runner_client: TestClient):
     summary = RunnerStatus.from_json(summary_data.decode())
     assert summary.csip_aus_version == csip_aus_version.value
     for step, resolved in summary.step_status.items():
-        assert resolved == StepStatus.RESOLVED, step
+        assert resolved.get_step_status() == StepStatus.RESOLVED, step
 
     # Ensure PDF generated ok
     pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))

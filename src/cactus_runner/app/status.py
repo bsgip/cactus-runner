@@ -17,6 +17,7 @@ from cactus_runner.models import (
     PreconditionCheckEntry,
     RequestEntry,
     RunnerStatus,
+    StepInfo,
     StepStatus,
     TimelineDataStreamEntry,
     TimelineStatus,
@@ -25,8 +26,8 @@ from cactus_runner.models import (
 logger = logging.getLogger(__name__)
 
 
-def get_runner_status_summary(step_status: dict[str, StepStatus]):
-    completed_steps = sum(s == StepStatus.RESOLVED for s in step_status.values())
+def get_runner_status_summary(step_status: dict[str, StepInfo]):
+    completed_steps = sum(s.get_step_status() == StepStatus.RESOLVED for s in step_status.values())
     steps = len(step_status)
     return f"{completed_steps}/{steps} steps complete."
 

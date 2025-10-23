@@ -46,7 +46,6 @@ class Timeline:
 
     start: datetime  # The basis time
     interval_seconds: int  # The length of each regular interval within the timeline
-
     data_streams: list[TimelineDataStream]
 
 
