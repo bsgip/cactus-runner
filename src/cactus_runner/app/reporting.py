@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from http import HTTPStatus
 from typing import Sequence
-from reportlab.lib import colors
+
 import pandas as pd
 import PIL.Image as PilImage
 import plotly.express as px  # type: ignore
@@ -21,7 +21,15 @@ from envoy.server.model import (
     SiteDERStatus,
 )
 from envoy.server.model.site_reading import SiteReadingType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, DeviceCategory, PhaseCode, UomType, KindType
+from envoy_schema.server.schema.sep2.types import (
+    DataQualifierType,
+    DeviceCategory,
+    KindType,
+    PhaseCode,
+    RoleFlagsType,
+    UomType,
+)
+from reportlab.lib import colors
 from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import (
@@ -56,7 +64,6 @@ from cactus_runner.models import (
     RequestEntry,
     RunnerState,
 )
-from envoy_schema.server.schema.sep2.types import RoleFlagsType
 
 logger = logging.getLogger(__name__)
 
@@ -1161,7 +1168,7 @@ def generate_readings_timeline(
 
 
 def reading_quantity(srt: SiteReadingType) -> str:
-    quantity = UomType(srt.uom).name
+    quantity = srt.uom.name
     quantity = quantity.replace("_", " ").title()
     return quantity
 

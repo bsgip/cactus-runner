@@ -99,6 +99,9 @@ async def get_readings(
             qualifier=reading_specifier.qualifier,
         )
         for reading_type in reading_types:
+            # Convert uom from int to UomType
+            reading_type.uom = UomType(reading_type.uom)
+
             reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
 
             if reading_data:

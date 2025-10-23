@@ -145,7 +145,6 @@ async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> d
 
     count_by_site_reading_type_id: dict[int, int] = {}
     for site_reading_type, count in count_resp.all():
-        print(f"{site_reading_type=} {count=}")
         count_by_site_reading_type_id[site_reading_type] = count
 
     site_reading_type_ids = list(count_by_site_reading_type_id.keys())
@@ -156,6 +155,8 @@ async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> d
 
     count_by_site_reading_type: dict[SiteReadingType, int] = {}
     for reading_type in reading_types_resp.scalars().all():
+        # Convert uom from int to UomType
+        reading_type.uom = UomType(reading_type.uom)
         count_by_site_reading_type[reading_type] = count_by_site_reading_type_id[reading_type.site_reading_type_id]
 
     return count_by_site_reading_type

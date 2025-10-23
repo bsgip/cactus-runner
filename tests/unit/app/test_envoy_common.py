@@ -2,16 +2,16 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+import sqlalchemy
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
 )
-from envoy.server.model.site import Site, SiteDERSetting, SiteDER, DefaultSiteControl
-
 from envoy.server.model.archive.site import ArchiveDefaultSiteControl
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.site import DefaultSiteControl, Site, SiteDER, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -19,7 +19,6 @@ from envoy_schema.server.schema.sep2.types import (
     RoleFlagsType,
     UomType,
 )
-import sqlalchemy
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -432,6 +431,10 @@ async def test_get_reading_counts_grouped_by_reading_type(pg_base_config):
         assert count_by_reading_type[power_type] == num_power_readings
         assert count_by_reading_type[voltage_type] == num_voltage_readings
         assert count_by_reading_type[energy_type] == num_energy_readings
+
+        # Check reading uom is UomType (bugfix for reporting issue)
+        for reading_type in count_by_reading_type.keys():
+            assert isinstance(reading_type.uom, UomType)
 
 
 @pytest.mark.anyio
