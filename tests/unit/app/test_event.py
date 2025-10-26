@@ -95,6 +95,53 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
     assert trigger.client_request.path == request_path
 
 
+def test_mount_point_only_strips_prefix_not_substring(monkeypatch):
+    monkeypatch.setattr(event, "MOUNT_POINT", "/api")
+
+    mock_request = MagicMock()
+    mock_request.method = "GET"
+    mock_request.path = "/v1/api/users"  # "api" in middle
+
+    trigger = event.generate_client_request_trigger(mock_request, True)
+    assert trigger.client_request.path == "/v1/api/users"  # Should NOT be stripped
+
+
+@pytest.mark.parametrize(
+    "mount_point, request_path, expected_path",
+    [
+        # mount point with trailing slash
+        ("/api/v1", "/api/v1/foo/bar", "/foo/bar"),
+        ("/api/v1", "/api/v1/", "/"),
+        ("/api/v1", "/api/v1", "/"),
+        # path without MOUNT_POINT should remain unchanged
+        ("/api/v1", "/foo/bar", "/foo/bar"),
+        ("/api/v1", "/", "/"),
+        # Different mount point
+        ("/mount", "/mount/users", "/users"),
+        ("/mount", "/mounted/users", "/mounted/users"),  # Shouldn't match - different path
+        # Empty mount point
+        ("", "/foo/bar", "/foo/bar"),
+    ],
+)
+def test_generate_client_request_trigger_mount_point_stripping(
+    mount_point: str, request_path: str, expected_path: str, monkeypatch
+):
+    """Verifies that MOUNT_POINT is correctly stripped from request paths"""
+
+    # Set the MOUNT_POINT
+    monkeypatch.setattr(event, "MOUNT_POINT", mount_point)
+
+    mock_request = MagicMock()
+    mock_request.method = "GET"
+    mock_request.path = request_path
+
+    trigger = event.generate_client_request_trigger(mock_request, before_serving=True)
+
+    assert isinstance(trigger, event.EventTrigger)
+    assert trigger.client_request.path == expected_path
+    assert trigger.client_request.path.startswith("/")
+
+
 @pytest.mark.parametrize(
     "trigger, listener, expected",
     [
