@@ -271,3 +271,57 @@ async def test_health_admin_api_dead(cactus_runner_client_faulty_admin: TestClie
     ) as session:
         health_response = await RunnerClient.health(session)
         assert health_response is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "cactus_runner_client_with_mount_point, test_paths",
+    [
+        (
+            "/api/v1",
+            [
+                ("/api/v1/health", 200),  # Correct
+                ("/api/v1/status", 200),  # Correct
+                ("/health", 404),  # Missing prefix
+                ("/api/v2/health", 404),  # Wrong prefix
+                ("/api/v1extra/health", 404),  # without slash
+            ],
+        ),
+        (
+            "/mount/point",
+            [
+                ("/mount/point/health", 200),
+                ("/health", 404),
+                ("/mount/health", 404),  # Partial
+                ("/mount/pointextra/health", 404),  # No slash
+            ],
+        ),
+        (
+            "",  # empty (root)
+            [
+                ("/health", 200),
+                ("/status", 200),
+                ("/api/v1/health", 400),  # Non-existent path matches catch-all, no test procedure active
+            ],
+        ),
+    ],
+    indirect=["cactus_runner_client_with_mount_point"],
+)
+async def test_mount_point_routing_protection(
+    cactus_runner_client_with_mount_point: TestClient,
+    test_paths: list[tuple[str, int]],
+):
+    """Verify mount point routing works correctly with different configurations.
+
+    NOTE: MOUNT_POINT is hardcoded in production. This is a defensive test to ensure
+    the routing logic in create_app() correctly handles mount points if the value changes.
+
+    The aiohttp router should reject paths that don't match the mount point pattern
+    BEFORE they reach proxied_request_handler.
+    """
+    async with ClientSession(
+        base_url=cactus_runner_client_with_mount_point.make_url("/"), timeout=ClientTimeout(30)
+    ) as session:
+        for path, expected_status in test_paths:
+            async with session.get(path) as response:
+                assert response.status == expected_status
