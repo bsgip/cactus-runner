@@ -15,6 +15,7 @@ from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
+    MOUNT_POINT,
     SERVER_URL,
 )
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -538,7 +539,7 @@ async def proxied_request_handler(request: web.Request):
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
     async with begin_session() as session:
         trigger_handled = await event.handle_event_trigger(
-            trigger=event.generate_client_request_trigger(request, before_serving=True),
+            trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
             runner_state=runner_state,
             session=session,
             envoy_client=envoy_client,
@@ -554,7 +555,7 @@ async def proxied_request_handler(request: web.Request):
     if not trigger_handled:
         async with begin_session() as session:
             trigger_handled = await event.handle_event_trigger(
-                trigger=event.generate_client_request_trigger(request, before_serving=False),
+                trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=False),
                 runner_state=runner_state,
                 session=session,
                 envoy_client=envoy_client,

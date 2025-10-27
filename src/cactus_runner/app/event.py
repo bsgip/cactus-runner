@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
-from cactus_runner.app.env import MOUNT_POINT
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import Listener, RunnerState
 
@@ -204,19 +203,24 @@ def generate_time_trigger() -> EventTrigger:
     )
 
 
-def generate_client_request_trigger(request: web.Request, before_serving: bool) -> EventTrigger:
+def generate_client_request_trigger(request: web.Request, mount_point: str, before_serving: bool) -> EventTrigger:
     """
     Generates an EventTrigger representing the specified web.Request
 
-    NOTE: We also strip the MOUNT_POINT from the path to allow strict matching
-
     Args:
         request: The request to interrogate (body will NOT be read)
-        before_serving: Is this an event trigger for BEFORE the request is served to envoy (True) or after (False)"""
+        mount_point: stripped from the path to allow strict matching
+        before_serving: Is this an event trigger for BEFORE the request is served to envoy (True) or after (False)
+
+    NOTE: The aiohttp router ensures only paths under MOUNT_POINT reach this function.
+    This function trusts that validation and focuses on correctly stripping the mount point.
+    e.g. if mount = /mount/point, cases like /mount/pointrailingchars/api/edev should give 404 before this point.
+    """
+
     # Strip MOUNT_POINT from the path before storing
     path_without_mount = request.path
-    if path_without_mount.startswith(MOUNT_POINT):
-        path_without_mount = path_without_mount[len(MOUNT_POINT) :]  # noqa: E203
+    if path_without_mount.startswith(mount_point):
+        path_without_mount = path_without_mount[len(mount_point) :]  # noqa: E203
         # Ensure path still has leading slash
         if not path_without_mount or not path_without_mount.startswith("/"):
             path_without_mount = "/" + path_without_mount
