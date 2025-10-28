@@ -19,6 +19,7 @@ from cactus_runner.app.env import (
 )
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
+from cactus_runner.app.requests import get_all_request_ids, read_request_response_files, write_request_response_files
 from cactus_runner.app.schema_validator import validate_proxy_request_schema
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
@@ -470,6 +471,44 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
+async def get_request_raw_data_handler(request: web.Request):
+    """
+    GET /request/{request_id}
+
+    Retrieve raw request/response data for a specific request ID.
+
+    Returns:
+        JSON response with request and response content, or 404 if not found.
+    """
+    try:
+        request_id = int(request.match_info["request_id"])
+    except (KeyError, ValueError):
+        return web.json_response({"error": "Invalid request_id parameter"}, status=http.HTTPStatus.BAD_REQUEST)
+
+    request_content, response_content = read_request_response_files(request_id)
+
+    if request_content is None and response_content is None:
+        return web.json_response(
+            {"error": f"Request data not found for ID: {request_id}"}, status=http.HTTPStatus.NOT_FOUND
+        )
+
+    return web.json_response({"request_id": request_id, "request": request_content, "response": response_content})
+
+
+async def list_request_ids_handler(request: web.Request) -> web.Response:
+    """
+    GET /requests
+
+    List all available request IDs.
+
+    Returns:
+        JSON response with list of request IDs.
+    """
+    request_ids = get_all_request_ids()
+
+    return web.json_response({"request_ids": request_ids, "count": len(request_ids)})
+
+
 async def proxied_request_handler(request: web.Request):
     """Handler for requests that should be forwarded to the utility server.
 
@@ -573,6 +612,9 @@ async def proxied_request_handler(request: web.Request):
     # check any request body for schema validity (assumption being that it's XML)
     body_xml_errors = validate_proxy_request_schema(proxy_result)
 
+    # Generate sequential request ID
+    request_id = len(runner_state.request_history)
+
     # Record in request history
     request_entry = RequestEntry(
         url=remote_url,
@@ -582,7 +624,11 @@ async def proxied_request_handler(request: web.Request):
         timestamp=request_timestamp,
         step_name=step_name,
         body_xml_errors=body_xml_errors,
+        request_id=request_id,
     )
     runner_state.request_history.append(request_entry)
+
+    # Write request/response files to disk
+    write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=request_entry)
 
     return proxy_result.response

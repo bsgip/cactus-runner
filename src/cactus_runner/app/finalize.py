@@ -30,6 +30,7 @@ from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_readings,
 )
+from cactus_runner.app.requests import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -98,6 +99,9 @@ def get_zip_contents(
             file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
             with open(file_path, "wb") as f:
                 f.write(pdf_data)
+
+        # Copy request/response files from storage to archive
+        copy_request_response_files_to_archive(archive_dir=archive_dir)
 
         # Create db dump
         try:

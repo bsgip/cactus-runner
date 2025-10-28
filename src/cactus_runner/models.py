@@ -67,6 +67,7 @@ class RequestEntry(JSONWizard):
     timestamp: datetime
     step_name: str
     body_xml_errors: list[str]  # Any XML schema errors detected in the incoming body
+    request_id: int  # Increments per test
 
 
 class ClientInteractionType(StrEnum):
