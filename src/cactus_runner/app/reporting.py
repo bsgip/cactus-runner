@@ -1150,19 +1150,19 @@ def generate_readings_timeline(
 
 
 def uom_to_string(uom: UomType | int) -> str:
-    return UomType(uom).name.replace("_", " ")
+    return UomType(uom).name.replace("_", " ").lower()
 
 
 def data_qualifier_to_string(qualifier: DataQualifierType | int) -> str:
-    return DataQualifierType(qualifier).name.replace("_", " ")
+    return DataQualifierType(qualifier).name.replace("_", " ").lower()
 
 
 def phase_to_string(phase: PhaseCode | int) -> str:
-    return PhaseCode(phase).name.replace("_", " ")
+    return PhaseCode(phase).name.replace("_", " ").lower()
 
 
 def kind_to_string(kind: KindType | int) -> str:
-    return KindType(kind).name.replace("_", " ")
+    return KindType(kind).name.replace("_", " ").lower()
 
 
 def reading_description(srt: SiteReadingType, exclude_mup: bool = False) -> str:
