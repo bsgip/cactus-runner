@@ -5,27 +5,24 @@ from urllib.parse import quote
 
 import pytest
 
+from assertical.fixtures.postgres import generate_async_session
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
+
 from aiohttp import ClientResponse
 from cactus_test_definitions import CSIPAusVersion
 from pytest_aiohttp.plugin import TestClient
+from sqlalchemy import func, select
 
 from cactus_runner.models import RunnerStatus, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
+from tests.integration.test_all_01 import assert_success_response
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
 
 
-async def assert_success_response(response: ClientResponse):
-    if response.status < 200 or response.status >= 300:
-        body = await response.read()
-        assert False, f"{response.status}: {body}"
-
-
 @pytest.mark.parametrize(
     "certificate_type, csip_aus_version",
-    [
-        ("aggregator_certificate", CSIPAusVersion.BETA_1_3_STORAGE)
-    ],  # TODO: ("device_certificate", CSIPAusVersion.RELEASE_1_2)],
+    [("aggregator_certificate", CSIPAusVersion.BETA_1_3_STORAGE), ("device_certificate", CSIPAusVersion.RELEASE_1_2)],
 )
 @pytest.mark.slow
 @pytest.mark.anyio
@@ -64,11 +61,7 @@ async def test_all_01_with_readings(
     )
     await assert_success_response(result)
 
-    #
-    # Verify Readings Exist
-    #
-
-    # GET the mirror usage point
+    # Verify Readings Exist by checking response
     result = await cactus_runner_client.get(f"/mup/{mup_id}", headers={"ssl-client-cert": URI_ENCODED_CERT})
     await assert_success_response(result)
     mup_response = await result.text()
@@ -76,10 +69,21 @@ async def test_all_01_with_readings(
     assert "0600006C" in mup_response
     assert "MirrorMeterReading" in mup_response
 
-    # TODO: Check the readings make it to the database
+    # Verify readings were saved to database
+    async with generate_async_session(pg_empty_config) as session:
+
+        reading_count = (await session.execute(select(func.count()).select_from(SiteReading))).scalar_one()
+        assert reading_count == 3
+
+        readings = (
+            (await session.execute(select(SiteReading).join(SiteReadingType).where(SiteReadingType.site_id == 1)))
+            .scalars()
+            .all()
+        )
+        assert len(readings) == 3
 
     #
-    # Finalize - Same as ALL_01 main test but with readings can change things like PDF
+    # Finalize - Same as ALL_01 main test but inclusion of readings can change the outcomes
     #
 
     result = await cactus_runner_client.post("/finalize")
