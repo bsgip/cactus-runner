@@ -1485,7 +1485,7 @@ async def test_do_check_single_level(
         ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, 180, False),
         # Testing window contains window boundary reading (where period start == window start)
         ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 180, False),
-        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 179, True)
+        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 179, True),
     ],
 )
 @pytest.mark.anyio
