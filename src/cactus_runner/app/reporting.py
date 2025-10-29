@@ -1207,48 +1207,43 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
     Returns:
         Error message string if invalid, None if valid
     """
-    try:
-        if col_idx == 2:  # Site type
-            site_type = get_site_type(reading_type.role_flags)
-            if site_type == "unknown":
-                return "Site type is unknown - check the RoleFlagsType field"
 
-        elif col_idx == 3:  # UOM
-            uom = UomType(reading_type.uom)
-            if uom not in [UomType.REAL_POWER_WATT, UomType.REACTIVE_POWER_VAR, UomType.FREQUENCY_HZ, UomType.VOLTAGE]:
-                return f"UOM {uom.name} ({uom.value}) is not supported"
+    if col_idx == 2:  # Site type
+        site_type = get_site_type(reading_type.role_flags)
+        if site_type == "unknown":
+            return "Site type is unknown - check the RoleFlagsType field"
 
-        elif col_idx == 4:  # Data qualifier
-            qualifier = DataQualifierType(reading_type.data_qualifier)
-            if qualifier not in [
-                DataQualifierType.AVERAGE,
-                DataQualifierType.STANDARD,
-                DataQualifierType.MAXIMUM,
-                DataQualifierType.MINIMUM,
+    elif col_idx == 3:  # UOM
+        uom = UomType(reading_type.uom)
+        if uom not in [UomType.REAL_POWER_WATT, UomType.REACTIVE_POWER_VAR, UomType.FREQUENCY_HZ, UomType.VOLTAGE]:
+            return f"UOM {uom.name} ({uom.value}) is not supported"
+
+    elif col_idx == 4:  # Data qualifier
+        qualifier = DataQualifierType(reading_type.data_qualifier)
+        if qualifier not in [
+            DataQualifierType.AVERAGE,
+            DataQualifierType.STANDARD,
+            DataQualifierType.MAXIMUM,
+            DataQualifierType.MINIMUM,
+        ]:
+            return f"Data qualifier {qualifier.name} ({qualifier.value}) is not supported"
+
+    elif col_idx == 5:  # Kind
+        kind = KindType(reading_type.kind)
+        if kind != KindType.POWER:
+            return f"KindType is expected to be Power (37), got {kind.name} ({kind.value})"
+
+    elif col_idx == 6:  # Phase (Only applicable to voltage readings)
+        uom = UomType(reading_type.uom)
+        if uom == UomType.VOLTAGE:
+            phase = PhaseCode(reading_type.phase)
+            if phase not in [
+                PhaseCode.PHASE_ABC,
+                PhaseCode.PHASE_AN_S1N,
+                PhaseCode.PHASE_BN,
+                PhaseCode.PHASE_CN_S2N,
             ]:
-                return f"Data qualifier {qualifier.name} ({qualifier.value}) is not supported"
-
-        elif col_idx == 5:  # Kind
-            kind = KindType(reading_type.kind)
-            if kind != KindType.POWER:
-                return f"KindType is expected to be Power (37), got {kind.name} ({kind.value})"
-
-        elif col_idx == 6:  # Phase (Only applicable to voltage readings)
-            uom = UomType(reading_type.uom)
-            if uom == UomType.VOLTAGE:
-                phase = PhaseCode(reading_type.phase)
-                if phase not in [
-                    PhaseCode.PHASE_ABC,
-                    PhaseCode.PHASE_AN_S1N,
-                    PhaseCode.PHASE_BN,
-                    PhaseCode.PHASE_CN_S2N,
-                ]:
-                    return (
-                        f"Phase (for voltage) has specific requirements - {phase.name} ({phase.value}) is not supported"
-                    )
-
-    except (ValueError, TypeError) as e:
-        return f"Invalid enum value in column {col_idx}: {e}"
+                return f"Phase (for voltage) has specific requirements - {phase.name} ({phase.value}) is not supported"
 
     return None
 

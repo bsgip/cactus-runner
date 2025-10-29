@@ -14,14 +14,9 @@ from envoy.server.model import (
     SiteDERRating,
     SiteDERAvailability,
     SiteDERStatus,
-    KindType,
-    UomType,
-    RoleFlagsType,
-    DataQualifierType,
 )
-from envoy_schema.server.schema.sep2.types import DeviceCategory
 from cactus_runner.app.check import CheckResult
-from cactus_runner.app.reporting import device_category_to_string, pdf_report_as_bytes
+from cactus_runner.app.reporting import device_category_to_string, pdf_report_as_bytes, validate_cell
 from cactus_runner.app.timeline import Timeline, TimelineDataStream
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -32,6 +27,14 @@ from cactus_runner.models import (
     StepInfo,
 )
 from cactus_runner.app.envoy_common import ReadingLocation
+from envoy_schema.server.schema.sep2.types import (
+    DataQualifierType,
+    DeviceCategory,
+    KindType,
+    PhaseCode,
+    RoleFlagsType,
+    UomType,
+)
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -426,3 +429,41 @@ def test_pdf_report_everything_set():
     #     f.flush()
     #     print(f"Saved comprehensive PDF report: {os.path.basename(f.name)}")
     #     subprocess.run(["xdg-open", f.name])
+
+
+@pytest.mark.parametrize(
+    "col_idx,field_name,valid_value,enum_member",
+    [
+        (3, "uom", UomType.REAL_POWER_WATT.value, UomType.REAL_POWER_WATT),
+        (4, "data_qualifier", DataQualifierType.AVERAGE.value, DataQualifierType.AVERAGE),
+        (5, "kind", KindType.POWER.value, KindType.POWER),
+        (6, "phase", PhaseCode.PHASE_ABC.value, PhaseCode.PHASE_ABC),
+    ],
+)
+def test_validate_cell_with_int_enums(col_idx, field_name, valid_value, enum_member):
+    """Test that validate_cell correctly handles both integer values and enum members"""
+    # Test with integer value (.value)
+    reading_type_int = SiteReadingType(
+        role_flags=0,
+        uom=UomType.VOLTAGE.value if field_name == "phase" else UomType.REAL_POWER_WATT.value,
+        data_qualifier=DataQualifierType.AVERAGE.value,
+        kind=KindType.POWER.value,
+        phase=PhaseCode.PHASE_ABC.value,
+    )
+    setattr(reading_type_int, field_name, valid_value)
+
+    error = validate_cell(reading_type_int, col_idx=col_idx, row_num=1)
+    assert error is None, f"Expected no error for int {field_name} value {valid_value}"
+
+    # Test with enum member (should also work the same)
+    reading_type_enum = SiteReadingType(
+        role_flags=0,
+        uom=UomType.VOLTAGE.value if field_name == "phase" else UomType.REAL_POWER_WATT.value,
+        data_qualifier=DataQualifierType.AVERAGE.value,
+        kind=KindType.POWER.value,
+        phase=PhaseCode.PHASE_ABC.value,
+    )
+    setattr(reading_type_enum, field_name, enum_member)
+
+    error = validate_cell(reading_type_enum, col_idx=col_idx, row_num=1)
+    assert error is None, f"Expected no error for enum member {field_name} value {enum_member}"
