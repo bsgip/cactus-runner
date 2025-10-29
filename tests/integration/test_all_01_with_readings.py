@@ -33,6 +33,7 @@ async def test_all_01_with_readings(
 
     # Load XML data from files
     xml_data_dir = Path(__file__).parent.parent / "data" / "xml"
+    edev_xml = (xml_data_dir / "edev.xml").read_text().strip()
     mup_xml = (xml_data_dir / "mup.xml").read_text().strip()
     mmr_xml = (xml_data_dir / "mmr.xml").read_text().strip()
 
@@ -45,11 +46,18 @@ async def test_all_01_with_readings(
     result = await cactus_runner_client.get("/tm", headers={"ssl-client-cert": URI_ENCODED_CERT})
     result = await cactus_runner_client.get("/edev/1/der", headers={"ssl-client-cert": URI_ENCODED_CERT})
 
+    # Register the device (required for aggregator certificate)
+    if certificate_type == "aggregator_certificate":
+        result = await cactus_runner_client.post(
+            "/edev", data=edev_xml, headers={"ssl-client-cert": URI_ENCODED_CERT, "Content-Type": "application/sep+xml"}
+        )
+        await assert_success_response(result)
+
     # Post Mirror Usage Point
     result = await cactus_runner_client.post(
         "/mup", data=mup_xml, headers={"ssl-client-cert": URI_ENCODED_CERT, "Content-Type": "application/sep+xml"}
     )
-    location = result.headers.get("Location")  # Returns '/mup/2'
+    location = result.headers.get("Location")
     mup_id = location.split("/")[-1]
     await assert_success_response(result)
 
@@ -70,28 +78,27 @@ async def test_all_01_with_readings(
     assert "MirrorMeterReading" in mup_response
 
     # Verify readings were saved to database
-    async with generate_async_session(pg_empty_config) as session:
+    site_id = 2 if certificate_type == "aggregator_certificate" else 1
+    expected_reading_count = 3
 
+    async with generate_async_session(pg_empty_config) as session:
         reading_count = (await session.execute(select(func.count()).select_from(SiteReading))).scalar_one()
-        assert reading_count == 3
+        assert reading_count == expected_reading_count
 
         readings = (
-            (await session.execute(select(SiteReading).join(SiteReadingType).where(SiteReadingType.site_id == 1)))
+            (await session.execute(select(SiteReading).join(SiteReadingType).where(SiteReadingType.site_id == site_id)))
             .scalars()
             .all()
         )
-        assert len(readings) == 3
+        assert len(readings) == expected_reading_count
 
-    #
     # Finalize - Same as ALL_01 main test but inclusion of readings can change the outcomes
-    #
-
     result = await cactus_runner_client.post("/finalize")
     await assert_success_response(result)
     assert result.headers["Content-Type"] == "application/zip"
     assert "attachment" in result.headers["Content-Disposition"]
 
-    # Does the ZIP file look like it has data?
+    # Verify ZIP file contents
     zip_data = await result.read()
     zip_file = zipfile.ZipFile(io.BytesIO(zip_data))
 

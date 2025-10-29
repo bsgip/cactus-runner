@@ -149,9 +149,9 @@ async def test_get_readings(pg_base_config):
         [len(readings) for readings in readings_map.values()]
     )
 
-    # Check reading uom is UomType (bugfix for reporting issue)
+    # Check reading uom is int (bugfix for reporting issue)
     for reading_type in readings_map.keys():
-        assert isinstance(reading_type.uom, UomType)
+        assert isinstance(reading_type.uom, int)
 
 
 def test_merge_readings():
