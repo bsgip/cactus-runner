@@ -27,7 +27,10 @@ URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
 @pytest.mark.slow
 @pytest.mark.anyio
 async def test_all_01_with_readings(
-    cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion, pg_empty_config
+    cactus_runner_client: TestClient,
+    certificate_type: str,
+    csip_aus_version: CSIPAusVersion,
+    pg_empty_config,
 ):
     """ALL-01 workflow with reading posting and verification"""
 

@@ -37,6 +37,7 @@ def runner_status_fixture():
                 timestamp=datetime.now(timezone.utc),
                 step_name="ALL-01-001",
                 body_xml_errors=[],
+                request_id=1,
             )
         ],
     )

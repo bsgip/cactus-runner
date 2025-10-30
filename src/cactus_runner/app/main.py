@@ -143,6 +143,10 @@ def create_app() -> web.Application:
     app.router.add_route("POST", mount + "start", handler.start_handler)
     app.router.add_route("POST", mount + "finalize", handler.finalize_handler)
 
+    # For retrieving request logs
+    app.router.add_route("GET", mount + "request/{request_id}", handler.get_request_raw_data_handler)
+    app.router.add_route("GET", mount + "requests", handler.list_request_ids_handler)
+
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
     app.router.add_route("*", mount + "{proxyPath:.*}", handler.proxied_request_handler)
 
