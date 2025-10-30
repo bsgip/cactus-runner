@@ -46,14 +46,22 @@ def write_request_response_files(
         request_body = None
         if proxy_result.request_body:
             encoding = proxy_result.request_encoding or "utf-8"
-            request_body = proxy_result.request_body.decode(encoding=encoding, errors="replace")
+            try:
+                request_body = proxy_result.request_body.decode(encoding=encoding, errors="replace")
+            except Exception as exc:
+                logger.error(f"Error decoding request body with encoding '{encoding}'", exc_info=exc)
+                request_body = "[binary data]"
 
         # Decode response body
         response_body = None
         if hasattr(proxy_result.response, "text") and proxy_result.response.text:
             response_body = proxy_result.response.text
         elif hasattr(proxy_result.response, "body") and proxy_result.response.body:
-            response_body = proxy_result.response.body.decode(encoding="utf-8", errors="replace")
+            try:
+                response_body = proxy_result.response.body.decode(encoding="utf-8", errors="replace")
+            except Exception as exc:
+                logger.error("Error decoding response body", exc_info=exc)
+                response_body = "[binary data]"
 
         # Create filename
         sanitised_path = sanitise_url_to_filename(entry.path)
@@ -61,7 +69,7 @@ def write_request_response_files(
 
         # Write .request file
         request_file = storage_dir / f"{base_name}.request"
-        with open(request_file, "w", encoding="utf-8") as fp:
+        with open(request_file, "w", encoding="utf-8", errors="replace") as fp:
             lines = [f"{entry.method.value} {entry.path} HTTP/1.1"]
             for header, value in proxy_result.request_headers.items():
                 lines.append(f"{header}: {value}")
@@ -72,7 +80,7 @@ def write_request_response_files(
 
         # Write .response file
         response_file = storage_dir / f"{base_name}.response"
-        with open(response_file, "w", encoding="utf-8") as fp:
+        with open(response_file, "w", encoding="utf-8", errors="replace") as fp:
             lines = [f"HTTP/1.1 {entry.status.value} {entry.status.phrase}"]
             for header, value in proxy_result.response.headers.items():
                 lines.append(f"{header}: {value}")
