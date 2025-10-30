@@ -1,3 +1,4 @@
+from unittest import mock
 from unittest.mock import patch
 from http import HTTPStatus, HTTPMethod
 from datetime import datetime, timezone
@@ -89,21 +90,23 @@ def test_write_request_response_files_with_binary_request_body(tmp_path_factory,
 
     # Binary data that will fail UTF-8 decoding
     proxy_result.request_body = b"\x80\x81\x82\x83\xff\xfe"
+    entry.path = "/dcap"
 
     # Act
     with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", temp_dir):
         write_request_response_files(request_id=5, proxy_result=proxy_result, entry=entry)
 
     # Assert
-    request_file = temp_dir / "005-TEST-001-binary.request"
+    request_files = list(temp_dir.glob("005-*.request"))
 
-    assert request_file.exists(), "Request file should be created despite binary body"
+    assert len(request_files) == 1, f"Expected 1 request file, found {len(request_files)}"
+    request_file = request_files[0]
 
     with open(request_file, "r", encoding="utf-8") as f:
         request_content = f.read()
 
-    assert "POST /binary HTTP/1.1" in request_content
-    assert "[binary data]" in request_content, "Binary body should be replaced with placeholder"
+    assert "POST /dcap HTTP/1.1" in request_content
+    assert "�" in request_content, "Binary body should contain replacement characters"
 
 
 def test_write_request_response_files_creates_directory_if_missing(tmp_path_factory):
@@ -159,6 +162,7 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
         request_body=b"test",
         request_encoding="utf-8",
         response=response,
+        request_headers=mock.MagicMock(),
     )
 
     entry = RequestEntry(

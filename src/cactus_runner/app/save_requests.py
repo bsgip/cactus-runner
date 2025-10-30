@@ -46,22 +46,14 @@ def write_request_response_files(
         request_body = None
         if proxy_result.request_body:
             encoding = proxy_result.request_encoding or "utf-8"
-            try:
-                request_body = proxy_result.request_body.decode(encoding=encoding, errors="replace")
-            except Exception as exc:
-                logger.error(f"Error decoding request body as '{encoding}' text", exc_info=exc)
-                request_body = "[binary data]"
+            request_body = proxy_result.request_body.decode(encoding=encoding, errors="replace")
 
         # Decode response body
         response_body = None
         if hasattr(proxy_result.response, "text") and proxy_result.response.text:
             response_body = proxy_result.response.text
         elif hasattr(proxy_result.response, "body") and proxy_result.response.body:
-            try:
-                response_body = proxy_result.response.body.decode(encoding="utf-8", errors="replace")
-            except Exception as exc:
-                logger.error("Error decoding response body as 'utf-8' text", exc_info=exc)
-                response_body = "[binary data]"
+            response_body = proxy_result.response.body.decode(encoding="utf-8", errors="replace")
 
         # Create filename
         sanitised_path = sanitise_url_to_filename(entry.path)
