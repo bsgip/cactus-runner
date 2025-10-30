@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from aiohttp import web
 from multidict import CIMultiDict
 import pytest
-
+import logging
 from cactus_runner.app.save_requests import write_request_response_files
 from cactus_runner.models import RequestEntry
 from cactus_runner.app.proxy import ProxyResult
@@ -177,9 +177,11 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
     )
 
     with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", temp_dir):
-        with patch("builtins.open", side_effect=PermissionError("Access denied")):
-            # Should not raise exception
-            write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
+        with caplog.at_level(logging.ERROR):
+            # Patch open in the module where it's used
+            with patch("cactus_runner.app.save_requests.open", side_effect=PermissionError("Access denied")):
+                # Should not raise exception
+                write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
 
     assert "Failed to write request/response files for request_id=0" in caplog.text
     assert not (temp_dir / "000-TEST-001-test.request").exists()
