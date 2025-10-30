@@ -18,19 +18,22 @@ from cactus_runner.models import (
     CriteriaEntry,
     DataStreamPoint,
     RunnerStatus,
-    StepStatus,
+    StepInfo,
     TimelineDataStreamEntry,
 )
+
+PENDING_STEP = StepInfo()
+RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
 
 
 @pytest.mark.parametrize(
     "step_status,expected",
     [
         ({}, "0/0 steps complete."),
-        ({"step_name": StepStatus.PENDING}, "0/1 steps complete."),
-        ({"step_name": StepStatus.RESOLVED}, "1/1 steps complete."),
+        ({"step_name": PENDING_STEP}, "0/1 steps complete."),
+        ({"step_name": RESOLVED_STEP}, "1/1 steps complete."),
         (
-            {"step_1": StepStatus.RESOLVED, "step_2": StepStatus.RESOLVED, "step_3": StepStatus.PENDING},
+            {"step_1": RESOLVED_STEP, "step_2": RESOLVED_STEP, "step_3": PENDING_STEP},
             "2/3 steps complete.",
         ),
     ],
@@ -73,7 +76,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         mock_get_timeline_streams.return_value = timeline_streams_result
 
     expected_test_name = "TEST_NAME"
-    expected_step_status = {"step_name": StepStatus.PENDING}
+    expected_step_status = {"step_name": StepInfo(started_at=datetime.now(tz=timezone.utc))}
     expected_status_summary = "0/1 steps complete."
     expected_csip_aus_version = CSIPAusVersion.RELEASE_1_2
     expected_started_at = BASIS - timedelta(seconds=123, microseconds=45)
@@ -138,7 +141,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     get_runner_status_summary_spy = mocker.spy(status, "get_runner_status_summary")
 
     mock_session = create_mock_session()
-    expected_step_status = {"step_name": StepStatus.PENDING}
+    expected_step_status = {"step_name": StepInfo()}
     active_test_procedure = Mock()
     active_test_procedure.step_status = expected_step_status
     active_test_procedure.listeners = []

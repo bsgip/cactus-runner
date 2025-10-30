@@ -53,7 +53,6 @@ from reportlab.platypus import (
 )
 
 from cactus_runner import __version__ as cactus_runner_version
-from cactus_runner.app import event
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.timeline import Timeline, duration_to_label
@@ -63,11 +62,14 @@ from cactus_runner.models import (
     ClientInteractionType,
     RequestEntry,
     RunnerState,
+    StepStatus,
 )
 
 logger = logging.getLogger(__name__)
 
 WITNESS_TEST_CLASSES: list[str] = ["DER-A", "DER-G", "DER-L"]  # Classes from section 14 of sa-ts-5573-2025
+
+CHART_MARGINS = dict(l=80, r=20, t=40, b=80)
 
 
 class ConditionalSpacer(Spacer):
@@ -477,115 +479,6 @@ def generate_criteria_section(
     return elements
 
 
-def generate_test_progress_chart(runner_state: RunnerState, time_relative_to_test_start: bool = True) -> Image:
-    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
-    alternative_x_axis_label = "Time relative to start of test (s)"
-
-    x_axis_label = "Time (UTC)"
-
-    requests = []
-    for request_entry in runner_state.request_history:
-
-        if time_relative_to_test_start and base_timestamp is not None:
-            # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
-            # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
-            # Here convert the timedeltas to total seconds to avoid this problem.
-            total_seconds = (request_entry.timestamp - base_timestamp).total_seconds()
-            x_axis_label = alternative_x_axis_label
-
-            v = dict(
-                Stage=request_entry.step_name,
-                Time=total_seconds,
-                Request=request_entry.path,
-                Method=str(request_entry.method),
-            )
-        else:
-            timestamp = request_entry.timestamp
-            v = dict(
-                Stage=request_entry.step_name,
-                Time=timestamp,
-                Request=request_entry.path,
-                Method=str(request_entry.method),
-            )
-
-        requests.append(v)
-    df = pd.DataFrame(requests)
-
-    all_stage_names = [
-        event.INIT_STAGE_STEP_NAME,
-        event.UNMATCHED_STEP_NAME,
-        *runner_state.active_test_procedure.definition.steps.keys(),  # type: ignore
-    ]
-
-    fig = px.scatter(
-        df,
-        x="Time",
-        y="Stage",
-        range_y=[-1, len(all_stage_names)],  # Force showing all stages on y-axis
-        color="Request",
-        symbol="Method",
-        category_orders={"Stage": all_stage_names},  # Make y-axis a category axis
-        labels={"Stage": "Stage/Step", "Time": x_axis_label},
-    )
-
-    # Show large markers for each request.
-    # The marker color is determined by the request e.g. /dcap
-    # The marker shape is determiend by the method e.g. GET, POST etc.
-    # fig.update_traces(marker=dict(size=20), selector=dict(mode="markers"))
-    fig.update_traces(marker=dict(size=10), selector=dict(mode="markers"))
-
-    # Hide the background and grid lines
-    fig.update_layout(paper_bgcolor="#fff", plot_bgcolor="#fff")
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
-
-    # Style the legend
-    fig.update_layout(
-        legend_title_text=None,
-        legend=dict(entrywidth=200, itemsizing="constant", orientation="h", xanchor="center", x=0.5, y=-0.3),
-    )
-
-    # Add horizontal bands delineating each stage
-    init_and_match_color = "#e0e0e0"
-    step_color = rl_to_plotly_color(MUTED_COLOR)
-    stage_band_colors = [*[step_color] * (len(all_stage_names) - 2), *[init_and_match_color] * 2]
-    for index, color in enumerate(stage_band_colors):
-        fig.add_hrect(
-            y0=index - 0.4,
-            y1=index + 0.4,
-            line_width=0,
-            fillcolor=color,
-            opacity=0.5,
-            layer="below",
-        )
-
-    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
-
-
-def generate_test_progress_section(runner_state: RunnerState, stylesheet: StyleSheet) -> list[Flowable]:
-    elements: list[Flowable] = []
-    elements.append(Paragraph("Test Progress", stylesheet.heading))
-    if runner_state.request_history:
-        elements.append(generate_test_progress_chart(runner_state=runner_state))
-    else:
-        elements.append(Paragraph("No requests were received by utility server during the test procedure."))
-    elements.append(stylesheet.spacer)
-    return elements
-
-
-def generate_requests_histogram(request_timestamps: list[datetime] | list[float], x_axis_label: str) -> Image:
-    df = pd.DataFrame({"timestamp": request_timestamps})
-    fig = px.histogram(
-        df,
-        x="timestamp",
-        labels={"timestamp": x_axis_label},
-        color_discrete_sequence=[rl_to_plotly_color(HIGHLIGHT_COLOR)],
-    )
-    fig.update_layout(bargap=0.2)
-    fig.update_layout(yaxis_title="Number of requests")
-    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
-
-
 def get_request_timestamps(
     runner_state: RunnerState, time_relative_to_test_start: bool
 ) -> tuple[list[datetime] | list[float], str]:
@@ -672,41 +565,6 @@ def generate_requests_with_validation_errors_table(
     table = Table(data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
     return table
-
-
-def generate_communications_section(
-    runner_state: RunnerState, stylesheet: StyleSheet, time_relative_to_test_start: bool = True
-) -> list[Flowable]:
-    have_requests = len(runner_state.request_history) > 0
-
-    elements: list[Flowable] = []
-    elements.append(Paragraph("Communications", stylesheet.heading))
-    if have_requests:
-        timestamps, description = get_request_timestamps(
-            runner_state=runner_state, time_relative_to_test_start=time_relative_to_test_start
-        )
-        elements.append(generate_requests_histogram(request_timestamps=timestamps, x_axis_label=description))
-
-        requests_with_errors = get_requests_with_errors(runner_state=runner_state)
-        if requests_with_errors:
-            elements.append(stylesheet.spacer)
-            elements.append(Paragraph("Requests with errors", stylesheet.subheading))
-            elements.append(
-                generate_requests_with_errors_table(requests_with_errors=requests_with_errors, stylesheet=stylesheet)
-            )
-
-        requests_with_validation_errors = get_requests_with_validation_errors(runner_state=runner_state)
-        if requests_with_validation_errors:
-            elements.append(stylesheet.spacer)
-            elements.append(
-                generate_requests_with_validation_errors_table(
-                    requests_with_validation_errors=requests_with_validation_errors, stylesheet=stylesheet
-                )
-            )
-    else:
-        elements.append(Paragraph("No requests were received by utility server during the test procedure."))
-    elements.append(stylesheet.spacer)
-    return elements
 
 
 def get_non_null_attributes(obj: object, attributes_to_include: list[str]) -> list[str]:
@@ -919,22 +777,10 @@ def generate_device_overview_table(
 
     # Convert device category to a useful string
     device_data = [
-        [
-            "NMI",
-            site.nmi if site.nmi else "Unspecified",
-        ],
-        [
-            "LFDI",
-            site.lfdi,
-        ],
-        [
-            "Device Category",
-            device_category_to_string(device_category=DeviceCategory(site.device_category)),
-        ],
-        [
-            "Site Generation",
-            generation_method,
-        ],
+        ["NMI", site.nmi if site.nmi else "Unspecified"],
+        ["LFDI", site.lfdi],
+        ["Device Category", device_category_to_string(device_category=DeviceCategory(site.device_category))],
+        ["Site Generation", generation_method],
     ]
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.5]]
     table = Table(device_data, colWidths=column_widths)
@@ -1020,8 +866,10 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
 
 def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
     fig = go.Figure()
+
+    # Add data streams with numeric x-axis
     for ds in timeline.data_streams:
-        x_data = [duration_to_label(timeline.interval_seconds * i) for i in range(len(ds.offset_watt_values))]
+        x_data = list(range(len(ds.offset_watt_values)))
         y_data = ds.offset_watt_values
         line_shape = "hv" if ds.stepped else "linear"
         line = {"dash": "dash"} if ds.dashed else {}
@@ -1108,9 +956,22 @@ def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
             ]
         )
 
-    fig.update_xaxes(title="Time")
+    # Generate x-axis labels
+    num_intervals = max(len(ds.offset_watt_values) for ds in timeline.data_streams) if timeline.data_streams else 0
+    x_labels = [duration_to_label(timeline.interval_seconds * i) for i in range(num_intervals)]
+
+    fig.update_xaxes(
+        title="Time",
+        type="linear",
+        tickmode="array",
+        tickvals=list(range(num_intervals)),
+        ticktext=x_labels,
+        range=[0, max(num_intervals - 1, 1)],
+    )
+
     fig.update_yaxes(title="Watts", zeroline=True)
     fig.update_layout(
+        margin=dict(b=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         shapes=shapes,
         annotations=annotations,
@@ -1119,8 +980,128 @@ def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
+def _add_step_completion_markers(
+    fig: go.Figure, runner_state: RunnerState, timeline: Timeline, num_intervals: int
+) -> None:
+    """Add vertical lines marking when test steps were completed."""
+    if not (runner_state.active_test_procedure and runner_state.active_test_procedure.step_status):
+        return
+
+    # Collect completed steps with their timestamps
+    completed_steps = [
+        (step_name, step_info.completed_at)
+        for step_name, step_info in runner_state.active_test_procedure.step_status.items()
+        if step_info.get_step_status() == StepStatus.RESOLVED
+    ]
+
+    if not completed_steps:
+        return
+
+    # Group timestamps by step name
+    step_groups: dict[str, list] = {}
+    for step_name, completed_at in completed_steps:
+        step_groups.setdefault(step_name, []).append(completed_at)
+
+    colors = px.colors.qualitative.Plotly
+
+    # Add vertical lines for each step completion
+    for step_idx, (step_name, timestamps) in enumerate(step_groups.items()):
+        step_color = colors[step_idx % len(colors)]
+
+        # Calculate interval positions for all timestamps
+        x_positions = []
+        for completed_at in timestamps:
+            time_offset = (completed_at - timeline.start).total_seconds()
+            interval_position = time_offset / timeline.interval_seconds
+            if 0 <= interval_position <= num_intervals:
+                x_positions.append(interval_position)
+
+        # Add a line for each occurrence
+        for i, x_pos in enumerate(x_positions):
+            fig.add_trace(
+                go.Scatter(
+                    x=[x_pos, x_pos],
+                    y=[0.05, 0.95],
+                    mode="lines",
+                    name=step_name,
+                    line=dict(color=step_color, width=3),
+                    showlegend=(i == 0),  # Only show legend for first occurrence
+                    hovertemplate=f"{step_name}<extra></extra>",
+                )
+            )
+
+
+def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -> Image:
+    """
+    Generates a horizontal activity chart showing request activity and step completions.
+    This chart shares the same x-axis (time) scale as the timeline chart above it.
+    We must manually keep the axis identical, it is not a shared axis.
+    """
+    fig = go.Figure()
+
+    # Calculate time range
+    num_intervals = max(len(ds.offset_watt_values) for ds in timeline.data_streams) if timeline.data_streams else 0
+    total_duration = timeline.interval_seconds * num_intervals
+
+    # Add request lines - one line per request at precise position
+    request_positions = []
+
+    for request_entry in runner_state.request_history:
+        time_offset = (request_entry.timestamp - timeline.start).total_seconds()
+        if 0 <= time_offset <= total_duration:
+            # Convert time offset to precise interval position (float)
+            interval_position = time_offset / timeline.interval_seconds
+            request_positions.append(interval_position)
+
+    if request_positions:
+        # Add legend entry for requests
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="lines",
+                line=dict(color="grey", width=2),
+                name="Requests",
+                showlegend=True,
+            )
+        )
+
+        # Add request lines at their precise positions
+        # Overlapping lines will naturally create darker appearance
+        for interval_position in request_positions:
+            fig.add_trace(
+                go.Scatter(
+                    x=[interval_position, interval_position],
+                    y=[0.05, 0.95],
+                    mode="lines",
+                    line=dict(color="rgba(0, 0, 0, 0.4)", width=2),
+                    showlegend=False,
+                    hovertemplate="Request<extra></extra>",
+                )
+            )
+
+    # Add step completion markers
+    _add_step_completion_markers(fig, runner_state, timeline, num_intervals)
+
+    fig.update_xaxes(
+        title="",
+        type="linear",
+        tickmode="array",
+        tickvals=list(range(num_intervals)),
+        ticktext=[],
+        showticklabels=False,
+        range=[0, max(num_intervals - 1, 1)],  # CRITICAL: Match top chart range exactly
+    )
+    fig.update_yaxes(title="", showticklabels=False, showgrid=False, range=[0, 1])
+    fig.update_layout(
+        height=150, legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=80)
+    )
+
+    return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
+
+
 def generate_timeline_section(
-    timeline: Timeline | None, sites: Sequence[Site], stylesheet: StyleSheet
+    timeline: Timeline | None, runner_state: RunnerState, sites: Sequence[Site], stylesheet: StyleSheet
 ) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Timeline", stylesheet.heading))
@@ -1131,6 +1112,7 @@ def generate_timeline_section(
             )
         )
         elements.append(generate_timeline_chart(timeline=timeline, sites=sites))
+        elements.append(generate_timeline_checklist(timeline=timeline, runner_state=runner_state))
     else:
         elements.append(Paragraph("Timeline chart is unavailable due to a lack of data."))
     elements.append(stylesheet.spacer)
@@ -1489,17 +1471,13 @@ def generate_page_elements(
         )
     )
 
-    # Test Progress Section
-    page_elements.extend(generate_test_progress_section(runner_state=runner_state, stylesheet=stylesheet))
-
-    # Communications Section
-    page_elements.extend(generate_communications_section(runner_state=runner_state, stylesheet=stylesheet))
+    # Timeline Section
+    page_elements.extend(
+        generate_timeline_section(timeline=timeline, runner_state=runner_state, sites=sites, stylesheet=stylesheet)
+    )
 
     # Devices Section
     page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
-
-    # Timeline Section
-    page_elements.extend(generate_timeline_section(timeline=timeline, sites=sites, stylesheet=stylesheet))
 
     # Readings Section
     page_elements.extend(

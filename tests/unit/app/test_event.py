@@ -35,7 +35,8 @@ def test_generate_time_trigger():
         # Test wildcards
         ("/foo", "*", True),  # '*' matches a single path component
         ("/foo", "/*", True),
-        ("/foo/123", "/*", True),
+        ("/foo/123", "/*", False),
+        ("/foo/123", "/*/*", True),
         ("/foo/123", "/*/123", True),
         ("/foo/123", "/foo/*", True),
         ("/foo/123", "/bar/*", False),
@@ -52,35 +53,38 @@ def test_generate_time_trigger():
     ],
 )
 def test_does_endpoint_match(path: str, match: str, expected: bool):
-    for path_prefix in ["", "/prefix", "/multi/level/prefix/"]:
-        actual = event.does_endpoint_match(
-            generate_class_instance(event.ClientRequestDetails, path=path_prefix + path), match
-        )
-        assert isinstance(actual, bool)
-        assert actual is expected, f"path_prefix={path_prefix}"
+    actual = event.does_endpoint_match(generate_class_instance(event.ClientRequestDetails, path=path), match)
+    assert isinstance(actual, bool)
+    assert actual is expected
 
 
 @pytest.mark.parametrize(
-    "request_method, request_path, before_serving",
+    "request_method, request_path, mount_point, before_serving",
     [
-        ("GET", "/", True),
-        ("GET", "/", False),
-        ("POST", "/foo/bar", True),
-        ("POST", "/foo/bar", False),
-        ("DELETE", "/foo/bar/baz", True),
-        ("DELETE", "/foo/bar/baz", False),
-        ("PUT", "/foo/bar", True),
-        ("PUT", "/foo/bar/baz", False),
+        # Basic paths with no mount point
+        ("GET", "/", "", True),
+        ("GET", "/", "", False),
+        ("POST", "/foo/bar", "", True),
+        ("POST", "/foo/bar", "", False),
+        ("DELETE", "/foo/bar/baz", "", True),
+        ("DELETE", "/foo/bar/baz", "", False),
+        ("PUT", "/foo/bar", "", True),
+        ("PUT", "/foo/bar/baz", "", False),
+        # Root mount point (equivalent to no mount point)
+        ("GET", "/api/edev", "/", True),
+        ("POST", "/api/edev", "/", False),
     ],
 )
-def test_generate_client_request_trigger(request_method: str, request_path: str, before_serving: bool):
-    """Checks basic parsing of AIOHttp requests"""
+def test_generate_client_request_trigger(
+    request_method: str, request_path: str, mount_point: str, before_serving: bool
+):
+    """Checks basic parsing of AIOHttp requests with and without mount points"""
 
     mock_request = MagicMock()
     mock_request.method = request_method
     mock_request.path = request_path
 
-    trigger = event.generate_client_request_trigger(mock_request, before_serving)
+    trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving)
     assert isinstance(trigger, event.EventTrigger)
     assert_nowish(trigger.time)
     assert trigger.time.tzinfo
@@ -95,6 +99,57 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
     assert trigger.client_request.method == request_method
     assert isinstance(trigger.client_request.path, str)
     assert trigger.client_request.path == request_path
+
+
+@pytest.mark.parametrize(
+    "mount_point, request_path, expected_path",
+    [
+        # Valid paths - mount point correctly stripped
+        ("/api/v1", "/api/v1/foo/bar", "/foo/bar"),
+        ("/api/v1", "/api/v1/", "/"),
+        ("/api/v1", "/api/v1", "/"),
+        ("/mount/point", "/mount/point/api/edev", "/api/edev"),
+        ("/mount/point", "/mount/point/api/edev/", "/api/edev/"),
+        # Mount point with trailing slash should be normalized
+        ("/api/v1/", "/api/v1/foo/bar", "/foo/bar"),
+        ("/mount/point/", "/mount/point/api/edev", "/api/edev"),
+        # Empty or root mount point - path unchanged
+        ("", "/foo/bar", "/foo/bar"),
+        ("/", "/foo/bar", "/foo/bar"),
+        ("", "/api/v1/foo", "/api/v1/foo"),
+        # NOTE: The following cases are NOT tested because the aiohttp router
+        # will return 404 BEFORE this function is called:
+        # - "/mounted/users" when mount_point="/mount" (partial match, no slash boundary)
+        # - "/mount/pointextra/api" when mount_point="/mount/point" (no slash after mount)
+        # - "/api/v1/foo" when mount_point="/api/v2" (doesn't start with mount point)
+        # - "/foo/bar" when mount_point="/api/v1" (doesn't start with mount point)
+        #
+        # The router pattern "/mount/point/{proxyPath:.*}" only matches paths that:
+        # 1. Start with the mount point exactly
+        # 2. Are followed by "/" or end exactly at the mount point
+        #
+        # However, we keep one test to verify graceful handling if somehow an invalid path reaches this function:
+        # Defensive case: path doesn't start with mount point:
+        ("/api/v1", "/foo/bar", "/foo/bar"),  # Falls through, path unchanged
+    ],
+)
+def test_generate_client_request_trigger_mount_point_stripping(mount_point: str, request_path: str, expected_path: str):
+    """
+    Verifies that mount_point is correctly stripped from request paths.
+
+    NOTE: This function trusts that the aiohttp router has already validated that request_path is under mount_point.
+    """
+
+    mock_request = MagicMock()
+    mock_request.method = "GET"
+    mock_request.path = request_path
+
+    trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving=True)
+
+    assert isinstance(trigger, event.EventTrigger)
+    assert trigger.client_request.path == expected_path
+    # Ensure path always has leading slash
+    assert trigger.client_request.path.startswith("/")
 
 
 @pytest.mark.parametrize(
@@ -270,7 +325,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
                 datetime(2022, 11, 10, tzinfo=timezone.utc),
                 False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/some/prefix/my/endppoint/1"),
+                event.ClientRequestDetails(HTTPMethod.GET, "/my/endppoint/1"),
             ),
             Listener(
                 step="step",
@@ -280,7 +335,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
                 actions=[],
                 enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
             ),
-            True,  # The HREF_PREFIX on the incoming should be ignored
+            True,
         ),
         (
             event.EventTrigger(
@@ -362,7 +417,7 @@ def test_generate_client_request_trigger(request_method: str, request_path: str,
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
                 datetime(2022, 11, 10, tzinfo=timezone.utc),
                 False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/prefix/foo/123/bar/456"),
+                event.ClientRequestDetails(HTTPMethod.GET, "/foo/123/bar/456"),
             ),
             Listener(
                 step="step",

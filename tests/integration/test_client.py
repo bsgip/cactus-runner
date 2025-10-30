@@ -22,6 +22,7 @@ from cactus_runner.models import (
     InitResponseBody,
     RunnerStatus,
     StartResponseBody,
+    StepInfo,
     StepStatus,
 )
 from tests.integration.certificate1 import (
@@ -109,7 +110,7 @@ async def test_client_interactions(
     assert status_response.test_procedure_name == test_procedure_id.value
     assert status_response.csip_aus_version == csip_aus_version.value
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
-    assert_dict_type(str, StepStatus, status_response.step_status)
+    assert_dict_type(str, StepInfo, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
 
     # Interrogate a finalize response (assume we don't fire off any CSIP requests)
@@ -214,11 +215,13 @@ async def test_status_steps_immediate_start(
         assert init_response.is_started, "ALL-01 should be immediate start"
 
         status_response = await RunnerClient.status(session)
+
     assert isinstance(status_response, RunnerStatus)
-    assert_dict_type(str, StepStatus, status_response.step_status)
+    assert all(isinstance(s, StepInfo) for s in status_response.step_status.values())
 
     step_status_counts: dict[StepStatus, int] = {}
-    for status in status_response.step_status.values():
+    for step_info in status_response.step_status.values():
+        status = step_info.get_step_status()
         step_status_counts[status] = step_status_counts.get(status, 0) + 1
 
     assert step_status_counts.get(StepStatus.ACTIVE, 0) == 1, "One step should initially be active"
@@ -271,3 +274,57 @@ async def test_health_admin_api_dead(cactus_runner_client_faulty_admin: TestClie
     ) as session:
         health_response = await RunnerClient.health(session)
         assert health_response is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "cactus_runner_client_with_mount_point, test_paths",
+    [
+        (
+            "/api/v1",
+            [
+                ("/api/v1/health", 200),  # Correct
+                ("/api/v1/status", 200),  # Correct
+                ("/health", 404),  # Missing prefix
+                ("/api/v2/health", 404),  # Wrong prefix
+                ("/api/v1extra/health", 404),  # without slash
+            ],
+        ),
+        (
+            "/mount/point",
+            [
+                ("/mount/point/health", 200),
+                ("/health", 404),
+                ("/mount/health", 404),  # Partial
+                ("/mount/pointextra/health", 404),  # No slash
+            ],
+        ),
+        (
+            "",  # empty (root)
+            [
+                ("/health", 200),
+                ("/status", 200),
+                ("/api/v1/health", 400),  # Non-existent path matches catch-all, no test procedure active
+            ],
+        ),
+    ],
+    indirect=["cactus_runner_client_with_mount_point"],
+)
+async def test_mount_point_routing_protection(
+    cactus_runner_client_with_mount_point: TestClient,
+    test_paths: list[tuple[str, int]],
+):
+    """Verify mount point routing works correctly with different configurations.
+
+    NOTE: MOUNT_POINT is hardcoded in production. This is a defensive test to ensure
+    the routing logic in create_app() correctly handles mount points if the value changes.
+
+    The aiohttp router should reject paths that don't match the mount point pattern
+    BEFORE they reach proxied_request_handler.
+    """
+    async with ClientSession(
+        base_url=cactus_runner_client_with_mount_point.make_url("/"), timeout=ClientTimeout(30)
+    ) as session:
+        for path, expected_status in test_paths:
+            async with session.get(path) as response:
+                assert response.status == expected_status

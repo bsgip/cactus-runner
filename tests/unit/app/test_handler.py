@@ -246,7 +246,9 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     mock_proxy_request.assert_called_once()
 
     # ... verify we triggered the "before" handler, but not the after handler
-    mock_generate_client_request_trigger.assert_called_once_with(request, before_serving=True)
+    mock_generate_client_request_trigger.assert_called_once_with(
+        request, mount_point=handler.MOUNT_POINT, before_serving=True
+    )
     mock_handle_event_trigger.assert_called_once()
 
     #  ... verify we updated the request history
@@ -329,7 +331,10 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
 
     # ... verify we triggered the "before" handler, but not the after handler
     mock_generate_client_request_trigger.assert_has_calls(
-        [call(request, before_serving=True), call(request, before_serving=False)]
+        [
+            call(request, mount_point=handler.MOUNT_POINT, before_serving=True),
+            call(request, mount_point=handler.MOUNT_POINT, before_serving=False),
+        ]
     )
     mock_handle_event_trigger.call_count == 2
 

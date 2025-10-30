@@ -160,3 +160,20 @@ async def cactus_runner_client_faulty_admin(pg_empty_config, aiohttp_client, env
     with environment_snapshot():
         async with await aiohttp_client(create_app()) as app:
             yield app
+
+
+@pytest.fixture
+async def cactus_runner_client_with_mount_point(aiohttp_client, envoy_admin_client, request):
+    """Client with configurable mount point.
+
+    NOTE: MOUNT_POINT is hardcoded in production. This fixture allows testing
+    different configurations to verify routing logic is correct.
+    """
+    mount_point = getattr(request, "param", "")
+
+    with environment_snapshot():
+        with mock.patch("cactus_runner.app.main.MOUNT_POINT", mount_point):
+            with mock.patch("cactus_runner.app.main.generate_admin_client") as mock_generate_admin_client:
+                mock_generate_admin_client.return_value = envoy_admin_client
+                async with await aiohttp_client(create_app()) as app:
+                    yield app
