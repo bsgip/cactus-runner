@@ -1149,24 +1149,32 @@ def generate_readings_timeline(
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def reading_quantity(srt: SiteReadingType) -> str:
-    quantity = srt.uom.name
-    quantity = quantity.replace("_", " ").title()
-    return quantity
+def uom_to_string(uom: UomType | int) -> str:
+    return UomType(uom).name.replace("_", " ").lower()
+
+
+def data_qualifier_to_string(qualifier: DataQualifierType | int) -> str:
+    return DataQualifierType(qualifier).name.replace("_", " ").lower()
+
+
+def phase_to_string(phase: PhaseCode | int) -> str:
+    return PhaseCode(phase).name.replace("_", " ").lower()
+
+
+def kind_to_string(kind: KindType | int) -> str:
+    return KindType(kind).name.replace("_", " ").lower()
 
 
 def reading_description(srt: SiteReadingType, exclude_mup: bool = False) -> str:
     mup = srt.site_reading_type_id
-    quantity = reading_quantity(srt)
-    qualifier = DataQualifierType(srt.data_qualifier).name
-    qualifier = qualifier.replace("_", " ").title()
+    uom_string = uom_to_string(srt.uom)
+    qualifier_string = data_qualifier_to_string(srt.data_qualifier)
     mup_text = "" if exclude_mup else f"/mup/{mup}:"
     if srt.phase == 0:
-        description = f"{mup_text} {quantity} ({qualifier})"
+        description = f"{mup_text} {uom_string} ({qualifier_string})"
     else:
-        phase = PhaseCode(srt.phase).name
-        phase = phase.replace("_", " ").title()
-        description = f"{mup_text} {quantity} ({qualifier}, {phase})"
+        phase = phase_to_string(srt.phase)
+        description = f"{mup_text} {uom_string} ({qualifier_string}, {phase})"
 
     return description
 
@@ -1199,49 +1207,43 @@ def validate_cell(reading_type: SiteReadingType, col_idx: int, row_num: int) -> 
     Returns:
         Error message string if invalid, None if valid
     """
+
     if col_idx == 2:  # Site type
         site_type = get_site_type(reading_type.role_flags)
         if site_type == "unknown":
             return "Site type is unknown - check the RoleFlagsType field"
 
     elif col_idx == 3:  # UOM
-        try:
-            if reading_type.uom not in [
-                UomType.REAL_POWER_WATT,
-                UomType.REACTIVE_POWER_VAR,
-                UomType.FREQUENCY_HZ,
-                UomType.VOLTAGE,
-            ]:
-                return f"UOM {reading_type.uom.name} ({reading_type.uom}) is not supported"
-        except (ValueError, TypeError):
-            return "Invalid UOM value"
+        uom = UomType(reading_type.uom)
+        if uom not in [UomType.REAL_POWER_WATT, UomType.REACTIVE_POWER_VAR, UomType.FREQUENCY_HZ, UomType.VOLTAGE]:
+            return f"UOM {uom.name} ({uom.value}) is not supported"
 
     elif col_idx == 4:  # Data qualifier
-        try:
-            qualifier = reading_type.data_qualifier
-            if qualifier not in [
-                DataQualifierType.AVERAGE,
-                DataQualifierType.STANDARD,
-                DataQualifierType.MAXIMUM,
-                DataQualifierType.MINIMUM,
-            ]:
-                return f"Data qualifier {qualifier.name} ({qualifier}) is not supported"
-        except (ValueError, TypeError):
-            return "Invalid data qualifier value"
+        qualifier = DataQualifierType(reading_type.data_qualifier)
+        if qualifier not in [
+            DataQualifierType.AVERAGE,
+            DataQualifierType.STANDARD,
+            DataQualifierType.MAXIMUM,
+            DataQualifierType.MINIMUM,
+        ]:
+            return f"Data qualifier {qualifier.name} ({qualifier.value}) is not supported"
 
     elif col_idx == 5:  # Kind
-        if reading_type.kind != KindType.POWER:
-            return "KindType is expected to be Power (37)"
+        kind = KindType(reading_type.kind)
+        if kind != KindType.POWER:
+            return f"KindType is expected to be Power (37), got {kind.name} ({kind.value})"
 
-    elif col_idx == 6 and reading_type.uom == UomType.VOLTAGE:  # Phase (Only applicable to voltage readings)
-        phase = reading_type.phase
-        if phase not in [
-            PhaseCode.PHASE_ABC,
-            PhaseCode.PHASE_AN_S1N,
-            PhaseCode.PHASE_BN,
-            PhaseCode.PHASE_CN_S2N,
-        ]:
-            return f"Phase (for voltage) has specific requirements - {phase.name} ({phase}) is not supported"
+    elif col_idx == 6:  # Phase (Only applicable to voltage readings)
+        uom = UomType(reading_type.uom)
+        if uom == UomType.VOLTAGE:
+            phase = PhaseCode(reading_type.phase)
+            if phase not in [
+                PhaseCode.PHASE_ABC,
+                PhaseCode.PHASE_AN_S1N,
+                PhaseCode.PHASE_BN,
+                PhaseCode.PHASE_CN_S2N,
+            ]:
+                return f"Phase (for voltage) has specific requirements - {phase.name} ({phase.value}) is not supported"
 
     return None
 
@@ -1278,10 +1280,10 @@ def generate_reading_count_table(reading_counts, stylesheet):
             reading_type.site_reading_type_id,
             truncate_mrid(reading_type.mrid),
             get_site_type(reading_type.role_flags),
-            reading_type.uom.name.lower(),
-            str(reading_type.data_qualifier),
-            reading_type.kind,
-            reading_type.phase,
+            uom_to_string(reading_type.uom),
+            data_qualifier_to_string(reading_type.data_qualifier),
+            kind_to_string(reading_type.kind),
+            phase_to_string(reading_type.phase),
             count,
         ]
 
@@ -1303,16 +1305,7 @@ def generate_reading_count_table(reading_counts, stylesheet):
         else:
             table_row_idx += 1
 
-    headers = [
-        "/MUP",
-        "MMR",
-        "Site type",
-        "Unit",
-        "Data Qualifier",
-        "Kind",
-        "Phase",
-        "# Readings Received",
-    ]
+    headers = ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings Received"]
     table_data.insert(0, headers)
 
     fractions = [0.1, 0.1, 0.1, 0.2, 0.15, 0.09, 0.09, 0.22]
@@ -1386,7 +1379,7 @@ def generate_readings_section(
                 elements.append(Paragraph(reading_description(reading_type), style=stylesheet.subheading))
                 elements.append(
                     generate_readings_timeline(
-                        readings_df=readings_df, quantity=reading_quantity(reading_type), runner_state=runner_state
+                        readings_df=readings_df, quantity=uom_to_string(reading_type.uom), runner_state=runner_state
                     )
                 )
     else:

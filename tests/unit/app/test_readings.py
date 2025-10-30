@@ -1,5 +1,6 @@
 import itertools
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 from assertical.asserts.type import assert_dict_type
@@ -28,6 +29,10 @@ from cactus_runner.app.readings import (
     reading_types_equivalent,
     scale_readings,
 )
+from cactus_runner.app.reporting import generate_reading_count_table
+from reportlab.lib import colors
+from reportlab.platypus import Spacer
+from reportlab.platypus.tables import TableStyle
 
 
 @pytest.mark.asyncio
@@ -144,9 +149,9 @@ async def test_get_readings(pg_base_config):
         [len(readings) for readings in readings_map.values()]
     )
 
-    # Check reading uom is UomType (bugfix for reporting issue)
+    # Check reading uom is int (bugfix for reporting issue)
     for reading_type in readings_map.keys():
-        assert isinstance(reading_type.uom, UomType)
+        assert isinstance(reading_type.uom, int)
 
 
 def test_merge_readings():
@@ -629,3 +634,31 @@ def test_group_reading_types(reading_types, expected_group_indexes):
     assert len(groups) == len(expected_groups)
     for expected_group in expected_groups:
         assert expected_group in groups
+
+
+def create_mock_stylesheet():
+    stylesheet = Mock()
+    stylesheet.table_width = 500
+    stylesheet.table = TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+        ]
+    )
+    stylesheet.spacer = Spacer(1, 12)
+    return stylesheet
+
+
+def test_generate_reading_count_table_handles_int_enums():
+    stylesheet = create_mock_stylesheet()
+    reading_type = generate_class_instance(SiteReadingType)
+    reading_counts = {reading_type: 42}
+
+    # ACT
+    result = generate_reading_count_table(reading_counts, stylesheet)  # This should not raise an exception
+
+    assert result is not None

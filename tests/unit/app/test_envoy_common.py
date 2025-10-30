@@ -432,9 +432,9 @@ async def test_get_reading_counts_grouped_by_reading_type(pg_base_config):
         assert count_by_reading_type[voltage_type] == num_voltage_readings
         assert count_by_reading_type[energy_type] == num_energy_readings
 
-        # Check reading uom is UomType (bugfix for reporting issue)
+        # Check reading uom is int (bugfix for reporting issue)
         for reading_type in count_by_reading_type.keys():
-            assert isinstance(reading_type.uom, UomType)
+            assert isinstance(reading_type.uom, int)
 
 
 @pytest.mark.anyio
