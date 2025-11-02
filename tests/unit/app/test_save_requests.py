@@ -162,7 +162,7 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
         request_body=b"test",
         request_encoding="utf-8",
         response=response,
-        request_headers=mock.MagicMock(),
+        request_headers=CIMultiDict({}),
     )
 
     entry = RequestEntry(
@@ -176,12 +176,20 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
         request_id=0,
     )
 
+    # Make the directory read-only so writes will fail
+    temp_dir.chmod(0o444)
+
+    # Act - should not raise exception
     with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", temp_dir):
         with caplog.at_level(logging.ERROR):
-            # Patch open in the module where it's used
-            with patch("cactus_runner.app.save_requests.open", side_effect=PermissionError("Access denied")):
-                # Should not raise exception
-                write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
+            write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
 
+    # Restore permissions before assertions
+    temp_dir.chmod(0o755)
+
+    # Verify error was logged
     assert "Failed to write request/response files for request_id=0" in caplog.text
+
+    # Verify files were not created
     assert not (temp_dir / "000-TEST-001-test.request").exists()
+    assert not (temp_dir / "000-TEST-001-test.response").exists()
