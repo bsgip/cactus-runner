@@ -161,8 +161,6 @@ async def new_init_handler(request: web.Request):  # noqa: C901
             400 (Bad Request) if invalid test procedure definition supplied or
             412 (Precondition Failed) if an error occurred when applying the test procedure preconditions or
             409 (Conflict)/412 (Precondition Failed) if a test with immediate start failed to start
-
-
     """
     try:
         raw_json = await request.text()
@@ -288,6 +286,12 @@ async def new_init_handler(request: web.Request):  # noqa: C901
         client_certificate_type=client_type,
         run_id=run_request.run_id,
         pen=run_request.test_config.pen,
+        subscription_domain=run_request.test_config.subscription_domain,
+        is_static_url=run_request.test_config.is_static_url,
+        run_group_id=run_request.run_group.run_group_id,
+        run_group_name=run_request.run_group.name,
+        user_id=run_request.test_user.user_id,
+        user_name=run_request.test_user.name,
     )
 
     logger.info(

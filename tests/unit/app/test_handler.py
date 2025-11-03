@@ -52,7 +52,10 @@ def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = Fals
         run_id="1",
         test_definition=TestDefinition(test_procedure_id=test_procedure_id, yaml_definition=yaml_definition),
         run_group=RunGroup(
-            id=1, name="group 1", csip_aus_version=CSIPAusVersion.RELEASE_1_2, test_certificates=test_certificates
+            run_group_id="1",
+            name="group 1",
+            csip_aus_version=CSIPAusVersion.RELEASE_1_2,
+            test_certificates=test_certificates,
         ),
         test_config=TestConfig(pen=12345, subscription_domain="subs.anu.edu.au", is_static_url=True),
         test_user=TestUser(user_id="1", name="user1"),

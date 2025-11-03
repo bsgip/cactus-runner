@@ -57,6 +57,12 @@ class ActiveTestProcedure:
     client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)
     run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any
     pen: int  # Private Enterprise Number (PEN). A value of 0 means no valid PEN avaiable.
+    subscription_domain: str | None = None
+    is_static_url: bool | None = None
+    run_group_id: str | None = None
+    run_group_name: str | None = None
+    user_id: str | None = None
+    user_name: str | None = None
     communications_disabled: bool = False
     finished_zip_data: bytes | None = (
         None  # Finalised ZIP file. If not None - this test is "done" and shouldn't update any events/state
@@ -256,7 +262,7 @@ class TestCertificates(JSONWizard):
 
 @dataclass
 class RunGroup(JSONWizard):
-    id: int
+    run_group_id: str
     name: str
     csip_aus_version: CSIPAusVersion
     test_certificates: TestCertificates
