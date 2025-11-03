@@ -9,7 +9,7 @@ from cactus_runner.models import RequestEntry
 logger = logging.getLogger(__name__)
 
 
-REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")
+REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
 
 
 def ensure_request_data_dir() -> Path:
