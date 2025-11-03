@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from aiohttp import web
 from multidict import CIMultiDict
 import pytest
-import logging
 from cactus_runner.app.save_requests import write_request_response_files
 from cactus_runner.models import RequestEntry
 from cactus_runner.app.proxy import ProxyResult
