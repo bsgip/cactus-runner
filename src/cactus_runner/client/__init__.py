@@ -9,6 +9,7 @@ from cactus_runner.models import (
     InitResponseBody,
     RunnerStatus,
     StartResponseBody,
+    Run,
 )
 
 __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProcedureId", "RunnerClient"]
@@ -49,6 +50,22 @@ async def ensure_success_response(response: ClientResponse) -> None:
 
 
 class RunnerClient:
+    @staticmethod
+    async def new_init(session: ClientSession, run_request: Run) -> InitResponseBody:
+        try:
+            async with session.post(url="/newinit", data=run_request.to_json()) as response:
+                await ensure_success_response(response)
+                response_json = await response.text()
+                init_response_body = InitResponseBody.from_json(response_json)
+                if isinstance(init_response_body, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return init_response_body
+        except Exception as e:
+            logger.debug(e)
+            raise RunnerClientException(f"Unexpected failure while initialising test {e}.")
+
     @staticmethod
     async def init(
         session: ClientSession,

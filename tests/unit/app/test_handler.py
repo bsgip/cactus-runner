@@ -1,28 +1,339 @@
 import http
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
+from aiohttp import ContentTypeError
 from aiohttp.web import Response
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedure, TestProcedureId
 
-from cactus_runner.app import handler
+from cactus_runner.app import action, handler
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
     ClientInteractionType,
+    InitResponseBody,
     Listener,
     RequestEntry,
+    Run,
+    RunGroup,
     RunnerState,
     RunnerStatus,
     StepStatus,
+    TestCertificates,
+    TestConfig,
+    TestDefinition,
+    TestUser,
+)
+from tests.integration.certificate1 import (
+    TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
+)
+from tests.integration.certificate2 import (
+    TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_2_PEM,
 )
 
 
 def mocked_ProxyResult(status: int) -> ProxyResult:
     return ProxyResult("", "", bytes(), None, {}, Response(status=status))
+
+
+def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = False) -> Run:
+    test_certificates = (
+        TestCertificates(aggregator=None, device=TEST_CERTIFICATE_1_PEM.decode())
+        if use_device_cert
+        else TestCertificates(aggregator=TEST_CERTIFICATE_2_PEM.decode(), device=None)
+    )
+    yaml_definition = TestProcedure.get_yaml(test_procedure_id.value)
+    return Run(
+        run_id="1",
+        test_definition=TestDefinition(test_procedure_id=test_procedure_id, yaml_definition=yaml_definition),
+        run_group=RunGroup(
+            id=1, name="group 1", csip_aus_version=CSIPAusVersion.RELEASE_1_2, test_certificates=test_certificates
+        ),
+        test_config=TestConfig(pen=12345, subscription_domain="subs.anu.edu.au", is_static_url=True),
+        test_user=TestUser(user_id="1", name="user1"),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "test_procedure_id,use_device_cert,is_immediate_start",
+    [
+        (TestProcedureId.ALL_01, False, True),
+        (TestProcedureId.ALL_01, True, True),
+        (TestProcedureId.ALL_07, True, False),
+    ],
+)
+async def test_new_init_handler(
+    test_procedure_id: TestProcedureId, use_device_cert: bool, is_immediate_start: bool, mocker
+):
+    # Arrange
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(
+        return_value=run_request(test_procedure_id=test_procedure_id, use_device_cert=use_device_cert).to_json()
+    )
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mock_register_aggregator = mocker.patch(
+        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
+    )
+    mock_attempt_apply_actions = mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
+    start_result = MagicMock()
+    start_result.success = True
+    mock_attempt_start_for_state = mocker.patch(
+        "cactus_runner.app.handler.attempt_start_for_state", return_value=start_result
+    )
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+
+    # Assert - parsed response
+    response = InitResponseBody.from_json(raw_response.text)
+    assert isinstance(response, InitResponseBody)
+    assert raw_response.status == http.HTTPStatus.CREATED
+    assert raw_response.content_type == "application/json"
+    assert response.status == "Test procedure initialised."
+    assert response.test_procedure == test_procedure_id.value
+    assert_nowish(response.timestamp)
+    assert response.is_started == is_immediate_start
+
+    # Assert - side-effects
+    assert len(mock_request.app[APPKEY_RUNNER_STATE].client_interactions) == 1
+    assert (
+        mock_request.app[APPKEY_RUNNER_STATE].client_interactions[0].interaction_type
+        == ClientInteractionType.TEST_PROCEDURE_INIT
+    )
+    mock_reset_db.assert_called_once()
+    mock_register_aggregator.assert_called_once()
+    mock_attempt_apply_actions.assert_called_once()
+    if is_immediate_start:
+        mock_attempt_start_for_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "request_body,expected_response_text",
+    [("{}", "Unable to parse JSON body to Run instance"), (None, "Missing JSON body")],
+)
+async def test_new_init_handler_bad_request_invalid_json(request_body: str | None, expected_response_text: str, mocker):
+    # Arrange
+    mock_request = MagicMock()
+    if request_body:
+        mock_request.text = AsyncMock(return_value=request_body)
+    else:
+        mock_request.text = AsyncMock(side_effect=ContentTypeError(None, None))
+
+    mock_request.raise_for_status = MagicMock()
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith(expected_response_text)
+    assert raw_response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_new_init_handler_conflict_response_if_existing_active_test_procedure():
+
+    # Arrange
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
+    mock_request.raise_for_status = MagicMock()
+
+    currently_running_test = "GEN-01"
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure.name = currently_running_test
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith(f"Test Procedure ({currently_running_test}) already active.")
+    assert raw_response.status == http.HTTPStatus.CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
+
+    # Arrange
+    run_request_aggregator_cert = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
+    run_request_device_cert = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=True)
+
+    # BOTH CERTS
+    run_request_both_certs = run_request_aggregator_cert
+    run_request_both_certs.run_group.test_certificates.device = (
+        run_request_device_cert.run_group.test_certificates.device
+    )
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=run_request_both_certs.to_json())
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text == "Cannot use 'aggregator_certificate' and 'device_certificate' at the same time."
+    assert raw_response.status == http.HTTPStatus.BAD_REQUEST
+
+    # NEITHER CERT
+    run_request_neither_cert = run_request_both_certs
+    run_request_neither_cert.run_group.test_certificates.aggregator = None
+    run_request_neither_cert.run_group.test_certificates.device = None
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=run_request_neither_cert.to_json())
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    # mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith("Need one of 'aggregator_certificate' or 'device_certificate'.")
+    assert raw_response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_new_init_handler_bad_request_invalid_test_procedure(mocker):
+    # Arrange
+    request = run_request(test_procedure_id=TestProcedureId.ALL_01)
+    request.test_definition.yaml_definition = "invalid test procedure definition"
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=request.to_json())
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mock_register_aggregator = mocker.patch(
+        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
+    )
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith("Received invalid test procedure definition")
+    assert raw_response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("precondition_failure", [action.FailedActionError, action.UnknownActionError])
+async def test_new_init_handler_precondition_failed_response_if_preconditions_fail(precondition_failure, mocker):
+    # Arrange
+    test_procedure_id = TestProcedureId.ALL_01
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=run_request(test_procedure_id=test_procedure_id).to_json())
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mock_register_aggregator = mocker.patch(
+        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
+    )
+    mock_attempt_apply_actions = mocker.patch(
+        "cactus_runner.app.handler.attempt_apply_actions", side_effect=precondition_failure
+    )
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith("Failed to apply preconditions")
+    assert raw_response.status == http.HTTPStatus.PRECONDITION_FAILED
+
+    mock_reset_db.assert_called_once()
+    mock_register_aggregator.assert_called_once()
+    mock_attempt_apply_actions.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "start_result",
+    [
+        handler.StartResult(
+            False,
+            http.HTTPStatus.CONFLICT,
+            "text/plain",
+            "Unable to start non-existent test procedure. Try initialising a test procedure before continuing.",
+        ),
+        handler.StartResult(
+            False,
+            http.HTTPStatus.PRECONDITION_FAILED,
+            "text/plain",
+            f"Unable to start test procedure, pre condition check has failed: dummary check failure description",
+        ),
+        handler.StartResult(
+            False,
+            http.HTTPStatus.CONFLICT,
+            "text/plain",
+            f"Test Procedure (ALL-01) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
+        ),
+    ],
+)
+async def test_new_init_handler_immediate_start_failure(start_result: handler.StartResult, mocker):
+    # Arrange
+    test_procedure_id = TestProcedureId.ALL_01
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=run_request(test_procedure_id=test_procedure_id).to_json())
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+
+    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mock_register_aggregator = mocker.patch(
+        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
+    )
+    mock_attempt_apply_actions = mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
+    mock_attempt_start_for_state = mocker.patch(
+        "cactus_runner.app.handler.attempt_start_for_state", return_value=start_result
+    )
+
+    # Act
+    raw_response = await handler.new_init_handler(request=mock_request)
+
+    # Assert - raw_response
+    assert isinstance(raw_response, Response)
+    assert raw_response.text
+    assert raw_response.text.startswith(
+        "Unable to trigger immediate start:",
+    )
+    assert raw_response.status == start_result.status
+
+    mock_reset_db.assert_called_once()
+    mock_register_aggregator.assert_called_once()
+    mock_attempt_apply_actions.assert_called_once()
+    mock_attempt_start_for_state.assert_called_once()
 
 
 @pytest.mark.asyncio

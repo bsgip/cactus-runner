@@ -5,7 +5,7 @@ from enum import Enum, StrEnum, auto
 from typing import Any
 
 from cactus_test_definitions import CSIPAusVersion
-from cactus_test_definitions.client import Event, TestProcedure
+from cactus_test_definitions.client import Event, TestProcedure, TestProcedureId
 from dataclass_wizard import JSONWizard
 
 
@@ -240,3 +240,45 @@ class RunnerStatus(JSONWizard):
     request_history: list[RequestEntry] = field(default_factory=list)
     timeline: TimelineStatus | None = None  # Streaming timeline data snapshot
     end_device_metadata: EndDeviceMetadata | None = None  # Snapshot of current active end device (if any)
+
+
+@dataclass
+class TestDefinition(JSONWizard):
+    test_procedure_id: TestProcedureId
+    yaml_definition: str
+
+
+@dataclass
+class TestCertificates(JSONWizard):
+    aggregator: str | None
+    device: str | None
+
+
+@dataclass
+class RunGroup(JSONWizard):
+    id: int
+    name: str
+    csip_aus_version: CSIPAusVersion
+    test_certificates: TestCertificates
+
+
+@dataclass
+class TestConfig(JSONWizard):
+    subscription_domain: str
+    is_static_url: bool
+    pen: int = field(default=0)
+
+
+@dataclass
+class TestUser(JSONWizard):
+    user_id: str
+    name: str
+
+
+@dataclass
+class Run(JSONWizard):
+    run_id: str
+    test_definition: TestDefinition
+    run_group: RunGroup
+    test_config: TestConfig
+    test_user: TestUser

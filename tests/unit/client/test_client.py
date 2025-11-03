@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from http import HTTPStatus
 from itertools import product
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from aiohttp import ConnectionTimeoutError
@@ -15,6 +15,30 @@ from cactus_runner.models import (
     RunnerStatus,
     StartResponseBody,
 )
+
+
+@pytest.mark.asyncio
+async def test_new_init():
+    # Arrange
+    expected_init_result = InitResponseBody(
+        status="PLACEHOLDER-STATUS",
+        test_procedure="ALL-01",
+        timestamp=datetime.now(timezone.utc),
+        is_started=False,
+    )
+    run_request = MagicMock()
+    run_request.to_json = Mock(return_value="Dummy Run Request JSON")
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value.status = 200
+    mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_init_result.to_json()
+
+    # Act
+    init_result = await RunnerClient.new_init(session=mock_session, run_request=run_request)
+
+    # Assert
+    assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
+    assert isinstance(init_result, InitResponseBody)
+    assert init_result == expected_init_result
 
 
 @pytest.mark.parametrize("subscription_domain, run_id", product([None, "my.fq.dn"], [None, "abc 123"]))

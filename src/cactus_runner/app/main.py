@@ -140,6 +140,7 @@ def create_app() -> web.Application:
     app.router.add_route("GET", mount + "health", handler.health_handler)
     app.router.add_route("GET", mount + "status", handler.status_handler)
     app.router.add_route("POST", mount + "init", handler.init_handler)
+    app.router.add_route("POST", mount + "newinit", handler.new_init_handler)
     app.router.add_route("POST", mount + "start", handler.start_handler)
     app.router.add_route("POST", mount + "finalize", handler.finalize_handler)
 
