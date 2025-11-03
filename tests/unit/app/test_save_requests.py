@@ -151,8 +151,12 @@ def test_write_request_response_files_creates_directory_if_missing(tmp_path_fact
 
 def test_write_request_response_files_handles_write_failure_silently(tmp_path_factory, caplog):
     """Check that file write failures are logged but don't raise exceptions"""
-    # Arrange
+
     temp_dir = tmp_path_factory.mktemp("request_data")
+
+    # Create a file where a directory is expected - guaranteed to fail
+    bad_dir = temp_dir / "not_a_directory"
+    bad_dir.write_text("I'm a file!")
 
     response = web.Response(status=200, body=b"test")
 
@@ -167,10 +171,9 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
 
     entry = generate_class_instance(RequestEntry)
 
-    # Act - Mock open() to raise an exception
-    with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", temp_dir):
-        with patch("builtins.open", side_effect=PermissionError("Mock write failure")):
-            with caplog.at_level(logging.ERROR):
-                write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
+    # Act - Point REQUEST_DATA_DIR to the file (not a directory)
+    with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", bad_dir):
+        with caplog.at_level(logging.ERROR):
+            write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
 
     assert "Failed to write request/response files for request_id=0" in caplog.text
