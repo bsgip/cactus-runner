@@ -266,6 +266,7 @@ def generate_overview_section(
     test_procedure_name: str,
     test_procedure_description: str,
     test_run_id: str,
+    run_group_name: str,
     init_timestamp: datetime,
     start_timestamp: datetime,
     client_cert_type: ClientCertificateType,
@@ -288,19 +289,26 @@ def generate_overview_section(
             init_timestamp.strftime(stylesheet.date_format),
         ],
         [
-            f"{client_cert_type} LFDI",
-            client_lfdi,
+            "Run Group",
+            run_group_name,
             "",
             "Start time (UTC)",
             start_timestamp.strftime(stylesheet.date_format),
         ],
         [
-            "PEN",
-            str(client_pen) if client_pen else "Not supplied",
+            f"{client_cert_type} LFDI",
+            client_lfdi,
             "",
             "Duration",
             str(duration).split(".")[0],
         ],  # remove microseconds from output
+        [
+            "PEN",
+            str(client_pen) if client_pen else "Not supplied",
+            "",
+            "",
+            "",
+        ],
     ]
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.15, 0.4, 0.05, 0.2, 0.2]]
     table = Table(overview_data, colWidths=column_widths)
@@ -1401,6 +1409,7 @@ def first_client_interaction_of_type(
 def generate_page_elements(
     runner_state: RunnerState,
     test_run_id: str,
+    run_group_name: str,
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
@@ -1442,6 +1451,7 @@ def generate_page_elements(
                 test_procedure_name=test_procedure_name,
                 test_procedure_description=test_procedure_description,
                 test_run_id=test_run_id,
+                run_group_name=run_group_name,
                 init_timestamp=init_timestamp,
                 start_timestamp=start_timestamp,
                 client_lfdi=active_test_procedure.client_lfdi,
@@ -1500,10 +1510,13 @@ def pdf_report_as_bytes(
 
     run_id = runner_state.active_test_procedure.run_id
     test_run_id = "UNKNOWN" if run_id is None else run_id
+    name = runner_state.active_test_procedure.run_group_name
+    run_group_name = "" if name is None else name
 
     page_elements = generate_page_elements(
         runner_state=runner_state,
         test_run_id=test_run_id,
+        run_group_name=run_group_name,
         check_results=check_results,
         readings=readings,
         reading_counts=reading_counts,
