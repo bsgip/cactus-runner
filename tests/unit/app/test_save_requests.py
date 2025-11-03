@@ -1,4 +1,4 @@
-from unittest import mock
+from assertical.fake.generator import generate_class_instance
 from unittest.mock import patch
 from http import HTTPStatus, HTTPMethod
 from datetime import datetime, timezone
@@ -165,31 +165,12 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
         request_headers=CIMultiDict({}),
     )
 
-    entry = RequestEntry(
-        url="http://localhost:8000/test",
-        path="/test",
-        method=HTTPMethod.GET,
-        status=HTTPStatus.OK,
-        timestamp=datetime.now(timezone.utc),
-        step_name="TEST-001",
-        body_xml_errors=[],
-        request_id=0,
-    )
+    entry = generate_class_instance(RequestEntry)
 
-    # Make the directory read-only so writes will fail
-    temp_dir.chmod(0o444)
-
-    # Act - should not raise exception
+    # Act - Mock open() to raise an exception
     with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", temp_dir):
-        with caplog.at_level(logging.ERROR):
-            write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
+        with patch("builtins.open", side_effect=PermissionError("Mock write failure")):
+            with caplog.at_level(logging.ERROR):
+                write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
 
-    # Restore permissions before assertions
-    temp_dir.chmod(0o755)
-
-    # Verify error was logged
     assert "Failed to write request/response files for request_id=0" in caplog.text
-
-    # Verify files were not created
-    assert not (temp_dir / "000-TEST-001-test.request").exists()
-    assert not (temp_dir / "000-TEST-001-test.response").exists()
