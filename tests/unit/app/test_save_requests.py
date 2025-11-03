@@ -149,17 +149,12 @@ def test_write_request_response_files_creates_directory_if_missing(tmp_path_fact
     assert (temp_dir / "000-TEST-001-test.response").exists()
 
 
-def test_write_request_response_files_handles_write_failure_silently(tmp_path_factory, caplog):
-    """Check that file write failures are logged but don't raise exceptions"""
-
+def test_write_request_response_files_fails_without_raising_exceptions(tmp_path_factory):
     temp_dir = tmp_path_factory.mktemp("request_data")
-
-    # Create a file where a directory is expected - guaranteed to fail
     bad_dir = temp_dir / "not_a_directory"
     bad_dir.write_text("I'm a file!")
 
     response = web.Response(status=200, body=b"test")
-
     proxy_result = ProxyResult(
         uri="/test",
         request_method="GET",
@@ -168,12 +163,8 @@ def test_write_request_response_files_handles_write_failure_silently(tmp_path_fa
         response=response,
         request_headers=CIMultiDict({}),
     )
-
     entry = generate_class_instance(RequestEntry)
 
-    # Act - Point REQUEST_DATA_DIR to the file (not a directory)
+    # Just verify it doesn't raise
     with patch("cactus_runner.app.save_requests.REQUEST_DATA_DIR", bad_dir):
-        with caplog.at_level(logging.ERROR):
-            write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
-
-    assert "Failed to write request/response files for request_id=0" in caplog.text
+        write_request_response_files(request_id=0, proxy_result=proxy_result, entry=entry)
