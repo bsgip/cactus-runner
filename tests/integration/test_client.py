@@ -16,10 +16,13 @@ from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app.database import remove_database_connection
+from cactus_runner.app.requests_archive import ensure_request_data_dir
 from cactus_runner.client import RunnerClient, RunnerClientException
 from cactus_runner.models import (
     ClientInteraction,
     InitResponseBody,
+    RequestData,
+    RequestList,
     RunnerStatus,
     StartResponseBody,
     StepInfo,
@@ -87,6 +90,15 @@ async def test_client_interactions(
 
         await session.commit()
 
+    # Manually create a test request/response file pair
+    storage_dir = ensure_request_data_dir()
+    test_request_id = 1
+    request_file = storage_dir / f"{test_request_id:03d}-test.request"
+    response_file = storage_dir / f"{test_request_id:03d}-test.response"
+
+    request_file.write_text("GET /test HTTP/1.1\nHost: example.com\n\nTest request body")
+    response_file.write_text('HTTP/1.1 200 OK\nContent-Type: application/json\n\n{"status": "ok"}')
+
     # Interrogate start response (if it's an immediate start - you shouldn't be able to start it - it should be started)
     if expect_immediate_start:
         async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
@@ -112,6 +124,24 @@ async def test_client_interactions(
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
     assert_dict_type(str, StepInfo, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
+
+    # Interrogate list_requests response
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        request_list_response = await RunnerClient.list_requests(session)
+    assert isinstance(request_list_response, RequestList)
+    assert isinstance(request_list_response.request_ids, list)
+    assert isinstance(request_list_response.count, int)
+    assert request_list_response.count == len(request_list_response.request_ids)
+    assert request_list_response.count >= 1
+    assert test_request_id in request_list_response.request_ids
+
+    # Interrogate get_request response
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        request_data_response = await RunnerClient.get_request(session, test_request_id)
+    assert isinstance(request_data_response, RequestData)
+    assert request_data_response.request_id == test_request_id
+    assert request_data_response.request == "GET /test HTTP/1.1\nHost: example.com\n\nTest request body"
+    assert request_data_response.response == 'HTTP/1.1 200 OK\nContent-Type: application/json\n\n{"status": "ok"}'
 
     # Interrogate a finalize response (assume we don't fire off any CSIP requests)
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:

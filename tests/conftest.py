@@ -1,4 +1,5 @@
 import os
+import shutil
 import unittest.mock as mock
 from http import HTTPStatus
 from pathlib import Path
@@ -27,6 +28,7 @@ from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClientAuthParams,
 )
 from cactus_runner.app.main import create_app
+from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
 from tests.adapter import HttpxClientSessionAdapter
 
 
@@ -148,6 +150,10 @@ async def envoy_server_client(pg_empty_config: Connection):
 async def cactus_runner_client(
     pg_empty_config, aiohttp_client, envoy_server_client, envoy_admin_client, ensure_logs_dir
 ):
+    # Clear request data before test
+    if REQUEST_DATA_DIR.exists():
+        shutil.rmtree(REQUEST_DATA_DIR)
+
     with environment_snapshot():
         with mock.patch("cactus_runner.app.main.generate_admin_client") as mock_generate_admin_client:
             mock_generate_admin_client.return_value = envoy_admin_client

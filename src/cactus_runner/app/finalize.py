@@ -30,6 +30,7 @@ from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_readings,
 )
+from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
@@ -98,6 +99,9 @@ def get_zip_contents(
             file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
             with open(file_path, "wb") as f:
                 f.write(pdf_data)
+
+        # Copy request/response files from storage to archive
+        copy_request_response_files_to_archive(archive_dir=archive_dir)
 
         # Create db dump
         try:
@@ -232,6 +236,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
+    # Collect status summary
     try:
         json_status_summary = (
             await get_active_runner_status(
@@ -247,12 +252,16 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         json_status_summary = None
 
     check_results = {}
-
     # Determine all criteria check results
     if active_test_procedure.definition.criteria:
-        check_results = await check.determine_check_results(
-            active_test_procedure.definition.criteria.checks, active_test_procedure, session
-        )
+        try:
+            check_results = await check.determine_check_results(
+                active_test_procedure.definition.criteria.checks, active_test_procedure, session
+            )
+        except Exception as exc:
+            logger.error("Failed to determine check results", exc_info=exc)
+            errors.append(f"Failed to determine check results: {exc}")
+            check_results = {}
 
     # Add a "virtual" check covering XSD errors in incoming requests
     xsd_error_counts = [len(rh.body_xml_errors) for rh in runner_state.request_history if rh.body_xml_errors]
@@ -276,22 +285,28 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 test_timeline = None
         except Exception as exc:
             logger.error("Error generating test timeline data.", exc_info=exc)
+            errors.append(f"Failed to generate test timeline: {exc}")
             test_timeline = None
 
-    # Fetch raw DB data
-    sites = await get_sites(session)
-    readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
-    reading_counts = await get_reading_counts_grouped_by_reading_type(session)
+    # Fetch raw DB data and create PDF
+    try:
+        sites = await get_sites(session)
+        readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
+        reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
-    pdf_data = await generate_pdf(
-        runner_state=runner_state,
-        check_results=check_results,
-        readings=readings,
-        reading_counts=reading_counts,
-        sites=sites,
-        timeline=test_timeline,
-        errors=errors,
-    )
+        pdf_data = await generate_pdf(
+            runner_state=runner_state,
+            check_results=check_results,
+            readings=readings,
+            reading_counts=reading_counts,
+            sites=sites,
+            timeline=test_timeline,
+            errors=errors,
+        )
+    except Exception as exc:
+        logger.error("Failed to generate PDF report", exc_info=exc)
+        errors.append(f"Failed to generate PDF report: {exc}")
+        pdf_data = None
 
     generation_timestamp = now.replace(microsecond=0)
 

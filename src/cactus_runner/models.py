@@ -87,6 +87,7 @@ class RequestEntry(JSONWizard):
     timestamp: datetime
     step_name: str
     body_xml_errors: list[str]  # Any XML schema errors detected in the incoming body
+    request_id: int  # Increments per test
 
 
 class ClientInteractionType(StrEnum):
@@ -227,6 +228,19 @@ class EndDeviceMetadata(JSONWizard):  # All optional as a device may not always 
     doe_modes_enabled: int | None = None
     device_category: int | None = None
     timezone_id: str | None = None
+
+
+@dataclass
+class RequestData(JSONWizard):
+    request_id: int
+    request: str | None
+    response: str | None
+
+
+@dataclass
+class RequestList(JSONWizard):
+    request_ids: list[int]
+    count: int
 
 
 @dataclass
