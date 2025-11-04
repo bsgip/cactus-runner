@@ -264,6 +264,8 @@ async def new_init_handler(request: web.Request):  # noqa: C901
     # Get the definition of the test procedure
     try:
         definition = TestProcedure.from_yaml(run_request.test_definition.yaml_definition)
+        if isinstance(definition, list):
+            raise ValueError("Definition must be a TestProcedure instance and not list[TestProcedure]")
     except Exception as e:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST,

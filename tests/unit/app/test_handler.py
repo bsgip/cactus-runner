@@ -232,10 +232,8 @@ async def test_new_init_handler_bad_request_invalid_test_procedure(mocker):
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mock_register_aggregator = mocker.patch(
-        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
-    )
+    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
 
     # Act
     raw_response = await handler.new_init_handler(request=mock_request)
@@ -294,13 +292,13 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
             False,
             http.HTTPStatus.PRECONDITION_FAILED,
             "text/plain",
-            f"Unable to start test procedure, pre condition check has failed: dummary check failure description",
+            "Unable to start test procedure, pre condition check has failed: dummary check failure description",
         ),
         handler.StartResult(
             False,
             http.HTTPStatus.CONFLICT,
             "text/plain",
-            f"Test Procedure (ALL-01) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
+            "Test Procedure (ALL-01) already in progress. Starting another test procedure is not permitted.",  # noqa: E501
         ),
     ],
 )
