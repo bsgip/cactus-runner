@@ -28,7 +28,7 @@ from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClientAuthParams,
 )
 from cactus_runner.app.main import create_app
-from cactus_runner.app.save_requests import REQUEST_DATA_DIR
+from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
 from tests.adapter import HttpxClientSessionAdapter
 
 

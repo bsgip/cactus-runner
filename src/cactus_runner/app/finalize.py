@@ -30,7 +30,7 @@ from cactus_runner.app.readings import (
     MANDATORY_READING_SPECIFIERS,
     get_readings,
 )
-from cactus_runner.app.save_requests import copy_request_response_files_to_archive
+from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
