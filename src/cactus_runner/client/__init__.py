@@ -7,6 +7,8 @@ from cactus_test_definitions.client import TestProcedureId
 from cactus_runner.models import (
     ClientInteraction,
     InitResponseBody,
+    RequestData,
+    RequestList,
     RunnerStatus,
     StartResponseBody,
 )
@@ -150,3 +152,35 @@ class RunnerClient:
         except Exception as e:
             logger.debug(e)
             return False
+
+    @staticmethod
+    async def get_request(session: ClientSession, request_id: int) -> RequestData:
+        try:
+            async with session.get(url=f"/request/{request_id}") as response:
+                await ensure_success_response(response)
+                json = await response.text()
+                request_data = RequestData.from_json(json)
+                if isinstance(request_data, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return request_data
+        except ConnectionTimeoutError as e:
+            logger.debug(e)
+            raise RunnerClientException(f"Unexpected failure while retrieving request data for ID: {request_id}")
+
+    @staticmethod
+    async def list_requests(session: ClientSession) -> RequestList:
+        try:
+            async with session.get(url="/requests") as response:
+                await ensure_success_response(response)
+                json = await response.text()
+                request_list = RequestList.from_json(json)
+                if isinstance(request_list, list):
+                    raise RunnerClientException(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return request_list
+        except ConnectionTimeoutError as e:
+            logger.debug(e)
+            raise RunnerClientException("Unexpected failure while listing request IDs.")

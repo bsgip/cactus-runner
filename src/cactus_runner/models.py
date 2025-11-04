@@ -225,6 +225,19 @@ class EndDeviceMetadata(JSONWizard):  # All optional as a device may not always 
 
 
 @dataclass
+class RequestData(JSONWizard):
+    request_id: int
+    request: str | None
+    response: str | None
+
+
+@dataclass
+class RequestList(JSONWizard):
+    request_ids: list[int]
+    count: int
+
+
+@dataclass
 class RunnerStatus(JSONWizard):
     timestamp_status: datetime  # when was this status generated?
     timestamp_initialise: datetime | None  # When did the test initialise

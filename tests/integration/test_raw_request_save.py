@@ -2,6 +2,7 @@ from pathlib import Path
 from cactus_test_definitions import CSIPAusVersion
 from fastapi.testclient import TestClient
 import pytest
+from cactus_runner.models import RequestData, RequestList
 from tests.integration.test_all_01 import URI_ENCODED_CERT, assert_success_response
 
 
@@ -40,50 +41,63 @@ async def test_request_data_retrieval_endpoints(cactus_runner_client: TestClient
     result = await cactus_runner_client.get("/requests")
     await assert_success_response(result)
     requests_data = await result.json()
-    request_ids = requests_data["request_ids"]
-    count = requests_data["count"]
+    request_list = RequestList.from_dict(requests_data)
 
-    assert isinstance(requests_data["request_ids"], list)
+    assert isinstance(request_list, RequestList)
+    assert isinstance(request_list.request_ids, list)
+    assert isinstance(request_list.count, int)
+    request_ids = request_list.request_ids
+    count = request_list.count
+
     assert len(request_ids) == count == len(set(request_ids)), "Count mismatch or duplicate IDs"
     assert count >= 6
     assert request_ids[0] == 0
     assert request_ids == sorted(request_ids)
 
     # TEST 2: Retrieve first request (GET /dcap)
-    request_data = await (await cactus_runner_client.get("/request/0")).json()
+    result = await cactus_runner_client.get("/request/0")
+    await assert_success_response(result)
+    request_data = RequestData.from_dict(await result.json())
 
-    request_lines = request_data["request"].split("\n")
-    assert request_data["request_id"] == 0
+    assert isinstance(request_data, RequestData)
+    assert request_data.request_id == 0
+    assert request_data.request is not None
+    assert request_data.response is not None
+
+    request_lines = request_data.request.split("\n")
     assert request_lines[0] == "GET /dcap HTTP/1.1"
     assert any("Host:" in line for line in request_lines)
     assert any("ssl-client-cert:" in line for line in request_lines)
 
-    response = request_data["response"]
+    response = request_data.response
     assert response.startswith("HTTP/1.1 200 OK\n")
     assert "content-type: application/sep+xml" in response.lower()
     assert all(s in response for s in ["<DeviceCapability", 'href="/dcap"', 'pollRate="60"'])
 
-    # TEST 4: Verify POST /mup/{id} request
+    # TEST 3: Verify POST /mup/{id} request
     post_mup_id_found = False
     for req_id in request_ids:
-        data = await (await cactus_runner_client.get(f"/request/{req_id}")).json()
-        request_line = data["request"].split("\n")[0]
+        result = await cactus_runner_client.get(f"/request/{req_id}")
+        data = RequestData.from_dict(await result.json())
+        request_line = data.request.split("\n")[0]
         if request_line.startswith("POST /mup/"):
             post_mup_id_found = True
-            headers_section, body = data["request"].split("\n\n", 1)
-            assert "Content-Type: application/sep+xml" in data["request"]
+            headers_section, body = data.request.split("\n\n", 1)
+            assert "Content-Type: application/sep+xml" in data.request
             assert "MirrorMeterReading" in body
-            assert data["response"].split("\n")[0] in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"]
+            assert data.response.split("\n")[0] in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"]
             break
     assert post_mup_id_found
 
-    # TEST 5: Invalid request ID returns 404
+    # TEST 4: Invalid request ID returns 404
     invalid_id = max(request_ids) + 1000
     result = await cactus_runner_client.get(f"/request/{invalid_id}")
     assert result.status == 404
-    assert (await result.json())["error"] == f"Request data not found for ID: {invalid_id}"
 
-    # TEST 6: Non-numeric request ID returns 400
+    # TEST 5: Non-numeric request ID returns 400
     result = await cactus_runner_client.get("/request/invalid")
     assert result.status == 400
-    assert (await result.json())["error"] == "Invalid request_id parameter"
+    bad_request_data = RequestData.from_dict(await result.json())
+    assert bad_request_data.request_id == -1
+    assert bad_request_data.request is None
+    assert bad_request_data.response is None

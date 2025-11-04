@@ -39,7 +39,9 @@ from cactus_runner.models import (
     ClientInteractionType,
     InitResponseBody,
     Listener,
+    RequestData,
     RequestEntry,
+    RequestList,
     RunnerState,
     StartResponseBody,
     StepInfo,
@@ -491,16 +493,19 @@ async def get_request_raw_data_handler(request: web.Request):
     try:
         request_id = int(request.match_info["request_id"])
     except (KeyError, ValueError):
-        return web.json_response({"error": "Invalid request_id parameter"}, status=http.HTTPStatus.BAD_REQUEST)
+        request_data = RequestData(request_id=-1, request=None, response=None)
+        return web.Response(
+            status=http.HTTPStatus.BAD_REQUEST, content_type="application/json", text=request_data.to_json()
+        )
 
     request_content, response_content = read_request_response_files(request_id)
 
     if request_content is None and response_content is None:
-        return web.json_response(
-            {"error": f"Request data not found for ID: {request_id}"}, status=http.HTTPStatus.NOT_FOUND
-        )
+        return web.Response(status=http.HTTPStatus.NOT_FOUND, content_type="application/json")
 
-    return web.json_response({"request_id": request_id, "request": request_content, "response": response_content})
+    request_data = RequestData(request_id=request_id, request=request_content, response=response_content)
+
+    return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=request_data.to_json())
 
 
 async def list_request_ids_handler(request: web.Request) -> web.Response:
@@ -514,7 +519,9 @@ async def list_request_ids_handler(request: web.Request) -> web.Response:
     """
     request_ids = get_all_request_ids()
 
-    return web.json_response({"request_ids": request_ids, "count": len(request_ids)})
+    request_list = RequestList(request_ids=request_ids, count=len(request_ids))
+
+    return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=request_list.to_json())
 
 
 async def proxied_request_handler(request: web.Request):
