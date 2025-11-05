@@ -19,10 +19,10 @@ from cactus_runner.models import (
     InitResponseBody,
     Listener,
     RequestEntry,
-    Run,
     RunGroup,
     RunnerState,
     RunnerStatus,
+    RunRequest,
     StepStatus,
     TestCertificates,
     TestConfig,
@@ -41,14 +41,14 @@ def mocked_ProxyResult(status: int) -> ProxyResult:
     return ProxyResult("", "", bytes(), None, {}, Response(status=status))
 
 
-def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = False) -> Run:
+def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = False) -> RunRequest:
     test_certificates = (
         TestCertificates(aggregator=None, device=TEST_CERTIFICATE_1_PEM.decode())
         if use_device_cert
         else TestCertificates(aggregator=TEST_CERTIFICATE_2_PEM.decode(), device=None)
     )
     yaml_definition = TestProcedure.get_yaml(test_procedure_id.value)
-    return Run(
+    return RunRequest(
         run_id="1",
         test_definition=TestDefinition(test_procedure_id=test_procedure_id, yaml_definition=yaml_definition),
         run_group=RunGroup(
@@ -127,9 +127,9 @@ async def test_new_init_handler(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "request_body,expected_response_text",
-    [("{}", "Unable to parse JSON body to Run instance"), (None, "Missing JSON body")],
+    [("{}", "Unable to parse JSON body to RunRequest instance"), (None, "Missing JSON body")],
 )
-async def test_new_init_handler_bad_request_invalid_json(request_body: str | None, expected_response_text: str, mocker):
+async def test_new_init_handler_bad_request_invalid_json(request_body: str | None, expected_response_text: str):
     # Arrange
     mock_request = MagicMock()
     if request_body:

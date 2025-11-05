@@ -296,7 +296,7 @@ class TestUser(JSONWizard):
 
 
 @dataclass
-class Run(JSONWizard):
+class RunRequest(JSONWizard):
     run_id: str
     test_definition: TestDefinition
     run_group: RunGroup

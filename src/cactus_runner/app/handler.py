@@ -42,8 +42,8 @@ from cactus_runner.models import (
     RequestData,
     RequestEntry,
     RequestList,
-    Run,
     RunnerState,
+    RunRequest,
     StartResponseBody,
     StepInfo,
 )
@@ -162,7 +162,7 @@ async def new_init_handler(request: web.Request):  # noqa: C901
         Returns:
             aiohttp.web.Response:
             201 (Created) The body contains a simple json message (status msg, test name and timestamp, is_started) or
-            400 (Bad Request) if a Run instance can't be instantiated from the json request body or
+            400 (Bad Request) if a RunRequest instance can't be instantiated from the json request body or
             409 (Conflict) if there is already a test procedure initialised or
             400 (Bad Request) if both aggregator and device certificates supplied for neither supplied or
             400 (Bad Request) if invalid test procedure definition supplied or
@@ -175,11 +175,13 @@ async def new_init_handler(request: web.Request):  # noqa: C901
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing JSON body")
 
     try:
-        run_request = Run.from_json(raw_json)
+        run_request = RunRequest.from_json(raw_json)
         if isinstance(run_request, list):
-            raise ValueError("Run request must be a Run instance and not list[Run]")
+            raise ValueError("Run request must be a RunRequest instance and not list[RunRequest]")
     except Exception as e:
-        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text=f"Unable to parse JSON body to Run instance {e}")
+        return web.Response(
+            status=http.HTTPStatus.BAD_REQUEST, text=f"Unable to parse JSON body to RunRequest instance {e}"
+        )
 
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
     # We cannot initialise another test procedure if one is already active

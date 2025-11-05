@@ -10,8 +10,8 @@ from cactus_runner.models import (
     RequestData,
     RequestList,
     RunnerStatus,
+    RunRequest,
     StartResponseBody,
-    Run,
 )
 
 __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProcedureId", "RunnerClient"]
@@ -53,7 +53,7 @@ async def ensure_success_response(response: ClientResponse) -> None:
 
 class RunnerClient:
     @staticmethod
-    async def new_init(session: ClientSession, run_request: Run) -> InitResponseBody:
+    async def new_init(session: ClientSession, run_request: RunRequest) -> InitResponseBody:
         try:
             async with session.post(url="/newinit", data=run_request.to_json()) as response:
                 await ensure_success_response(response)
