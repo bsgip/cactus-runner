@@ -284,7 +284,7 @@ class RunGroup(JSONWizard):
 
 @dataclass
 class TestConfig(JSONWizard):
-    subscription_domain: str
+    subscription_domain: str | None
     is_static_url: bool
     pen: int = field(default=0)
 
