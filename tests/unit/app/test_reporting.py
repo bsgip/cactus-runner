@@ -419,16 +419,16 @@ def test_pdf_report_everything_set():
     assert len(report) > 0
 
     # Optional: Save and open the PDF
-    # import uuid
-    # import tempfile
-    # import os
-    # import subprocess
+    import uuid
+    import tempfile
+    import os
+    import subprocess
 
-    # with tempfile.NamedTemporaryFile(suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False) as f:
-    #     f.write(report)
-    #     f.flush()
-    #     print(f"Saved comprehensive PDF report: {os.path.basename(f.name)}")
-    #     subprocess.run(["xdg-open", f.name])
+    with tempfile.NamedTemporaryFile(suffix=".pdf", prefix=f"report_{uuid.uuid4().hex[:8]}_", delete=False) as f:
+        f.write(report)
+        f.flush()
+        print(f"Saved comprehensive PDF report: {os.path.basename(f.name)}")
+        subprocess.run(["xdg-open", f.name])
 
 
 @pytest.mark.parametrize(

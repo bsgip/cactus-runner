@@ -958,13 +958,16 @@ def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
 
     # Generate x-axis labels
     num_intervals = max(len(ds.offset_watt_values) for ds in timeline.data_streams) if timeline.data_streams else 0
-    x_labels = [duration_to_label(timeline.interval_seconds * i) for i in range(num_intervals)]
+    tick_spacing = max(1, num_intervals // 10)
+
+    tickvals = list(range(0, num_intervals, tick_spacing))
+    x_labels = [duration_to_label(timeline.interval_seconds * i) for i in tickvals]
 
     fig.update_xaxes(
         title="Time",
         type="linear",
         tickmode="array",
-        tickvals=list(range(num_intervals)),
+        tickvals=tickvals,
         ticktext=x_labels,
         range=[0, max(num_intervals - 1, 1)],
     )
