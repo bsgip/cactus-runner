@@ -1284,8 +1284,8 @@ def generate_reading_count_table(reading_counts, stylesheet):
             truncate_mrid(reading_type.mrid),
             get_site_type(reading_type.role_flags),
             uom_to_string(reading_type.uom),
-            data_qualifier_to_string(reading_type.data_qualifier),
-            kind_to_string(reading_type.kind),
+            str(reading_type.data_qualifier),
+            str(reading_type.kind),
             phase_to_string(reading_type.phase),
             count,
         ]
@@ -1308,10 +1308,10 @@ def generate_reading_count_table(reading_counts, stylesheet):
         else:
             table_row_idx += 1
 
-    headers = ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings Received"]
+    headers = ["/MUP", "MMR", "Site type", "Unit", "Data Qualifier", "Kind", "Phase", "# Readings"]
     table_data.insert(0, headers)
 
-    fractions = [0.1, 0.1, 0.1, 0.2, 0.15, 0.09, 0.09, 0.22]
+    fractions = [0.07, 0.1, 0.1, 0.2, 0.14, 0.08, 0.1, 0.14]
     column_widths = [int(f * stylesheet.table_width) for f in fractions]
 
     styles = [
