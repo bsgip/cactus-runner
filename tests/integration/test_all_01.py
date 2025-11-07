@@ -82,3 +82,10 @@ async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: s
     # Ensure PDF generated ok
     pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))
     assert len(pdf_data) > 1024
+
+    # Check that requests are saved in the zip
+    request_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".request")]
+    response_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".response")]
+
+    assert len(request_files) > 3, f"found {len(request_files)}"  # made 4 requests
+    assert len(response_files) > 3, f"found {len(response_files)}"

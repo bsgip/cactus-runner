@@ -5,12 +5,11 @@ import shutil
 
 from cactus_runner.app import proxy
 from cactus_runner.models import RequestEntry
-import tempfile
 
 logger = logging.getLogger(__name__)
 
 
-REQUEST_DATA_DIR = Path(tempfile.gettempdir()) / "cactus_request_data"
+REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
 
 
 def ensure_request_data_dir() -> Path:
@@ -42,6 +41,7 @@ def write_request_response_files(
     """
     try:
         storage_dir = ensure_request_data_dir()
+        logger.info(f"writing request to {storage_dir}")
 
         # Decode request body
         request_body = None
@@ -108,6 +108,7 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
     """
     try:
         storage_dir = ensure_request_data_dir()
+        logger.info(f"reading request from {storage_dir}")
 
         # Find files matching the request_id pattern
         request_files = list(storage_dir.glob(f"{request_id:03d}-*.request"))
@@ -151,6 +152,7 @@ def copy_request_response_files_to_archive(archive_dir: Path) -> None:
     """
     try:
         storage_dir = ensure_request_data_dir()
+        logger.info(f"copying requests from {storage_dir} to {archive_dir} / requests")
 
         if not storage_dir.exists():
             logger.warning(f"Request data directory does not exist: {storage_dir}")
