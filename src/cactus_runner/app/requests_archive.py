@@ -8,7 +8,8 @@ from cactus_runner.models import RequestEntry
 
 logger = logging.getLogger(__name__)
 
-
+# nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
+# Alternatives tried: hardcoded paths (permission errors), tempfile (failed on write to zip, issue on finalise?)
 REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
 
 
