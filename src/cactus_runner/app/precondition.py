@@ -34,7 +34,7 @@ async def register_aggregator(lfdi: str | None, subscription_domain: str | None)
     """returns the aggregator ID that should be used for registering devices"""
     async with begin_session() as session:
         now = datetime.now(tz=ZoneInfo("UTC"))
-        expiry = now + timedelta(hours=48)
+        expiry = now + timedelta(days=9999)  # Arbitrarily far in the future - orchestrator handles lifetime
         aggregator_id = 0
 
         # Always insert a NULL aggregator (for device certs)
