@@ -24,6 +24,7 @@ from cactus_runner.models import (
     RequestData,
     RequestList,
     RunnerStatus,
+    RunRequest,
     StartResponseBody,
     StepInfo,
     StepStatus,
@@ -60,14 +61,16 @@ async def test_client_interactions(
     aggregator_cert: str | None,
     device_cert: str | None,
     expect_immediate_start: bool,
+    run_request_generator,
 ):
     """Tests that the embedded client can interact with a full test stack"""
 
     # Interrogate the init response
+    run_request: RunRequest = run_request_generator(
+        test_procedure_id, aggregator_cert, device_cert, csip_aus_version, sub_domain
+    )
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        init_response = await RunnerClient.init(
-            session, test_procedure_id, csip_aus_version, aggregator_cert, device_cert, sub_domain
-        )
+        init_response = await RunnerClient.initialise(session, run_request)
     assert isinstance(init_response, InitResponseBody)
     assert init_response.test_procedure == test_procedure_id.value
     assert isinstance(init_response.status, str)
@@ -174,43 +177,34 @@ async def test_client_init_bad_cert_combos(
     cactus_runner_client: TestClient,
     aggregator_cert: str | None,
     device_cert: str | None,
+    run_request_generator,
 ):
     """Tests that the embedded client handles failures where the combination of certificates is wrong"""
 
     # Interrogate the init response
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, aggregator_cert, device_cert, CSIPAusVersion.RELEASE_1_2, None
+    )
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
         # Look for a BAD_REQUEST (http 400)
         with pytest.raises(RunnerClientException, check=lambda e: "400" in str(e)):
-            await RunnerClient.init(
-                session,
-                TestProcedureId.ALL_01,
-                CSIPAusVersion.RELEASE_1_2,
-                aggregator_certificate=aggregator_cert,
-                device_certificate=device_cert,
-                subscription_domain=None,
-                run_id="abc123",
-            )
+            await RunnerClient.initialise(session, run_request)
 
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_client_precondition_fails(cactus_runner_client: TestClient):
+async def test_client_precondition_fails(cactus_runner_client: TestClient, run_request_generator):
     """Tests that the embedded client handles failures where the combination of certificates is wrong"""
 
     aggregator_cert = RAW_CERT_1
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_20, aggregator_cert, None, CSIPAusVersion.RELEASE_1_2, None
+    )
 
     # Interrogate the init response
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
         # Create an ALL-20 test session
-        await RunnerClient.init(
-            session,
-            TestProcedureId.ALL_20,
-            CSIPAusVersion.RELEASE_1_2,
-            aggregator_certificate=aggregator_cert,
-            device_certificate=None,
-            subscription_domain=None,
-            run_id="abc123",
-        )
+        await RunnerClient.initialise(session, run_request)
 
         # This test will expect preconditions to be met (eg registering an EndDevice) - if we try to start now
         # it should fail and report a useful error
@@ -226,22 +220,18 @@ async def test_client_precondition_fails(cactus_runner_client: TestClient):
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_status_steps_immediate_start(
-    cactus_runner_client: TestClient,
-    pg_base_config,
-):
+async def test_status_steps_immediate_start(cactus_runner_client: TestClient, pg_base_config, run_request_generator):
     """Tests that the embedded client will"""
 
-    test_procedure_id = TestProcedureId.ALL_01
-    csip_aus_version = CSIPAusVersion.RELEASE_1_2
-    sub_domain = None
     aggregator_cert = RAW_CERT_1
+
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, aggregator_cert, None, CSIPAusVersion.RELEASE_1_2, None
+    )
 
     # Init and then fetch status
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        init_response = await RunnerClient.init(
-            session, test_procedure_id, csip_aus_version, aggregator_cert, None, sub_domain
-        )
+        init_response = await RunnerClient.initialise(session, run_request)
         assert init_response.is_started, "ALL-01 should be immediate start"
 
         status_response = await RunnerClient.status(session)

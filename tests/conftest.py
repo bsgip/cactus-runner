@@ -3,7 +3,7 @@ import shutil
 import unittest.mock as mock
 from http import HTTPStatus
 from pathlib import Path
-from typing import Generator
+from typing import Callable, Generator
 from urllib.parse import urlparse
 
 import aiohttp.web as web
@@ -11,6 +11,9 @@ import pytest
 from assertical.fixtures.environment import environment_snapshot
 from assertical.fixtures.fastapi import start_app_with_client
 from assertical.fixtures.postgres import generate_async_conn_str_from_connection
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
+from cactus_test_definitions.client.test_procedures import get_yaml_contents
 from envoy.admin.main import generate_app as admin_gen_app
 from envoy.admin.settings import generate_settings as admin_gen_settings
 from envoy.server.alembic import upgrade
@@ -29,6 +32,14 @@ from cactus_runner.app.envoy_admin_client import (
 )
 from cactus_runner.app.main import create_app
 from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
+from cactus_runner.models import (
+    RunGroup,
+    RunRequest,
+    TestCertificates,
+    TestConfig,
+    TestDefinition,
+    TestUser,
+)
 from tests.adapter import HttpxClientSessionAdapter
 
 
@@ -183,3 +194,36 @@ async def cactus_runner_client_with_mount_point(aiohttp_client, envoy_admin_clie
                 mock_generate_admin_client.return_value = envoy_admin_client
                 async with await aiohttp_client(create_app()) as app:
                     yield app
+
+
+@pytest.fixture
+def run_request_generator() -> (
+    Callable[[TestProcedureId, str | None, str | None, CSIPAusVersion, str | None], RunRequest]
+):
+    """Yields a function for generating a RunRequest when supplied with a TestProcedureId"""
+
+    def _generate_run_request(
+        tp_id: TestProcedureId,
+        agg_cert: str | None,
+        device_cert: str | None,
+        version: CSIPAusVersion,
+        sub_domain: str | None,
+    ) -> RunRequest:
+        yaml_definition = get_yaml_contents(tp_id)
+        return RunRequest(
+            run_id="abc-123",
+            test_definition=TestDefinition(test_procedure_id=tp_id, yaml_definition=yaml_definition),
+            run_group=RunGroup(
+                run_group_id="1",
+                name="group 1",
+                csip_aus_version=version,
+                test_certificates=TestCertificates(
+                    aggregator=agg_cert,
+                    device=device_cert,
+                ),
+            ),
+            test_config=TestConfig(pen=12345, subscription_domain=sub_domain, is_static_url=False),
+            test_user=TestUser(user_id="123", name="User 123"),
+        )
+
+    return _generate_run_request

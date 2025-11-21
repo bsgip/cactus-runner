@@ -3,11 +3,13 @@ import zipfile
 from urllib.parse import quote
 
 import pytest
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
 from pytest_aiohttp.plugin import TestClient
 
-from cactus_runner.models import RunnerStatus, StepStatus
+from cactus_runner.client import RunnerClient
+from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
@@ -25,14 +27,24 @@ async def assert_success_response(response: ClientResponse):
 )
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_01_full(cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion):
+async def test_all_01_full(
+    cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion, run_request_generator
+):
     """This is a full integration test of the entire ALL-01 workflow"""
 
     # Init
-    result = await cactus_runner_client.post(
-        f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+    if certificate_type == "aggregator_certificate":
+        agg_cert = TEST_CERTIFICATE_PEM.decode()
+        device_cert = None
+    else:
+        agg_cert = None
+        device_cert = TEST_CERTIFICATE_PEM.decode()
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, agg_cert, device_cert, csip_aus_version, None
     )
-    await assert_success_response(result)
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        init_response = await RunnerClient.initialise(session, run_request)
+        assert init_response.is_started
 
     # client "Start" is NOT required as ALL-01 is marked as immediate start
 

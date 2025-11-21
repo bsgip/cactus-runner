@@ -1,19 +1,19 @@
 import io
-from pathlib import Path
 import zipfile
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
-
+from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from assertical.fixtures.postgres import generate_async_session
-from envoy.server.model.site_reading import SiteReading, SiteReadingType
-
-from aiohttp import ClientResponse
 from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from pytest_aiohttp.plugin import TestClient
 from sqlalchemy import func, select
 
-from cactus_runner.models import RunnerStatus, StepStatus
+from cactus_runner.client import RunnerClient
+from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import assert_success_response
 
@@ -31,6 +31,7 @@ async def test_all_01_with_readings(
     certificate_type: str,
     csip_aus_version: CSIPAusVersion,
     pg_empty_config,
+    run_request_generator,
 ):
     """ALL-01 workflow with reading posting and verification"""
 
@@ -41,13 +42,27 @@ async def test_all_01_with_readings(
     mmr_xml = (xml_data_dir / "mmr.xml").read_text().strip()
 
     # SETUP: The real ALL_01 (from test_all_01.py)
-    result = await cactus_runner_client.post(
-        f"/init?test=ALL-01&{certificate_type}={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+    if certificate_type == "aggregator_certificate":
+        agg_cert = TEST_CERTIFICATE_PEM.decode()
+        device_cert = None
+    else:
+        agg_cert = None
+        device_cert = TEST_CERTIFICATE_PEM.decode()
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, agg_cert, device_cert, csip_aus_version, None
     )
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        init_response = await RunnerClient.initialise(session, run_request)
+        assert init_response.is_started
+
     result = await cactus_runner_client.get("/dcap", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    await assert_success_response(result)
     result = await cactus_runner_client.get("/edev?s=0&l=100", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    await assert_success_response(result)
     result = await cactus_runner_client.get("/tm", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    await assert_success_response(result)
     result = await cactus_runner_client.get("/edev/1/der", headers={"ssl-client-cert": URI_ENCODED_CERT})
+    await assert_success_response(result)
 
     # Register the device (required for aggregator certificate)
     if certificate_type == "aggregator_certificate":

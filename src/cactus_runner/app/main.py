@@ -11,7 +11,6 @@ from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import web
-from cactus_test_definitions.client import TestProcedureConfig
 
 from cactus_runner import __version__
 from cactus_runner.app import event, handler
@@ -36,7 +35,6 @@ from cactus_runner.app.shared import (
     APPKEY_PERIOD_SEC,
     APPKEY_PERIODIC_TASK,
     APPKEY_RUNNER_STATE,
-    APPKEY_TEST_PROCEDURES,
 )
 from cactus_runner.models import InitialisedCertificates, RunnerState
 
@@ -139,8 +137,7 @@ def create_app() -> web.Application:
     mount = MOUNT_POINT.rstrip("/") + "/" if MOUNT_POINT else "/"  # Ensure MOUNT_POINT ends with / for concatenation
     app.router.add_route("GET", mount + "health", handler.health_handler)
     app.router.add_route("GET", mount + "status", handler.status_handler)
-    app.router.add_route("POST", mount + "init", handler.init_handler)
-    app.router.add_route("POST", mount + "newinit", handler.new_init_handler)
+    app.router.add_route("POST", mount + "initialise", handler.initialise_handler)
     app.router.add_route("POST", mount + "start", handler.start_handler)
     app.router.add_route("POST", mount + "finalize", handler.finalize_handler)
 
@@ -154,7 +151,6 @@ def create_app() -> web.Application:
     # Set up shared state
     app[APPKEY_INITIALISED_CERTS] = InitialisedCertificates()
     app[APPKEY_RUNNER_STATE] = RunnerState()
-    app[APPKEY_TEST_PROCEDURES] = TestProcedureConfig.from_resource()
     app[APPKEY_ENVOY_ADMIN_INIT_KWARGS] = {
         "base_url": ENVOY_ADMIN_URL,
         "auth_params": EnvoyAdminClientAuthParams(

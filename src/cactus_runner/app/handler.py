@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import cast
 
 from aiohttp import ContentTypeError, web
-from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Action, TestProcedure
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
@@ -30,7 +29,6 @@ from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_INITIALISED_CERTS,
     APPKEY_RUNNER_STATE,
-    APPKEY_TEST_PROCEDURES,
 )
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -143,8 +141,8 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     )
 
 
-async def new_init_handler(request: web.Request):  # noqa: C901
-    """Handler for init requests.
+async def initialise_handler(request: web.Request):  # noqa: C901
+    """Handler for initialise requests.
 
         Sent by the client to initialise a test procedure.
 
@@ -345,218 +343,6 @@ async def new_init_handler(request: web.Request):  # noqa: C901
     body = InitResponseBody(
         status="Test procedure initialised.",
         test_procedure=run_request.test_definition.test_procedure_id.value,
-        timestamp=datetime.now(timezone.utc),
-        is_started=is_started,
-    )
-    return web.Response(status=http.HTTPStatus.CREATED, content_type="application/json", text=body.to_json())
-
-
-async def init_handler(request: web.Request):  # noqa: C901
-    """Handler for init requests.
-
-        Sent by the client to initialise a test procedure.
-
-        The following initialization steps are performed:
-
-        1. All tables in the database are truncated
-        2. Register the aggregator (along with its certificate)
-        3. Apply database preconditions
-        4. Trigger the envoy server to start with the correction configuration.
-    .
-        Args:
-            request: An aiohttp.web.Request instance. The requests must include the following
-            query parameters:
-            'test' - the name of the test procedure to initialize
-            'certificate' - the PEM encoded certificate to register as belonging to the aggregator
-            'pen' - the Private Enterprise Number (PEN)
-            'subscription_domain' - [Optional] the FQDN to be added to the pub/sub allow list for subscriptions
-
-        Returns:
-            aiohttp.web.Response: The body contains a simple json message (status msg, test name and timestamp) or
-            409 (Conflict) if there is already a test procedure initialised or
-            400 (Bad Request) if either of query parameters ('test' or 'certificate') are missing or
-            400 (Bad Request) if no test procedure definition could be found for the requested test
-            procedure
-
-    """
-    active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
-    test_procedures = request.app[APPKEY_TEST_PROCEDURES]
-
-    # We cannot initialise another test procedure if one is already active
-    if active_test_procedure is not None:
-        return web.Response(
-            status=http.HTTPStatus.CONFLICT,
-            text=f"Test Procedure ({active_test_procedure.name}) already active. Initialising another test procedure is not permitted.",  # noqa: E501
-        )
-
-    # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
-        )
-    )
-
-    # Reset envoy database
-    # This must happen before the aggregator is registered or any test preconditions applied
-    logger.debug("Resetting envoy database")
-    await precondition.reset_db()
-
-    # Get the name of the test procedure from the query parameter
-    requested_test_procedure = request.query.get("test", None)
-    if requested_test_procedure is None:
-        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'test' query parameter.")
-
-    # Get the name of the test procedure from the query parameter
-    csip_aus_version_raw = request.query.get("csip_aus_version", None)
-    if csip_aus_version_raw is None:
-        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing 'csip_aus_version' query parameter.")
-    try:
-        csip_aus_version = CSIPAusVersion(csip_aus_version_raw)
-    except ValueError:
-        return web.Response(
-            status=http.HTTPStatus.BAD_REQUEST, text="'csip_aus_version' query parameter doesn't match a known version."
-        )
-
-    # Get the certificate of the aggregator to register
-    aggregator_certificate = request.query.get("aggregator_certificate", None)
-    if aggregator_certificate is None:
-        aggregator_lfdi = None
-        logger.info("No aggregator certificate is loaded. All EndDevice's must be registered via a device certificate")
-    else:
-        aggregator_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(aggregator_certificate)
-        logger.info(f"Aggregator will created with certificate lfdi {aggregator_lfdi}.")
-
-    # Get the device certificate to register
-    device_certificate = request.query.get("device_certificate", None)
-    if device_certificate is None:
-        device_lfdi = None
-        logger.info("No device certificate is loaded. All EndDevice's must be registered via aggregator certificate")
-    else:
-        device_lfdi = LFDIAuthDepends.generate_lfdi_from_pem(device_certificate)
-        logger.info(f"Device certificates will only be supported with certificate lfdi {device_lfdi}.")
-
-    subscription_domain = request.query.get("subscription_domain", None)
-    if subscription_domain is None:
-        logger.info("Subscriptions will NOT be creatable - no valid domain (subscription_domain not set)")
-    else:
-        sanitized_subscription_domain = subscription_domain.replace("\n", "").replace("\r", "")
-        logger.info(f"Subscriptions will restricted to the FQDN '{sanitized_subscription_domain}'")
-
-    run_id = request.query.get("run_id", None)
-    if run_id is None:
-        logger.info("No run ID has been assigned to this test.")
-    else:
-        logger.info(f"run ID {run_id} has been assigned to this test.")
-
-    raw_pen = request.query.get("pen", None)
-    if raw_pen is None:
-        logger.info("No PEN has been associated with this test. Defaulting to 0 (no PEN)")
-        pen = 0
-    else:
-        try:
-            pen = int(raw_pen)
-            logger.info(f"PEN {pen} has been associated with this test")
-        except ValueError:
-            logger.error("A non-numeric PEN value was supplied: {pen}. Defaulting to 0 (no PEN)")
-            pen = 0
-
-    # Need EITHER device certificate or an aggregator certificate. Can't run both.
-    if device_lfdi is not None and aggregator_lfdi is not None:
-        return web.Response(
-            status=http.HTTPStatus.BAD_REQUEST,
-            text="Cannot use 'aggregator_certificate' and 'device_certificate' at the same time.",
-        )
-    elif device_lfdi is None and aggregator_lfdi is None:
-        return web.Response(
-            status=http.HTTPStatus.BAD_REQUEST, text="Need one of 'aggregator_certificate' or 'device_certificate'."
-        )
-
-    # Now install the certificate we intend to use
-    client_aggregator_id = await precondition.register_aggregator(
-        lfdi=aggregator_lfdi, subscription_domain=subscription_domain
-    )
-    if aggregator_lfdi is None:
-        client_type = ClientCertificateType.DEVICE
-        client_lfdi = cast(str, device_lfdi)  # we know its set due to checks above
-        client_certificate = cast(str, device_certificate)  # we know its set due to checks above
-    else:
-        client_type = ClientCertificateType.AGGREGATOR
-        client_lfdi = cast(str, aggregator_lfdi)  # we know its set due to checks above
-        client_certificate = cast(str, aggregator_certificate)  # we know its set due to checks above
-    logger.info(f"Registering a {client_type} certificate {client_lfdi} under aggregator id {client_aggregator_id}")
-
-    # Save the certificate details for later request validation
-    request.app[APPKEY_INITIALISED_CERTS].client_certificate_type = client_type
-    request.app[APPKEY_INITIALISED_CERTS].client_lfdi = client_lfdi
-    request.app[APPKEY_INITIALISED_CERTS].client_certificate = client_certificate
-
-    # Get the definition of the test procedure
-    try:
-        definition = test_procedures.test_procedures[requested_test_procedure]
-    except KeyError:
-        return web.Response(
-            status=http.HTTPStatus.BAD_REQUEST,
-            text=f"Expected valid test procedure for 'test' query parameter. Received '/start=?test={requested_test_procedure}'",  # noqa: E501
-        )
-
-    # Create listeners for all test procedure events
-    listeners = []
-    for step_name, step in definition.steps.items():
-        listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
-
-    # Set steps to pending (no created/finished time)
-    step_status = {step: StepInfo() for step in definition.steps.keys()}
-
-    # Set 'active_test_procedure' to the requested test procedure
-    active_test_procedure = ActiveTestProcedure(
-        name=requested_test_procedure,
-        definition=definition,
-        csip_aus_version=csip_aus_version,
-        initialised_at=datetime.now(tz=timezone.utc),
-        started_at=None,  # Test hasn't started yet
-        listeners=listeners,
-        step_status=step_status,
-        client_lfdi=client_lfdi,
-        client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
-        client_aggregator_id=client_aggregator_id,
-        client_certificate_type=client_type,
-        run_id=run_id,
-        pen=pen,
-    )
-
-    logger.info(
-        f"Test Procedure '{active_test_procedure.name}' initialised.",
-        extra={"test_procedure": active_test_procedure.name},
-    )
-
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
-
-    # if this test has "init_actions" - now is the time to fire them
-    if active_test_procedure.definition.preconditions:
-        await attempt_apply_actions(
-            active_test_procedure.definition.preconditions.init_actions,
-            request.app[APPKEY_RUNNER_STATE],
-            request.app[APPKEY_ENVOY_ADMIN_CLIENT],
-        )
-
-    # if this test is marked as immediate_start - we can trigger the "start" now
-    is_started = False
-    if definition.preconditions and definition.preconditions.immediate_start:
-        is_started = True
-        start_result = await attempt_start_for_state(
-            request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-        )
-        if not start_result.success:
-            logger.error(f"Unable to trigger immediate start: {start_result.content}")
-            return web.Response(
-                status=start_result.status,
-                text=f"Unable to trigger immediate start: {start_result.content}",
-                content_type="text/plain",
-            )
-
-    body = InitResponseBody(
-        status="Test procedure initialised.",
-        test_procedure=active_test_procedure.name,
         timestamp=datetime.now(timezone.utc),
         is_started=is_started,
     )

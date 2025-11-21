@@ -1,7 +1,6 @@
 import logging
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
-from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 
 from cactus_runner.models import (
@@ -53,9 +52,9 @@ async def ensure_success_response(response: ClientResponse) -> None:
 
 class RunnerClient:
     @staticmethod
-    async def new_init(session: ClientSession, run_request: RunRequest) -> InitResponseBody:
+    async def initialise(session: ClientSession, run_request: RunRequest) -> InitResponseBody:
         try:
-            async with session.post(url="/newinit", data=run_request.to_json()) as response:
+            async with session.post(url="/initialise", data=run_request.to_json()) as response:
                 await ensure_success_response(response)
                 response_json = await response.text()
                 init_response_body = InitResponseBody.from_json(response_json)
@@ -67,51 +66,6 @@ class RunnerClient:
         except Exception as e:
             logger.debug(e)
             raise RunnerClientException(f"Unexpected failure while initialising test {e}.")
-
-    @staticmethod
-    async def init(
-        session: ClientSession,
-        test_id: TestProcedureId,
-        csip_aus_version: CSIPAusVersion,
-        aggregator_certificate: str | None,
-        device_certificate: str | None,
-        subscription_domain: str | None = None,
-        run_id: str | None = None,
-        pen: int = 0,
-    ) -> InitResponseBody:
-        """
-        Args:
-            test_id: The TestProcedureId to initialise the runner with
-            csip_aus_version: What CSIP Aus version of envoy is this runner communicating with?
-            aggregator_certificate: The PEM encoded public certificate to be installed as the "aggregator" cert
-            pen: The IANA-registered private enterprise number (PEN). Defaults to 0 (no PEN supplied).
-            device_certificate: The PEM encoded public certificate to be reserved for use by a "device"
-            subscription_domain: The FQDN that will be added to the allow list for subscription notifications
-            run_id: The upstream identifier for this run (to be used in report metadata)"""
-
-        try:
-            params = {"test": test_id.value, "csip_aus_version": csip_aus_version.value, "pen": pen}
-            if aggregator_certificate is not None:
-                params["aggregator_certificate"] = aggregator_certificate
-            if device_certificate is not None:
-                params["device_certificate"] = device_certificate
-            if subscription_domain is not None:
-                params["subscription_domain"] = subscription_domain
-            if run_id is not None:
-                params["run_id"] = run_id
-
-            async with session.post(url="/init", params=params) as response:
-                await ensure_success_response(response)
-                json = await response.text()
-                init_response_body = InitResponseBody.from_json(json)
-                if isinstance(init_response_body, list):
-                    raise RunnerClientException(
-                        "Unexpected response from server. Expected a single object, but received a list."
-                    )
-                return init_response_body
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while initialising test.")
 
     @staticmethod
     async def start(session: ClientSession) -> StartResponseBody:

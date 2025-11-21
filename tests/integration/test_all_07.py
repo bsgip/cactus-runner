@@ -4,13 +4,15 @@ from datetime import datetime
 from urllib.parse import quote
 
 import pytest
-from aiohttp import ClientResponse
+from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
 from envoy_schema.server.schema.sep2.der import ConnectStatusTypeValue, DERStatus
 from envoy_schema.server.schema.sep2.end_device import EndDeviceRequest
 from pytest_aiohttp.plugin import TestClient
 
-from cactus_runner.models import RunnerStatus, StepStatus
+from cactus_runner.client import RunnerClient
+from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
@@ -24,16 +26,19 @@ async def assert_success_response(response: ClientResponse):
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_all_07_full(cactus_runner_client: TestClient):
+async def test_all_07_full(cactus_runner_client: TestClient, run_request_generator):
     """This is a full integration test of the entire ALL-07 workflow"""
 
-    csip_aus_version = CSIPAusVersion.RELEASE_1_2
-
     # Init
-    result = await cactus_runner_client.post(
-        f"/init?test=ALL-07&aggregator_certificate={URI_ENCODED_CERT}&csip_aus_version={csip_aus_version.value}"
+    csip_aus_version = CSIPAusVersion.RELEASE_1_2
+    agg_cert = TEST_CERTIFICATE_PEM.decode()
+    device_cert = None
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_07, agg_cert, device_cert, csip_aus_version, None
     )
-    await assert_success_response(result)
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        init_response = await RunnerClient.initialise(session, run_request)
+        assert init_response.is_started is False
 
     #
     # Pre start - create an EndDevice, register a DERStatus saying it's connected

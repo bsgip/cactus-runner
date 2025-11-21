@@ -4,9 +4,36 @@ meta {
   seq: 4
 }
 
+
 post {
-  url: {{HOST}}/init?test=ALL-01&subscription_domain={{SUBSCRIPTION_DOMAIN}}&aggregator_certificate={{CERTIFICATE}}&csip_aus_version={{CSIP_AUS_VERSION}}
-  body: none
+  url: {{HOST}}/initialise
+  body: <<<JSON
+{
+  "run_id": "DEMO-01",
+  "run_group": {
+    "run_group_id": "123",
+    "name": "Demo Run Group",
+    "csip_aus_version": "v1.2",
+    "test_certificates": {
+      "aggregator": "{{CERTIFICATE}}",
+      "device": null
+    }
+  },
+  "test_config": {
+    "subscription_domain": null,
+    "is_static_url": false,
+    "pen": 12345
+  },
+  "test_user": {
+    "user_id": "user-123",
+    "name": "User 123"
+  },
+  "test_definition": {
+    "test_procedure_id": "ALL-01",
+    "yaml_definition": "Description: Discovery with Out-of-Band Registration\nCategory: Registration\nClasses:\n  - A\n  - DR-A\n\nTargetVersions:\n  - v1.2\n  - v1.3-beta/storage\n\nPreconditions:\n  immediate_start: true # There will be no \"init\" phase - all interactions will be immediately logged against the test\n  init_actions:\n    - type: set-comms-rate\n      parameters:\n        dcap_poll_seconds: 60\n        edev_list_poll_seconds: 60\n        fsa_list_poll_seconds: 60\n        der_list_poll_seconds: 60\n        derp_list_poll_seconds: 60\n        mup_post_seconds: 60\n  \n  actions:\n    - type: register-end-device\n      parameters:\n        registration_pin: 11111 # With checksum is 111115\n        aggregator_lfdi: 3E4F45AB31EDFE5B67E343E5E4562E3100000000 # Trailing PEN digits set to 0\n        aggregator_sfdi: 16726121139\n        \nCriteria:\n  checks:\n    - type: all-steps-complete\n      parameters: {}\n      \nSteps:\n  # (b, c, d)\n  GET-DCAP:\n    instructions:\n      - \"An EndDevice has already been registered (out of band) with PIN 111115\"\n      - \"If you are connecting using an Aggregator client/certificate the out of band registered EndDevice will have the following:\"\n      - \"LFDI: 3E4F45AB31EDFE5B67E343E5E4562E31XXXXXXXX (The X values will match your client PEN)\"\n      - \"SFDI: 16726121139\"\n    event:\n      type: GET-request-received\n      parameters:\n        endpoint: /dcap\n    actions:\n      - type: enable-steps\n        parameters:\n          steps:\n            - GET-EDEV-LIST\n            - GET-TM\n            - GET-DER\n      - type: remove-steps\n        parameters:\n          steps:\n            - GET-DCAP\n\n  # (e, f, g)\n  GET-EDEV-LIST:\n    event:\n      type: GET-request-received\n      parameters:\n        endpoint: /edev\n    actions:\n      - type: remove-steps\n        parameters:\n          steps:\n            - GET-EDEV-LIST\n\n  # (h, i, j)\n  GET-TM:\n    event:\n      type: GET-request-received\n      parameters:\n        endpoint: /tm\n    actions:\n      - type: remove-steps\n        parameters:\n          steps:\n            - GET-TM\n\n  # (k, l, m)\n  GET-DER:\n    event:\n      type: GET-request-received\n      parameters:\n        endpoint: /edev/1/der\n    actions:\n      - type: remove-steps\n        parameters:\n          steps:\n            - GET-DER\n\n"
+  }
+}
+JSON
   auth: none
 }
 

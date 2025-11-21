@@ -1,4 +1,5 @@
 from datetime import datetime
+
 import pytest
 from aiohttp import ClientSession, ClientTimeout
 from assertical.fake.generator import generate_class_instance
@@ -9,23 +10,25 @@ from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RunnerStatus
-from tests.integration.certificate1 import TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM
+from cactus_runner.models import RunnerStatus, RunRequest
+from tests.integration.certificate1 import (
+    TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
+)
 
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_status_end_device_metadata(cactus_runner_client: TestClient, pg_base_config):
+async def test_status_end_device_metadata(cactus_runner_client: TestClient, pg_base_config, run_request_generator):
     """Tests that end_device_metadata is correctly populated with eager loading of site_ders"""
 
-    test_procedure_id = TestProcedureId.ALL_01
-    csip_aus_version = CSIPAusVersion.RELEASE_1_2
     aggregator_cert = TEST_CERTIFICATE_1_PEM.decode()
 
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, aggregator_cert, None, CSIPAusVersion.RELEASE_1_2, None
+    )
+
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-        init_response = await RunnerClient.init(
-            session, test_procedure_id, csip_aus_version, aggregator_cert, None, None
-        )
+        init_response = await RunnerClient.initialise(session, run_request)
         assert init_response.is_started
 
     # Create a NEW site with all the values we want to test

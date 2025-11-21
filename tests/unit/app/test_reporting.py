@@ -1,32 +1,21 @@
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import http
 import random
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
-from cactus_test_definitions.client import TestProcedureConfig
+from cactus_test_definitions.client import TestProcedureId, get_test_procedure
 from envoy.server.model import (
     Site,
     SiteDER,
-    SiteDERSetting,
-    SiteReadingType,
-    SiteDERRating,
     SiteDERAvailability,
+    SiteDERRating,
+    SiteDERSetting,
     SiteDERStatus,
+    SiteReadingType,
 )
-from cactus_runner.app.check import CheckResult
-from cactus_runner.app.reporting import device_category_to_string, pdf_report_as_bytes, validate_cell
-from cactus_runner.app.timeline import Timeline, TimelineDataStream
-from cactus_runner.models import (
-    ActiveTestProcedure,
-    ClientInteraction,
-    ClientInteractionType,
-    RequestEntry,
-    RunnerState,
-    StepInfo,
-)
-from cactus_runner.app.envoy_common import ReadingLocation
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     DeviceCategory,
@@ -36,12 +25,30 @@ from envoy_schema.server.schema.sep2.types import (
     UomType,
 )
 
+from cactus_runner.app.check import CheckResult
+from cactus_runner.app.envoy_common import ReadingLocation
+from cactus_runner.app.reporting import (
+    device_category_to_string,
+    pdf_report_as_bytes,
+    validate_cell,
+)
+from cactus_runner.app.timeline import Timeline, TimelineDataStream
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    ClientInteraction,
+    ClientInteractionType,
+    RequestEntry,
+    RunnerState,
+    StepInfo,
+)
+
 DT_NOW = datetime.now(timezone.utc)
 
 
-def active_test_procedure(test_name="ALL-01", step_status=None, witness_testing=False, run_id=None, **kwargs):
-    definitions = TestProcedureConfig.from_resource()
-    definition = definitions.test_procedures[test_name]
+def active_test_procedure(
+    test_name: TestProcedureId = TestProcedureId.ALL_01, step_status=None, witness_testing=False, run_id=None, **kwargs
+):
+    definition = get_test_procedure(test_name)
     if witness_testing:
         definition.classes = ["DER-A", "DER-B"]
 

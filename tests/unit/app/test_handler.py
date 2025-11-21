@@ -8,6 +8,7 @@ from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedure, TestProcedureId
+from cactus_test_definitions.client.test_procedures import get_yaml_contents
 
 from cactus_runner.app import action, handler
 from cactus_runner.app.proxy import ProxyResult
@@ -47,7 +48,7 @@ def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = Fals
         if use_device_cert
         else TestCertificates(aggregator=TEST_CERTIFICATE_2_PEM.decode(), device=None)
     )
-    yaml_definition = TestProcedure.get_yaml(test_procedure_id.value)
+    yaml_definition = get_yaml_contents(test_procedure_id)
     return RunRequest(
         run_id="1",
         test_definition=TestDefinition(test_procedure_id=test_procedure_id, yaml_definition=yaml_definition),
@@ -71,7 +72,7 @@ def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = Fals
         (TestProcedureId.ALL_07, True, False),
     ],
 )
-async def test_new_init_handler(
+async def test_initialise_handler(
     test_procedure_id: TestProcedureId, use_device_cert: bool, is_immediate_start: bool, mocker
 ):
     # Arrange
@@ -95,7 +96,7 @@ async def test_new_init_handler(
     )
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -140,7 +141,7 @@ async def test_new_init_handler_bad_request_invalid_json(request_body: str | Non
     mock_request.raise_for_status = MagicMock()
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -161,7 +162,7 @@ async def test_new_init_handler_conflict_response_if_existing_active_test_proced
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure.name = currently_running_test
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -192,7 +193,7 @@ async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
     mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -212,7 +213,7 @@ async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
 
     # mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -236,7 +237,7 @@ async def test_new_init_handler_bad_request_invalid_test_procedure(mocker):
     mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -265,7 +266,7 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
     )
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)
@@ -321,7 +322,7 @@ async def test_new_init_handler_immediate_start_failure(start_result: handler.St
     )
 
     # Act
-    raw_response = await handler.new_init_handler(request=mock_request)
+    raw_response = await handler.initialise_handler(request=mock_request)
 
     # Assert - raw_response
     assert isinstance(raw_response, Response)

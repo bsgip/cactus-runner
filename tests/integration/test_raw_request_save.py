@@ -1,21 +1,32 @@
 from pathlib import Path
-from cactus_test_definitions import CSIPAusVersion
-from fastapi.testclient import TestClient
+
 import pytest
-from cactus_runner.models import RequestData, RequestList
+from aiohttp import ClientSession, ClientTimeout
+from cactus_test_definitions import CSIPAusVersion
+from cactus_test_definitions.client import TestProcedureId
+from fastapi.testclient import TestClient
+
+from cactus_runner.client import RunnerClient
+from cactus_runner.models import RequestData, RequestList, RunRequest
+from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import URI_ENCODED_CERT, assert_success_response
 
 
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_request_data_retrieval_endpoints(cactus_runner_client: TestClient, pg_empty_config):
+async def test_request_data_retrieval_endpoints(
+    cactus_runner_client: TestClient, pg_empty_config, run_request_generator
+):
     """Test retrieval of raw request/response data via /requests and /request/{request_id} endpoints"""
 
     # SETUP: Run ALL-01 workflow to generate request/response data
-    result = await cactus_runner_client.post(
-        f"/init?test=ALL-01&device_certificate={URI_ENCODED_CERT}&csip_aus_version={CSIPAusVersion.RELEASE_1_2.value}"
+    agg_cert = None
+    device_cert = TEST_CERTIFICATE_PEM.decode()
+    run_request: RunRequest = run_request_generator(
+        TestProcedureId.ALL_01, agg_cert, device_cert, CSIPAusVersion.RELEASE_1_2, None
     )
-    await assert_success_response(result)
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+        await RunnerClient.initialise(session, run_request)
 
     headers = {"ssl-client-cert": URI_ENCODED_CERT}
     for endpoint in ["/dcap", "/edev?s=0&l=100", "/tm", "/edev/1/der"]:
