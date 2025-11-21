@@ -7,7 +7,7 @@ from aiohttp.web import Response
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import CSIPAusVersion
-from cactus_test_definitions.client import TestProcedure, TestProcedureId
+from cactus_test_definitions.client import TestProcedureId
 from cactus_test_definitions.client.test_procedures import get_yaml_contents
 
 from cactus_runner.app import action, handler
