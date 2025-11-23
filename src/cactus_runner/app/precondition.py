@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -68,9 +69,15 @@ async def register_aggregator(lfdi: str | None, subscription_domain: str | None)
 
 
 async def reset_db() -> None:
-    """Truncates all tables in the 'public' schema and resets sequences for id columns."""
+    """Truncates all tables in the 'public' schema and resets sequences for id columns.
+
+    Also sets dynamic_operating_envelope_id and tariff_generated_rate_id sequences to start
+    from the current epoch time to allow tests to persist a device but receive new DOE's/pricing.
+    """
+    epoch_time = int(time.time())
+
     # Adapted from https://stackoverflow.com/a/63227261
-    reset_sql = """
+    reset_sql = f"""
 DO $$ DECLARE
     r RECORD;
 BEGIN
@@ -78,7 +85,11 @@ BEGIN
         EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
     END LOOP;
 END $$;
+-- Set specific sequences to start from current epoch time
+ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH {epoch_time};
+ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH {epoch_time};
 """
+
     async with open_connection() as connection:
         async with connection.begin() as txn:
             await connection.execute(text(reset_sql))
