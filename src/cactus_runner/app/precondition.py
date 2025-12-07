@@ -84,6 +84,7 @@ BEGIN
     FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
         EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
     END LOOP;
+    EXECUTE 'ALTER SEQUENCE default_site_control_default_site_control_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH ' || epoch_time;
 END $$;
