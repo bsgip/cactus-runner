@@ -325,6 +325,7 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
 @pytest.mark.anyio
 async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
         await session.commit()
@@ -348,7 +349,7 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_create_der_control(resolved_params, session, envoy_admin_client)
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
 
     # Assert
     assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
@@ -393,6 +394,7 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
 @pytest.mark.anyio
 async def test_action_create_der_control_existing_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     existing_fsa_id = fsa_id if fsa_id is not None else 21515215
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
@@ -418,7 +420,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_create_der_control(resolved_params, session, envoy_admin_client)
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
 
     # Assert
     assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
@@ -435,6 +437,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
 async def test_action_create_der_control_control_values(pg_base_config, envoy_admin_client, value_seed: int | None):
     """Checks that the various DERControl values are properly set for a few variations"""
     # Arrange
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
         await session.commit()
@@ -472,7 +475,7 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_create_der_control(resolved_params, session, envoy_admin_client)
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
 
     # Assert
     assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1

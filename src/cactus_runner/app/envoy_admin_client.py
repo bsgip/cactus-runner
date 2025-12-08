@@ -23,6 +23,7 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlGroupResponse,
     SiteControlRequest,
     SiteControlResponse,
+    SiteControlPageResponse,
 )
 from envoy_schema.admin.schema.uri import (
     AggregatorListUri,
@@ -151,14 +152,29 @@ class EnvoyAdminClient:
         start: int = 0,
         limit: int = 100,
         after: datetime | None = None,
-    ) -> SiteControlResponse:
-        async with self._session.get(
-            SiteControlUri.format(group_id=group_id),
-            params={"start": start, "limit": limit} | {"after": after.isoformat()} if after else {},
-        ) as resp:
-            resp.raise_for_status()
-            json = await resp.json()
-            return SiteControlResponse(**json)
+    ) -> list[SiteControlResponse]:
+        """Fetch all site controls for a group, handling pagination automatically."""
+        all_controls: list[SiteControlResponse] = []
+        current_start = start
+
+        while True:
+            async with self._session.get(
+                SiteControlUri.format(group_id=group_id),
+                params={"start": current_start, "limit": limit} | ({"after": after.isoformat()} if after else {}),
+            ) as resp:
+                resp.raise_for_status()
+                json = await resp.json()
+                page_response = SiteControlPageResponse(**json)
+
+            all_controls.extend(page_response.controls)
+
+            # Check if we've retrieved all controls
+            if len(all_controls) >= page_response.total_count or len(page_response.controls) < limit:
+                break
+
+            current_start += limit
+
+        return all_controls
 
     async def delete_site_controls_in_range(
         self, group_id: int, period_start: datetime, period_end: datetime

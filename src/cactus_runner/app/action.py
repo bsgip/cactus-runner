@@ -10,11 +10,9 @@ from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
     UpdateDefaultValue,
 )
+
 from envoy_schema.admin.schema.site import SiteUpdateRequest
-from envoy_schema.admin.schema.site_control import (
-    SiteControlGroupRequest,
-    SiteControlRequest,
-)
+from envoy_schema.admin.schema.site_control import SiteControlGroupRequest, SiteControlRequest, SiteControlResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -146,7 +144,10 @@ async def action_create_der_program(resolved_parameters: dict[str, Any], envoy_c
 
 
 async def action_create_der_control(
-    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+    resolved_parameters: dict[str, Any],
+    session: AsyncSession,
+    envoy_client: EnvoyAdminClient,
+    active_test_procedure: ActiveTestProcedure,
 ):
     # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
     active_site = await get_active_site(session)
@@ -155,6 +156,7 @@ async def action_create_der_control(
 
     start_time: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
+    annotation: str | None = resolved_parameters.get("tag")
 
     # This is handled by updating the system config - we can't set pow10 mult on individual controls
     pow_10mult: int | None = resolved_parameters.get("pow_10_multipliers", None)
@@ -210,6 +212,20 @@ async def action_create_der_control(
             )
         ],
     )
+
+    # If we have tagged a control, we now need to find the site_control_id and add it to the test procedure annotations
+    # Ideally this would be part of the admin client return functionality, but for now we will just grab the latest
+    # control we made, and match it to the tag
+    if annotation is not None:
+        controls: list[SiteControlResponse] = await envoy_client.get_all_site_controls(group_id=site_control_group_id)
+
+        if controls:
+            sorted_controls = sorted(controls, key=lambda c: c.changed_time, reverse=True)
+            latest_site_control_id = sorted_controls[0].site_control_id
+        else:
+            raise FailedActionError("No controls exist for this site control group despite creation in this action.")
+
+        active_test_procedure.resource_annotations.der_control_ids_by_alias[annotation] = latest_site_control_id
 
 
 async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
@@ -359,7 +375,7 @@ async def apply_action(
                 await action_set_default_der_control(resolved_parameters, session, envoy_client)
                 return
             case "create-der-control":
-                await action_create_der_control(resolved_parameters, session, envoy_client)
+                await action_create_der_control(resolved_parameters, session, envoy_client, active_test_procedure)
                 return
             case "create-der-program":
                 await action_create_der_program(resolved_parameters, envoy_client)

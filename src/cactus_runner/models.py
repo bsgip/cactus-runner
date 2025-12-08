@@ -43,6 +43,11 @@ class ClientCertificateType(StrEnum):
 
 
 @dataclass
+class ResourceAnnotations:
+    der_control_ids_by_alias: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
@@ -67,6 +72,7 @@ class ActiveTestProcedure:
     finished_zip_data: bytes | None = (
         None  # Finalised ZIP file. If not None - this test is "done" and shouldn't update any events/state
     )
+    resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to

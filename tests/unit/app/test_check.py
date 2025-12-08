@@ -2248,7 +2248,7 @@ def test_response_type_to_string_unique_values():
 @pytest.mark.anyio
 async def test_check_response_contents_latest(pg_base_config):
     """check_response_contents should behave correctly when looking ONLY at the latest Response"""
-
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
 
@@ -2304,16 +2304,21 @@ async def test_check_response_contents_latest(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         # This will check that there is a latest
-        assert_check_result(await check_response_contents({"latest": True}, session), True)
+        assert_check_result(await check_response_contents({"latest": True}, session, active_test_procedure), True)
 
         # This will check that there is a latest and that the status matches the filter
         assert_check_result(
-            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session), True
+            await check_response_contents(
+                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+            ),
+            True,
         )
 
         # This will check that the filter on latest will fail if there is mismatch on the latest record
         assert_check_result(
-            await check_response_contents({"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, session),
+            await check_response_contents(
+                {"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+            ),
             False,
         )
 
@@ -2345,7 +2350,7 @@ async def test_check_response_contents_all(
     """check_response_contents should behave correctly when looking at all controls having responses
 
     response_status_values: tuple[control_id, response_status_type]"""
-
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
 
@@ -2395,13 +2400,13 @@ async def test_check_response_contents_all(
         params = {"all": True}
         if status is not None:
             params["status"] = status
-        assert_check_result(await check_response_contents(params, session), expected)
+        assert_check_result(await check_response_contents(params, session, active_test_procedure), expected)
 
 
 @pytest.mark.anyio
 async def test_check_response_contents_any(pg_base_config):
     """check_response_contents should behave correctly when looking at ANY of the Responses"""
-
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
 
@@ -2456,21 +2461,34 @@ async def test_check_response_contents_any(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         # This will check that there is any response
-        assert_check_result(await check_response_contents({"latest": False}, session), True)
-        assert_check_result(await check_response_contents({}, session), True)
+        assert_check_result(await check_response_contents({"latest": False}, session, active_test_procedure), True)
+        assert_check_result(await check_response_contents({}, session, active_test_procedure), True)
 
         # Checks on existing values
         assert_check_result(
-            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), True
+            await check_response_contents(
+                {"status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+            ),
+            True,
         )
-        assert_check_result(await check_response_contents({"status": ResponseType.EVENT_RECEIVED.value}, session), True)
         assert_check_result(
-            await check_response_contents({"status": ResponseType.EVENT_CANCELLED.value}, session), True
+            await check_response_contents(
+                {"status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
+            ),
+            True,
+        )
+        assert_check_result(
+            await check_response_contents(
+                {"status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+            ),
+            True,
         )
 
         # This will check that the filter will fail if a matching record cant be found
         assert_check_result(
-            await check_response_contents({"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, session),
+            await check_response_contents(
+                {"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, session, active_test_procedure
+            ),
             False,
         )
 
@@ -2478,17 +2496,22 @@ async def test_check_response_contents_any(pg_base_config):
 @pytest.mark.anyio
 async def test_check_response_contents_empty(pg_base_config):
     """check_response_contents should behave correctly when the DB is empty of responses"""
-
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
     async with generate_async_session(pg_base_config) as session:
         # This will check that there is any response
-        assert_check_result(await check_response_contents({"latest": False}, session), False)
-        assert_check_result(await check_response_contents({"latest": True}, session), False)
-        assert_check_result(await check_response_contents({}, session), False)
+        assert_check_result(await check_response_contents({"latest": False}, session, active_test_procedure), False)
+        assert_check_result(await check_response_contents({"latest": True}, session, active_test_procedure), False)
+        assert_check_result(await check_response_contents({}, session, active_test_procedure), False)
         assert_check_result(
-            await check_response_contents({"status": ResponseType.EVENT_COMPLETED.value}, session), False
+            await check_response_contents(
+                {"status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+            ),
+            False,
         )
         assert_check_result(
-            await check_response_contents({"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session),
+            await check_response_contents(
+                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+            ),
             False,
         )
 
