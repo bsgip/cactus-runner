@@ -1107,7 +1107,7 @@ async def check_response_contents(
     is_all: bool = resolved_parameters.get("all", False)
     status_filter: int | None = resolved_parameters.get("status", None)
     status_filter_string: str = response_type_to_string(status_filter)
-    tag: Optional[str] = resolved_parameters.get("tag", None)
+    subject_tag: Optional[str] = resolved_parameters.get("subject_tag", None)
 
     # Handle the "all" case separately
     if is_all:
@@ -1134,13 +1134,13 @@ async def check_response_contents(
 
     # Apply tag filter
     context_description = ""
-    if tag is not None:
-        control_id = active_test_procedure.resource_annotations.der_control_ids_by_alias.get(tag)
+    if subject_tag is not None:
+        control_id = active_test_procedure.resource_annotations.der_control_ids_by_alias.get(subject_tag)
         if control_id is None:
-            return CheckResult(False, f"No DERControl found with tag: {tag}")
+            return CheckResult(False, f"No DERControl found with tag: {subject_tag}")
 
         query = query.where(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id_snapshot == control_id)
-        context_description = f" for tag {tag}"
+        context_description = f" for tag {subject_tag}"
 
     # Handle the "latest" case - get latest first, then check status
     if is_latest:
