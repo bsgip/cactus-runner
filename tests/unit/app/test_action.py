@@ -32,6 +32,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
     Listener,
+    ResourceAnnotations,
     RunnerState,
     StepInfo,
     StepStatus,
@@ -489,6 +490,51 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
         assert doe.load_limit_active_watts == gen_float(value_seed, 6)
         assert doe.set_point_percentage == gen_float(value_seed, 7)
         assert doe.ramp_time_seconds == gen_float(value_seed, 8)
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_client):
+    """Verifies that creating a DER control with a tag properly annotates it in the active test procedure"""
+    # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_data=None, resource_annotations=ResourceAnnotations()
+    )
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        await session.commit()
+    tag = "DERC1"
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+        "opModFixedW": 0,
+        "tag": tag,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+    # Verify the tag was added to the active test procedure
+    assert tag in active_test_procedure.resource_annotations.der_control_ids_by_alias
+
+    # Verify the tagged control ID matches the created control
+    async with generate_async_session(pg_base_config) as session:
+        doe = (await session.execute(select(DynamicOperatingEnvelope).limit(1))).scalar_one()
+        tagged_control_id = active_test_procedure.resource_annotations.der_control_ids_by_alias[tag]
+        assert tagged_control_id == doe.dynamic_operating_envelope_id
 
 
 @pytest.mark.anyio

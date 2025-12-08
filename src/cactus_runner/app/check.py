@@ -1142,37 +1142,41 @@ async def check_response_contents(
         query = query.where(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id_snapshot == control_id)
         context_description = f" for tag {tag}"
 
-    # Apply status filter
+    # Handle the "latest" case - get latest first, then check status
+    if is_latest:
+        query = query.order_by(DynamicOperatingEnvelopeResponse.created_time.desc()).limit(1)
+        matching_response = (await session.execute(query)).scalar_one_or_none()
+
+        if matching_response is None:
+            return CheckResult(False, f"No responses found{context_description}")
+
+        # Now check if it matches the status filter (if provided)
+        if status_filter is not None and matching_response.response_type != status_filter:
+            rt_string = response_type_to_string(matching_response.response_type)
+            expected_string = response_type_to_string(status_filter)
+            return CheckResult(
+                False, f"Latest response{context_description} is of type {rt_string}, not {expected_string}"
+            )
+
+        rt_string = response_type_to_string(matching_response.response_type)
+        return CheckResult(True, f"Latest DERControl response{context_description} of type {rt_string} matches check")
+
+    # For non-latest case: Apply status filter before executing
     if status_filter is not None:
         query = query.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
 
-    # Apply latest ordering
-    if is_latest:
-        query = query.order_by(DynamicOperatingEnvelopeResponse.created_time.desc()).limit(1)
-    else:
-        query = query.limit(1)
-
-    # Execute query
+    query = query.limit(1)
     matching_response = (await session.execute(query)).scalar_one_or_none()
 
     # Handle no results
     if matching_response is None:
         if status_filter is not None:
-            return CheckResult(
-                False,
-                f"No {'latest ' if is_latest else ''}responses of type {status_filter_string} found"
-                f"{context_description}",
-            )
-        return CheckResult(False, f"No{'latest ' if is_latest else ' '}responses found{context_description}")
+            return CheckResult(False, f"No responses of type {status_filter_string} found{context_description}")
+        return CheckResult(False, f"No responses found{context_description}")
 
     # Build success message
     rt_string = response_type_to_string(matching_response.response_type)
-    qualifier = "Latest" if is_latest else "At least one"
-    return CheckResult(
-        True,
-        f"{qualifier} DERControl response{context_description} of type {rt_string} "
-        f"{'matches check' if is_latest else 'was found'}",
-    )
+    return CheckResult(True, f"At least one DERControl response{context_description} of type {rt_string} was found")
 
 
 async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:

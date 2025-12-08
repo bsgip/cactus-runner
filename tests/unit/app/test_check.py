@@ -75,7 +75,7 @@ from cactus_runner.app.check import (
     timestamp_on_minute_boundary,
 )
 from cactus_runner.app.envoy_common import ReadingLocation
-from cactus_runner.models import ActiveTestProcedure, Listener
+from cactus_runner.models import ActiveTestProcedure, Listener, ResourceAnnotations
 from cactus_runner.app import evaluator
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
@@ -2512,6 +2512,144 @@ async def test_check_response_contents_empty(pg_base_config):
             await check_response_contents(
                 {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
             ),
+            False,
+        )
+
+
+@pytest.mark.anyio
+async def test_check_response_contents_tag_DERC1(pg_base_config):
+    """check_response_contents should behave correctly when filtering by tag"""
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, resource_annotations=ResourceAnnotations(), step_status={}, finished_zip_data=None
+    )
+
+    # Set up resource annotations with tagged control IDs
+    active_test_procedure.resource_annotations.der_control_ids_by_alias = {"DERC1": 100, "DERC2": 200}
+
+    # Fill up the DB with responses
+    async with generate_async_session(pg_base_config) as session:
+
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        session.add(site_control_group)
+
+        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        session.add(site1)
+
+        # Create control with ID 100 (tagged as DERC1)
+        der_control_1 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=303,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+            dynamic_operating_envelope_id=100,
+        )
+        session.add(der_control_1)
+
+        # Create control with ID 200 (tagged as DERC2)
+        der_control_2 = generate_class_instance(
+            DynamicOperatingEnvelope,
+            seed=304,
+            site=site1,
+            site_control_group=site_control_group,
+            calculation_log_id=None,
+            dynamic_operating_envelope_id=200,
+        )
+        session.add(der_control_2)
+
+        # Add responses for DERC1 (control_id=100)
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=505,
+                response_type=ResponseType.EVENT_RECEIVED,
+                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope_id_snapshot=100,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=606,
+                response_type=ResponseType.EVENT_COMPLETED,
+                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope_id_snapshot=100,
+            )
+        )
+
+        # Add response for DERC2 (control_id=200)
+        session.add(
+            generate_class_instance(
+                DynamicOperatingEnvelopeResponse,
+                seed=707,
+                response_type=ResponseType.EVENT_CANCELLED,
+                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                site=site1,
+                dynamic_operating_envelope_id_snapshot=200,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        # Check responses for DERC1 tag can be found
+        assert_check_result(await check_response_contents({"tag": "DERC1"}, session, active_test_procedure), True)
+
+        # Check latest response for DERC1 is EVENT_COMPLETED
+        assert_check_result(
+            await check_response_contents({"tag": "DERC1", "latest": True}, session, active_test_procedure),
+            True,
+        )
+
+        # Check latest response for DERC1 with correct status matches
+        assert_check_result(
+            await check_response_contents(
+                {"tag": "DERC1", "latest": True, "status": ResponseType.EVENT_COMPLETED.value},
+                session,
+                active_test_procedure,
+            ),
+            True,
+        )
+
+        # Check latest response for DERC1 with wrong status fails
+        assert_check_result(
+            await check_response_contents(
+                {"tag": "DERC1", "latest": True, "status": ResponseType.EVENT_CANCELLED.value},
+                session,
+                active_test_procedure,
+            ),
+            False,
+        )
+
+        # Check DERC1 has a response of type EVENT_RECEIVED
+        assert_check_result(
+            await check_response_contents(
+                {"tag": "DERC1", "status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
+            ),
+            True,
+        )
+
+        # Check DERC1 does not have a response of type EVENT_CANCELLED
+        assert_check_result(
+            await check_response_contents(
+                {"tag": "DERC1", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+            ),
+            False,
+        )
+
+        # Check DERC2 has EVENT_CANCELLED (different control)
+        assert_check_result(
+            await check_response_contents(
+                {"tag": "DERC2", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+            ),
+            True,
+        )
+
+        # Check non-existent tag returns failure
+        assert_check_result(
+            await check_response_contents({"tag": "NONEXISTENT"}, session, active_test_procedure),
             False,
         )
 
