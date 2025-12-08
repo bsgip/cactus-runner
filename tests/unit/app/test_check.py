@@ -2595,18 +2595,20 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         # Check responses for DERC1 tag can be found
-        assert_check_result(await check_response_contents({"tag": "DERC1"}, session, active_test_procedure), True)
+        assert_check_result(
+            await check_response_contents({"subject_tag": "DERC1"}, session, active_test_procedure), True
+        )
 
         # Check latest response for DERC1 is EVENT_COMPLETED
         assert_check_result(
-            await check_response_contents({"tag": "DERC1", "latest": True}, session, active_test_procedure),
+            await check_response_contents({"subject_tag": "DERC1", "latest": True}, session, active_test_procedure),
             True,
         )
 
         # Check latest response for DERC1 with correct status matches
         assert_check_result(
             await check_response_contents(
-                {"tag": "DERC1", "latest": True, "status": ResponseType.EVENT_COMPLETED.value},
+                {"subject_tag": "DERC1", "latest": True, "status": ResponseType.EVENT_COMPLETED.value},
                 session,
                 active_test_procedure,
             ),
@@ -2616,7 +2618,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check latest response for DERC1 with wrong status fails
         assert_check_result(
             await check_response_contents(
-                {"tag": "DERC1", "latest": True, "status": ResponseType.EVENT_CANCELLED.value},
+                {"subject_tag": "DERC1", "latest": True, "status": ResponseType.EVENT_CANCELLED.value},
                 session,
                 active_test_procedure,
             ),
@@ -2626,7 +2628,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC1 has a response of type EVENT_RECEIVED
         assert_check_result(
             await check_response_contents(
-                {"tag": "DERC1", "status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
+                {"subject_tag": "DERC1", "status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
             ),
             True,
         )
@@ -2634,7 +2636,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC1 does not have a response of type EVENT_CANCELLED
         assert_check_result(
             await check_response_contents(
-                {"tag": "DERC1", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"subject_tag": "DERC1", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
             ),
             False,
         )
@@ -2642,14 +2644,14 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC2 has EVENT_CANCELLED (different control)
         assert_check_result(
             await check_response_contents(
-                {"tag": "DERC2", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"subject_tag": "DERC2", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
             ),
             True,
         )
 
         # Check non-existent tag returns failure
         assert_check_result(
-            await check_response_contents({"tag": "NONEXISTENT"}, session, active_test_procedure),
+            await check_response_contents({"subject_tag": "NONEXISTENT"}, session, active_test_procedure),
             False,
         )
 
