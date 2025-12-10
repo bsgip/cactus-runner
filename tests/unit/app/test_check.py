@@ -1,7 +1,7 @@
-import unittest.mock as mock
-import re
 import dataclasses
-from datetime import datetime, timezone, timedelta
+import re
+import unittest.mock as mock
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 import pytest
@@ -9,6 +9,7 @@ import pytest_mock
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
+from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import (
     CHECK_PARAMETER_SCHEMA,
     Check,
@@ -16,7 +17,6 @@ from cactus_test_definitions.client import (
     Step,
     TestProcedure,
 )
-from cactus_test_definitions import variable_expressions
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
@@ -43,6 +43,7 @@ from envoy_schema.server.schema.sep2.types import (
 )
 from sqlalchemy import select
 
+from cactus_runner.app import evaluator
 from cactus_runner.app.check import (
     CheckResult,
     FailedCheckError,
@@ -59,14 +60,14 @@ from cactus_runner.app.check import (
     check_readings_voltage,
     check_response_contents,
     check_subscription_contents,
+    do_check_levels_for_period,
+    do_check_reading_levels_for_types,
     do_check_reading_type_mrids_match_pen,
     do_check_readings_for_duration,
     do_check_readings_for_types,
     do_check_readings_on_minute_boundary,
-    do_check_site_readings_and_params,
     do_check_single_level,
-    do_check_levels_for_period,
-    do_check_reading_levels_for_types,
+    do_check_site_readings_and_params,
     first_failing_check,
     is_nth_bit_set_properly,
     merge_checks,
@@ -77,7 +78,6 @@ from cactus_runner.app.check import (
 )
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.models import ActiveTestProcedure, Listener, ResourceAnnotations
-from cactus_runner.app import evaluator
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
@@ -504,6 +504,51 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     aggregator_id=1,
                     site_ders=[
                         generate_class_instance(
+                            SiteDER,
+                            site_der_setting=generate_class_instance(
+                                SiteDERSetting,
+                                optional_is_none=True,
+                                max_charge_rate_w_value=0,
+                                max_charge_rate_w_multiplier=0,
+                                max_discharge_rate_w_value=0,
+                                max_discharge_rate_w_multiplier=0,
+                                max_va_value=0,
+                                max_va_multiplier=0,
+                                max_var_value=0,
+                                max_var_multiplier=0,
+                                max_var_neg_value=0,
+                                max_var_neg_multiplier=0,
+                                max_w_value=0,
+                                max_w_multiplier=0,
+                                min_pf_over_excited_displacement=0,
+                                min_pf_over_excited_multiplier=0,
+                                min_pf_under_excited_displacement=0,
+                                min_pf_under_excited_multiplier=0,
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {
+                "setMaxChargeRateW": evaluator.ResolvedParam(True),
+                "setMaxDischargeRateW": evaluator.ResolvedParam(True),
+                "setMaxVA": evaluator.ResolvedParam(True),
+                "setMaxVar": evaluator.ResolvedParam(True),
+                "setMaxVarNeg": evaluator.ResolvedParam(True),
+                "setMaxW": evaluator.ResolvedParam(True),
+                "setMinPFOverExcited": evaluator.ResolvedParam(True),
+                "setMinPFUnderExcited": evaluator.ResolvedParam(True),
+            },
+            True,
+        ),  # 0 values are acceptable
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
                             SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
                         )
                     ],
@@ -761,6 +806,51 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             {},
             True,
         ),
+        (
+            [
+                generate_class_instance(
+                    Site,
+                    seed=101,
+                    aggregator_id=1,
+                    site_ders=[
+                        generate_class_instance(
+                            SiteDER,
+                            site_der_rating=generate_class_instance(
+                                SiteDERRating,
+                                optional_is_none=True,
+                                max_charge_rate_w_value=0,
+                                max_charge_rate_w_multiplier=0,
+                                max_discharge_rate_w_value=0,
+                                max_discharge_rate_w_multiplier=0,
+                                max_va_value=0,
+                                max_va_multiplier=0,
+                                max_var_value=0,
+                                max_var_multiplier=0,
+                                max_var_neg_value=0,
+                                max_var_neg_multiplier=0,
+                                max_w_value=0,
+                                max_w_multiplier=0,
+                                min_pf_over_excited_displacement=0,
+                                min_pf_over_excited_multiplier=0,
+                                min_pf_under_excited_displacement=0,
+                                min_pf_under_excited_multiplier=0,
+                            ),
+                        )
+                    ],
+                )
+            ],
+            {
+                "rtgMaxChargeRateW": evaluator.ResolvedParam(True),
+                "rtgMaxDischargeRateW": evaluator.ResolvedParam(True),
+                "rtgMaxVA": evaluator.ResolvedParam(True),
+                "rtgMaxVar": evaluator.ResolvedParam(True),
+                "rtgMaxVarNeg": evaluator.ResolvedParam(True),
+                "rtgMaxW": evaluator.ResolvedParam(True),
+                "rtgMinPFOverExcited": evaluator.ResolvedParam(True),
+                "rtgMinPFUnderExcited": evaluator.ResolvedParam(True),
+            },
+            True,
+        ),  # 0 values are acceptable
         (
             [
                 generate_class_instance(
