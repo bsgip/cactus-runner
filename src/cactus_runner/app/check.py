@@ -34,6 +34,7 @@ from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
     get_csip_aus_site_reading_types,
+    get_site_readings,
 )
 from cactus_runner.app.evaluator import (
     ResolvedParam,
@@ -879,16 +880,46 @@ async def do_check_site_readings_and_params(
     data_qualifier: DataQualifierType,
     kind: KindType = KindType.POWER,
 ) -> CheckResult:
+
     site_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, kind, data_qualifier)
     if not site_reading_types:
         return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
+    reading_duration_check = await do_check_readings_for_duration(session, site_reading_types)
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     type_check = await do_check_readings_for_types(session, site_reading_types, minimum_count)
     level_check = await do_check_reading_levels_for_types(session, site_reading_types, resolved_parameters)
     boundary_check = await do_check_readings_on_minute_boundary(session, site_reading_types)
     pen_check = await do_check_reading_type_mrids_match_pen(site_reading_types, pen)
-    return merge_checks([type_check, level_check, boundary_check, pen_check])
+    return merge_checks([type_check, level_check, boundary_check, pen_check, reading_duration_check])
+
+
+async def do_check_readings_for_duration(
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+) -> CheckResult:
+    """Check that all readings have non-zero time_period_seconds divisible by 60."""
+
+    zero_count = 0
+    non_divisible_count = 0
+
+    for reading_type in site_reading_types:
+        reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+        for reading in reading_data:
+            if reading.time_period_seconds == 0:
+                zero_count += 1
+            elif reading.time_period_seconds % 60 != 0:
+                non_divisible_count += 1
+
+    if zero_count > 0 or non_divisible_count > 0:
+        error_parts = []
+        if zero_count > 0:
+            error_parts.append(f"{zero_count} readings with zero time_period_seconds")
+        if non_divisible_count > 0:
+            error_parts.append(f"{non_divisible_count} readings with time_period_seconds not divisible by 60")
+
+        return CheckResult(False, f"{' and '.join(error_parts)} found")
+
+    return CheckResult(True, "All readings have a valid time_period_seconds set")
 
 
 async def check_readings_site_active_power(

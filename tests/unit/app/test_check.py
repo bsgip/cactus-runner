@@ -60,6 +60,7 @@ from cactus_runner.app.check import (
     check_response_contents,
     check_subscription_contents,
     do_check_reading_type_mrids_match_pen,
+    do_check_readings_for_duration,
     do_check_readings_for_types,
     do_check_readings_on_minute_boundary,
     do_check_site_readings_and_params,
@@ -1819,8 +1820,10 @@ async def test_do_check_reading_type_mrids_match_pen(
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
+@mock.patch("cactus_runner.app.check.do_check_readings_for_duration")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params(
+    mock_do_check_readings_for_duration: mock.MagicMock,
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
@@ -1843,6 +1846,7 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_readings_for_types.return_value = expected_result
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -1859,6 +1863,7 @@ async def test_do_check_site_readings_and_params(
         mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
         mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
+        mock_do_check_readings_for_duration.assert_called_once_with(site_reading_types, pen)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
@@ -3205,3 +3210,57 @@ async def test_check_der_capability_contents_error_messages_meaningful(
         assert (
             re.search(msg_regex, result.description) is not None
         ), f"'{msg_regex}' not found in '{result.description}'"
+
+
+@pytest.mark.parametrize(
+    "srt_ids,expected_result",
+    [
+        ([], True),  # No readings
+        ([1], True),  # All valid
+        ([2], False),  # Has zero
+        ([3], False),  # Not divisible by 60
+        ([4], False),  # Both zero and non-divisible
+        ([1, 1], True),  # Multiple valid SRTs
+        ([1, 2], False),  # One valid, one with zero
+        ([2, 3], False),  # One zero, one non-divisible
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int], expected_result: bool):
+    """Tests that do_check_readings_for_duration validates time_period_seconds"""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        srt2 = generate_class_instance(SiteReadingType, seed=102, site_reading_type_id=2, aggregator_id=1, site=site)
+        srt3 = generate_class_instance(SiteReadingType, seed=103, site_reading_type_id=3, aggregator_id=1, site=site)
+        srt4 = generate_class_instance(SiteReadingType, seed=104, site_reading_type_id=4, aggregator_id=1, site=site)
+
+        session.add_all([site, srt1, srt2, srt3, srt4])
+
+        # SRT1: All valid (60, 120, 300)
+        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt1, time_period_seconds=60))
+        session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt1, time_period_seconds=120))
+        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt1, time_period_seconds=300))
+
+        # SRT2: Has zero (60, 0, 120)
+        session.add(generate_class_instance(SiteReading, seed=2001, site_reading_type=srt2, time_period_seconds=60))
+        session.add(generate_class_instance(SiteReading, seed=2002, site_reading_type=srt2, time_period_seconds=0))
+        session.add(generate_class_instance(SiteReading, seed=2003, site_reading_type=srt2, time_period_seconds=120))
+
+        # SRT3: Not divisible by 60 (45, 90)
+        session.add(generate_class_instance(SiteReading, seed=3001, site_reading_type=srt3, time_period_seconds=45))
+        session.add(generate_class_instance(SiteReading, seed=3002, site_reading_type=srt3, time_period_seconds=90))
+
+        # SRT4: Both zero and non-divisible (0, 45)
+        session.add(generate_class_instance(SiteReading, seed=4001, site_reading_type=srt4, time_period_seconds=0))
+        session.add(generate_class_instance(SiteReading, seed=4002, site_reading_type=srt4, time_period_seconds=45))
+
+        await session.commit()
+
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_readings_for_duration(session=session, site_reading_types=faked_srts)
+        assert_check_result(result, expected_result)

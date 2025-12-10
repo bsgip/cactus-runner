@@ -372,6 +372,70 @@ async def test_generate_readings_data_stream(
     )
 
 
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@pytest.mark.asyncio
+async def test_generate_readings_data_stream_filters_null_and_zero_durations(
+    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
+):
+    # Arrange
+    interval_seconds = 5
+    mock_session = create_mock_session()
+    srt = generate_class_instance(SiteReadingType, seed=101, power_of_ten_multiplier=0, site_reading_type_id=1)
+    mock_get_csip_aus_site_reading_types.return_value = [srt]
+
+    readings = [
+        # Valid
+        generate_class_instance(
+            SiteReading, seed=101, site_reading_type_id=1, value=100, time_period_start=BASIS, time_period_seconds=5
+        ),
+        # Zero duration - should be filtered out
+        generate_class_instance(
+            SiteReading,
+            seed=202,
+            site_reading_type_id=1,
+            value=200,
+            time_period_start=BASIS + timedelta(seconds=5),
+            time_period_seconds=0,
+        ),
+        # Null duration - should be filtered out
+        generate_class_instance(
+            SiteReading,
+            seed=303,
+            site_reading_type_id=1,
+            value=300,
+            time_period_start=BASIS + timedelta(seconds=10),
+            time_period_seconds=None,
+        ),
+        # Another valid reading
+        generate_class_instance(
+            SiteReading,
+            seed=404,
+            site_reading_type_id=1,
+            value=400,
+            time_period_start=BASIS + timedelta(seconds=10),
+            time_period_seconds=5,
+        ),
+    ]
+    mock_get_site_readings.return_value = readings
+
+    # Act
+    result = await generate_readings_data_stream(
+        mock_session, "test", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=15), interval_seconds
+    )
+
+    # Assert
+    assert isinstance(result, TimelineDataStream)
+    assert result.label == "test"
+    assert len(result.offset_watt_values) == 3, "15 seconds of 5 second intervals"
+    # Only the two valid readings (100W and 400W) should be included, middle is filtered out leaving none
+    assert result.offset_watt_values == [100, None, 400], "Only valid duration readings included"
+
+    assert_mock_session(mock_session)
+    mock_get_csip_aus_site_reading_types.assert_called_once()
+    mock_get_site_readings.assert_called_once_with(mock_session, srt)
+
+
 def doe(
     seed: int,
     start: datetime,

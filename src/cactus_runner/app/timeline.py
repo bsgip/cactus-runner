@@ -5,18 +5,12 @@ from itertools import chain
 from typing import Any, Callable, Sequence, cast
 
 from envoy.server.model.archive import ArchiveBase
-from envoy.server.model.archive.doe import (
-    ArchiveDynamicOperatingEnvelope,
-)
+from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.archive.site import ArchiveDefaultSiteControl
 from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.site import DefaultSiteControl
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.server.schema.sep2.types import (
-    DataQualifierType,
-    KindType,
-    UomType,
-)
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from intervaltree import Interval, IntervalTree  # type: ignore
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -202,10 +196,13 @@ async def generate_readings_data_stream(
         # (we could be fancy and try to interrogate records within the start/end range but that introduces a bit more
         # complexity and we should only be dealing with < 60 records)
         readings = await get_site_readings(session, srt)
+        # Filter out null/zero durations to prevent IntervalTree crashes
+        # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree.update(
             (
                 Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
                 for r in readings
+                if r.time_period_seconds is not None and r.time_period_seconds > 0
             )
         )
 

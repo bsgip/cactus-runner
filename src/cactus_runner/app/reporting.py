@@ -1169,6 +1169,8 @@ def data_qualifier_to_string(qualifier: DataQualifierType | int) -> str:
 
 
 def phase_to_string(phase: PhaseCode | int) -> str:
+    if PhaseCode(phase) == PhaseCode.NOT_APPLICABLE:
+        return "n/a"
     return PhaseCode(phase).name.replace("_", " ").lower()
 
 
@@ -1274,7 +1276,45 @@ def format_cell_value(value, is_error: bool) -> str | Paragraph:
     return value
 
 
-def generate_reading_count_table(reading_counts, stylesheet):
+def validate_reading_duration(readings_df: pd.DataFrame):
+    """
+    Validate reading durations and return warning messages.
+    Returns tuple: (dropped_count, invalid_duration_count, warning_messages)
+    """
+    if readings_df.empty or "time_period_seconds" not in readings_df.columns:
+        return 0, 0, []
+
+    warnings = []
+
+    # Count null or zero durations
+    durations = readings_df["time_period_seconds"]
+    null_or_zero = durations.isna() | (durations == 0)
+    dropped_count = int(null_or_zero.sum())
+
+    if dropped_count > 0:
+        warnings.append(
+            f"{dropped_count} reading{'s' if dropped_count != 1 else ''}"
+            " excluded from timeline generation due to null or zero duration values"
+        )
+
+    # Check remaining readings are divisible by 60s
+    valid_durations = durations[~null_or_zero]
+    invalid_count = 0
+
+    if len(valid_durations) > 0:
+        invalid_mod60 = valid_durations[valid_durations % 60 != 0]
+        invalid_count = int(len(invalid_mod60))
+
+        if invalid_count > 0:
+            warnings.append(
+                f"{invalid_count} {"readings have" if invalid_count != 1 else "reading has"}"
+                " invalid duration (not divisible by 60). This may indicate a configuration issue."
+            )
+
+    return dropped_count, invalid_count, warnings
+
+
+def generate_reading_count_table(reading_counts, stylesheet, readings=None):
     """
     Generate reading count table with validation and error highlighting.
     Errors are displayed as merged rows immediately below the affected data row.
@@ -1299,17 +1339,30 @@ def generate_reading_count_table(reading_counts, stylesheet):
         ]
 
         current_row_errors = []
+
+        # Validate existing columns
         for col_idx in [2, 3, 4, 5, 6]:
             error_msg = validate_cell(reading_type, col_idx, data_row_idx)
             if error_msg:
                 current_row_errors.append(error_msg)
                 error_cells.add((table_row_idx, col_idx))
 
+        # Validate duration if readings DataFrame is available
+        if readings and reading_type in readings:
+            dropped_count, invalid_count, duration_warnings = validate_reading_duration(
+                readings[reading_type], reading_type.site_reading_type_id
+            )
+
+            if duration_warnings:
+                current_row_errors.extend(duration_warnings)
+                # Highlight MUP column (column 0) if any duration issues
+                error_cells.add((table_row_idx, 0))
+
         table_data.append(row_data)
 
         if current_row_errors:
             row_errors[table_row_idx] = current_row_errors
-            # Only 7 columns for the error row (exclude grey column)
+            # 7 columns for the error row (exclude grey column)
             error_row = [", ".join(current_row_errors)] + [""] * 6
             table_data.append(error_row)
             table_row_idx += 2
@@ -1382,7 +1435,9 @@ def generate_readings_section(
     # Add table to show how many of each reading type was sent to the utility server (all reading types)
     if reading_counts:
         elements.append(stylesheet.spacer)
-        elements.extend(generate_reading_count_table(reading_counts=reading_counts, stylesheet=stylesheet))
+        elements.extend(
+            generate_reading_count_table(reading_counts=reading_counts, stylesheet=stylesheet, readings=readings)
+        )
 
         # Add charts for each of the different reading types
         if readings:

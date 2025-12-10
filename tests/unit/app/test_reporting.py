@@ -2,7 +2,7 @@ import http
 import random
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-
+from envoy.server.model.site_reading import SiteReading
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -31,6 +31,7 @@ from cactus_runner.app.reporting import (
     device_category_to_string,
     pdf_report_as_bytes,
     validate_cell,
+    validate_reading_duration,
 )
 from cactus_runner.app.timeline import Timeline, TimelineDataStream
 from cactus_runner.models import (
@@ -41,6 +42,7 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
 )
+from tests.unit.app.test_status import BASIS
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -474,3 +476,53 @@ def test_validate_cell_with_int_enums(col_idx, field_name, valid_value, enum_mem
 
     error = validate_cell(reading_type_enum, col_idx=col_idx, row_num=1)
     assert error is None, f"Expected no error for enum member {field_name} value {enum_member}"
+
+
+@pytest.mark.parametrize(
+    "durations,expected_dropped,expected_invalid,expected_warning_count,expected_warning_substrings",
+    [
+        ([60, 300, 120], 0, 0, 0, []),
+        ([60, 0, None], 2, 0, 1, ["2 readings excluded from timeline generation"]),
+        ([60, 45, 73], 0, 2, 1, ["2 readings have invalid duration (not divisible by 60)"]),
+        ([0, None, 45, 120], 2, 1, 2, ["2 readings excluded", "1 reading has invalid duration"]),
+        ([None], 1, 0, 1, ["1 reading excluded"]),
+        ([45], 0, 1, 1, ["1 reading has invalid duration"]),
+        ([0, 0, 0], 3, 0, 1, ["3 readings excluded"]),
+    ],
+)
+def test_validate_reading_duration(
+    durations, expected_dropped, expected_invalid, expected_warning_count, expected_warning_substrings
+):
+    """Test validation of reading durations with various scenarios"""
+    readings_df = pd.DataFrame([_create_reading(i + 1, dur) for i, dur in enumerate(durations)])
+
+    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df)
+
+    assert dropped_count == expected_dropped
+    assert invalid_count == expected_invalid
+    assert len(warnings) == expected_warning_count
+    for substring in expected_warning_substrings:
+        assert any(substring in w for w in warnings), f"Expected '{substring}' in warnings: {warnings}"
+
+
+def test_validate_reading_duration_empty_dataframe():
+    """Test that empty dataframe returns no issues"""
+    readings_df = pd.DataFrame()
+
+    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df)
+
+    assert dropped_count == 0
+    assert invalid_count == 0
+    assert warnings == []
+
+
+def _create_reading(seed: int, time_period_seconds: int | None) -> dict:
+    """Helper to create a SiteReading dict for testing"""
+    return generate_class_instance(
+        SiteReading,
+        seed=seed,
+        site_reading_type_id=1,
+        value=seed * 100,
+        time_period_start=BASIS + timedelta(seconds=seed * 60),
+        time_period_seconds=time_period_seconds,
+    ).__dict__
