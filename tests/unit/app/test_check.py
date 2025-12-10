@@ -1863,7 +1863,7 @@ async def test_do_check_site_readings_and_params(
         mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
         mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
-        mock_do_check_readings_for_duration.assert_called_once_with(site_reading_types, pen)
+        mock_do_check_readings_for_duration.assert_called_once_with(mock_session, site_reading_types)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
