@@ -26,9 +26,9 @@ from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy.server.model.subscription import Subscription, TransmitNotificationLog
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
-from sqlalchemy import func, select, text, ColumnElement
-from sqlalchemy.orm import aliased
+from sqlalchemy import ColumnElement, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -879,19 +879,23 @@ async def do_check_site_readings_and_params(
     reading_location: ReadingLocation,
     data_qualifier: DataQualifierType,
     kind: KindType = KindType.POWER,
+    check_duration: bool = True,
 ) -> CheckResult:
 
     site_reading_types = await get_csip_aus_site_reading_types(session, uom, reading_location, kind, data_qualifier)
     if not site_reading_types:
         return CheckResult(False, f"No site level {data_qualifier}/{uom} MirrorUsagePoint for the active EndDevice.")
 
-    reading_duration_check = await do_check_readings_for_duration(session, site_reading_types)
+    check_results: list[CheckResult] = []
+    if check_duration:
+        check_results.append(await do_check_readings_for_duration(session, site_reading_types))
+
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    type_check = await do_check_readings_for_types(session, site_reading_types, minimum_count)
-    level_check = await do_check_reading_levels_for_types(session, site_reading_types, resolved_parameters)
-    boundary_check = await do_check_readings_on_minute_boundary(session, site_reading_types)
-    pen_check = await do_check_reading_type_mrids_match_pen(site_reading_types, pen)
-    return merge_checks([type_check, level_check, boundary_check, pen_check, reading_duration_check])
+    check_results.append(await do_check_readings_for_types(session, site_reading_types, minimum_count))
+    check_results.append(await do_check_reading_levels_for_types(session, site_reading_types, resolved_parameters))
+    check_results.append(await do_check_readings_on_minute_boundary(session, site_reading_types))
+    check_results.append(await do_check_reading_type_mrids_match_pen(site_reading_types, pen))
+    return merge_checks(check_results)
 
 
 async def do_check_readings_for_duration(
@@ -1035,6 +1039,7 @@ async def check_readings_der_stored_energy(
         ReadingLocation.DEVICE_READING,
         DataQualifierType.NOT_APPLICABLE,  # TODO: Currently corresponds to 0 but should be called Instantaneous?
         KindType.ENERGY,
+        check_duration=False,  # BESS explicitly allows zero duration readings
     )
 
 
