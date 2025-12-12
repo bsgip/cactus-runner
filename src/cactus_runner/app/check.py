@@ -1063,13 +1063,12 @@ async def check_all_notifications_transmitted(session: AsyncSession) -> CheckRes
     return CheckResult(True, f"All {len(all_logs)} notifications yielded HTTP success codes")
 
 
-async def check_subscription_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
+async def check_subscription_contents(
+    resolved_parameters: dict[str, Any], session: AsyncSession, active_test_procedure: ActiveTestProcedure
+) -> CheckResult:
     """Implements the subscription-contents check"""
 
     subscribed_resource: str = resolved_parameters["subscribed_resource"]  # mandatory param
-    active_site = await get_active_site(session)
-    if active_site is None:
-        return CheckResult(False, "No EndDevice is currently registered")
 
     # Decode the href so we know what to look for in the DB
     try:
@@ -1081,7 +1080,7 @@ async def check_subscription_contents(resolved_parameters: dict[str, Any], sessi
     matching_sub = (
         await session.execute(
             select(Subscription).where(
-                (Subscription.aggregator_id == active_site.aggregator_id)
+                (Subscription.aggregator_id == active_test_procedure.client_aggregator_id)
                 & (Subscription.scoped_site_id == scoped_site_id)
                 & (Subscription.resource_type == resource_type)
                 & (Subscription.resource_id == resource_id)
@@ -1272,7 +1271,7 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
                 check_result = await check_all_notifications_transmitted(session)
 
             case "subscription-contents":
-                check_result = await check_subscription_contents(resolved_parameters, session)
+                check_result = await check_subscription_contents(resolved_parameters, session, active_test_procedure)
 
             case "response-contents":
                 check_result = await check_response_contents(resolved_parameters, session, active_test_procedure)

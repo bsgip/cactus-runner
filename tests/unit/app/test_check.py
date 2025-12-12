@@ -2091,30 +2091,51 @@ async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
 
 
 @pytest.mark.anyio
-async def test_check_subscription_contents_no_site(pg_base_config):
-    """check_subscription_contents should fail if there is no active site"""
+async def test_check_subscription_contents_no_site_edev_list(pg_base_config):
+    """check_subscription_contents should match subscriptions to /edev even if there is NO site registered"""
 
-    resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+    agg_id = 1
+    resolved_params = {"subscribed_resource": "/edev"}
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_data=None, client_aggregator_id=agg_id
+    )
 
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session)
-        assert_check_result(actual, False)
+        agg = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == agg_id))).scalar_one()
+        session.add(
+            generate_class_instance(
+                Subscription,
+                resource_type=SubscriptionResource.SITE,
+                resource_id=None,
+                scoped_site_id=None,
+                aggregator=agg,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
+        assert_check_result(actual, True)
 
 
 @pytest.mark.anyio
 async def test_check_subscription_contents_no_matches(pg_base_config):
     """check_subscription_contents should fail if there is no matching subscription"""
 
+    agg_id = 1
     resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_data=None, client_aggregator_id=agg_id
+    )
 
     # Fill up the DB with subscriptions
     async with generate_async_session(pg_base_config) as session:
-        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == agg_id))).scalar_one()
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
-        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=agg_id)
         session.add(site1)
         session.add(site2)
         await session.flush()
@@ -2170,7 +2191,7 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session)
+        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
         assert_check_result(actual, False)
 
 
@@ -2178,16 +2199,20 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
 async def test_check_subscription_contents_success(pg_base_config):
     """check_subscription_contents should succeed if there is at least 1 matching subscription"""
 
+    agg_id = 1
     resolved_params = {"subscribed_resource": "/edev/1/derp/2/derc"}
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_data=None, client_aggregator_id=agg_id
+    )
 
     # Fill up the DB with subscriptions
     async with generate_async_session(pg_base_config) as session:
-        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == agg_id))).scalar_one()
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
-        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=1)
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
+        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=agg_id)
         session.add(site1)
         session.add(site2)
         await session.flush()
@@ -2255,7 +2280,7 @@ async def test_check_subscription_contents_success(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session)
+        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
         assert_check_result(actual, True)
 
 
@@ -2263,7 +2288,11 @@ async def test_check_subscription_contents_success(pg_base_config):
 async def test_check_subscription_contents_success_unscoped(pg_base_config):
     """check_subscription_contents should succeed if there is an unscoped subscription - eg to /edev"""
 
+    agg_id = 1
     resolved_params = {"subscribed_resource": "/edev"}
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_data=None, client_aggregator_id=agg_id
+    )
 
     # Fill up the DB with subscriptions
     async with generate_async_session(pg_base_config) as session:
@@ -2271,7 +2300,7 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=timezone.utc))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=1)  # Active Site
+        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
         session.add(site1)
         await session.flush()
 
@@ -2290,7 +2319,7 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session)
+        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
         assert_check_result(actual, True)
 
 
