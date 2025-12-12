@@ -3354,3 +3354,61 @@ async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int]
     async with generate_async_session(pg_base_config) as session:
         result = await do_check_readings_for_duration(session=session, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
+
+
+@pytest.mark.anyio
+async def test_check_subscription_contents_most_recent_only(pg_base_config):
+    """
+    Test that check_subscription_contents only matches the MOST RECENT subscription.
+    """
+
+    # Setup database
+    async with generate_async_session(pg_base_config) as session:
+        agg1 = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+
+        site1 = generate_class_instance(
+            Site,
+            seed=1001,
+            site_id=1,
+            aggregator_id=1,
+        )
+        session.add(site1)
+        await session.flush()
+
+        # Create /edev subscription (older)
+        edev_sub = generate_class_instance(
+            Subscription,
+            seed=101,
+            resource_type=SubscriptionResource.SITE,
+            resource_id=None,
+            aggregator=agg1,
+            scoped_site_id=None,
+            created_time=datetime(2025, 12, 12, 10, 0, 0, tzinfo=timezone.utc),
+        )
+        session.add(edev_sub)
+
+        # Create /edev/1/fsa subscription (most recent)
+        fsa_sub = generate_class_instance(
+            Subscription,
+            seed=202,
+            resource_type=SubscriptionResource.FUNCTION_SET_ASSIGNMENTS,
+            resource_id=None,
+            aggregator=agg1,
+            scoped_site=site1,
+            created_time=datetime(2025, 12, 12, 10, 1, 0, tzinfo=timezone.utc),
+        )
+        session.add(fsa_sub)
+
+        await session.commit()
+
+    # Check for /edev - should FAIL
+    async with generate_async_session(pg_base_config) as session:
+        resolved_params = {"subscribed_resource": "/edev"}
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, False)
+
+    # Check for /edev/1/fsa - should PASS
+    async with generate_async_session(pg_base_config) as session:
+        resolved_params = {"subscribed_resource": "/edev/1/fsa"}
+        actual = await check_subscription_contents(resolved_params, session)
+        assert_check_result(actual, True)

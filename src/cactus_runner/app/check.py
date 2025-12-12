@@ -1064,7 +1064,10 @@ async def check_all_notifications_transmitted(session: AsyncSession) -> CheckRes
 
 
 async def check_subscription_contents(resolved_parameters: dict[str, Any], session: AsyncSession) -> CheckResult:
-    """Implements the subscription-contents check"""
+    """Implements the subscription-contents check
+
+    Validates that the most recently created subscription matches the expected resource from the test definition.
+    """
 
     subscribed_resource: str = resolved_parameters["subscribed_resource"]  # mandatory param
     active_site = await get_active_site(session)
@@ -1078,20 +1081,39 @@ async def check_subscription_contents(resolved_parameters: dict[str, Any], sessi
         logger.error(f"check_subscription_contents: Caught InvalidMappingError for {subscribed_resource}", exc_info=exc)
         return CheckResult(False, f"Unable to interpret resource {subscribed_resource}: {exc.message}")
 
-    matching_sub = (
+    most_recent_sub = (
         await session.execute(
-            select(Subscription).where(
-                (Subscription.aggregator_id == active_site.aggregator_id)
-                & (Subscription.scoped_site_id == scoped_site_id)
-                & (Subscription.resource_type == resource_type)
-                & (Subscription.resource_id == resource_id)
-            )
+            select(Subscription)
+            .where(Subscription.aggregator_id == active_site.aggregator_id)
+            .order_by(Subscription.created_time.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
-    if matching_sub is None:
-        return CheckResult(False, f"Couldn't find a subscription for {subscribed_resource}")
 
-    return CheckResult(True, f"Matched {subscribed_resource} to /sub/{matching_sub.subscription_id}")
+    if most_recent_sub is None:
+        return CheckResult(False, f"No subscriptions found for aggregator {active_site.aggregator_id}")
+
+    # Check if the most recent subscription matches what we expected
+    scoped_site_matches = (most_recent_sub.scoped_site_id is None and scoped_site_id is None) or (
+        most_recent_sub.scoped_site_id == scoped_site_id
+    )
+
+    if (
+        most_recent_sub.resource_type != resource_type
+        or most_recent_sub.resource_id != resource_id
+        or not scoped_site_matches
+    ):
+        return CheckResult(
+            False,
+            f"Most recent subscription (ID: {most_recent_sub.subscription_id}) is for "
+            f"resource_type={most_recent_sub.resource_type}, scoped_site_id={most_recent_sub.scoped_site_id}, "
+            f"resource_id={most_recent_sub.resource_id} but expected {subscribed_resource} which parsed as "
+            f"resource_type={resource_type}, scoped_site_id={scoped_site_id}, resource_id={resource_id}",
+        )
+
+    return CheckResult(
+        True, f"Most recent subscription /sub/{most_recent_sub.subscription_id} matches {subscribed_resource}"
+    )
 
 
 def response_type_to_string(t: int | ResponseType | None) -> str:
