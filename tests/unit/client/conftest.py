@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from cactus_runner.models import ClientInteraction, ClientInteractionType, RequestEntry, RunnerStatus, StepInfo
+from cactus_runner.models import RequestEntry, RunnerStatus, StepInfo
+from tests.unit.app.test_reporting import DT_NOW
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
@@ -17,9 +18,7 @@ def runner_status_fixture():
         timestamp_start=datetime(2022, 4, 7, tzinfo=timezone.utc),
         log_envoy="log for\nenvoy",
         status_summary="status summary here",
-        last_client_interaction=ClientInteraction(
-            interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(timezone.utc)
-        ),
+        last_client_interaction=DT_NOW,
         csip_aus_version="v1.2",
         test_procedure_name="ALL-01",
         step_status={

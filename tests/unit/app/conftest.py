@@ -1,13 +1,4 @@
-from datetime import datetime, timezone
-
 import pytest
-
-from cactus_runner.models import ClientInteraction, ClientInteractionType
-
-
-@pytest.fixture
-def example_client_interaction():
-    return ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
 
 
 @pytest.fixture

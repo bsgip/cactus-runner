@@ -36,13 +36,10 @@ from cactus_runner.app.reporting import (
 from cactus_runner.app.timeline import Timeline, TimelineDataStream
 from cactus_runner.models import (
     ActiveTestProcedure,
-    ClientInteraction,
-    ClientInteractionType,
     RequestEntry,
     RunnerState,
     StepInfo,
 )
-from tests.unit.app.test_status import BASIS
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -65,7 +62,7 @@ def active_test_procedure(
     )
 
 
-def runner_state(request_history=None, client_interactions=None, active_test=None, num_requests=3, **test_kwargs):
+def runner_state(request_history=None, last_client_interaction=None, active_test=None, num_requests=3, **test_kwargs):
     if active_test is None:
         active_test = active_test_procedure(**test_kwargs)
     if request_history is None:
@@ -74,7 +71,7 @@ def runner_state(request_history=None, client_interactions=None, active_test=Non
     return RunnerState(
         active_test_procedure=active_test,
         request_history=request_history,
-        client_interactions=client_interactions or [],
+        last_client_interaction=last_client_interaction,
     )
 
 
@@ -143,19 +140,6 @@ def timeline():
             ),
         ],
     )
-
-
-def client_interactions():
-    return [
-        generate_class_instance(
-            ClientInteraction, interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=DT_NOW
-        ),
-        generate_class_instance(
-            ClientInteraction,
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_START,
-            timestamp=DT_NOW + timedelta(seconds=5),
-        ),
-    ]
 
 
 def request_history_comprehensive():
@@ -253,7 +237,7 @@ def test_pdf_report_as_bytes_with_timeline(has_set_max_w):
 
 
 def test_pdf_report_with_witness_test():
-    state = runner_state(client_interactions=client_interactions(), witness_testing=True)
+    state = runner_state(witness_testing=True)
 
     report = pdf_report_as_bytes(
         runner_state=state,
@@ -288,7 +272,7 @@ def test_pdf_report_char_overflow():
 
     state = runner_state(
         request_history=[generate_class_instance(RequestEntry, body_xml_errors=long_desc) for _ in range(3)],
-        client_interactions=client_interactions(),
+        last_client_interaction=DT_NOW,
         witness_testing=True,
         num_requests=3,
     )
@@ -329,26 +313,8 @@ def test_pdf_report_everything_set():
         run_id="80085",
     )
 
-    interactions = [
-        generate_class_instance(
-            ClientInteraction,
-            interaction_type=ClientInteractionType.RUNNER_START,
-            timestamp=now - timedelta(seconds=400),
-        ),
-        generate_class_instance(
-            ClientInteraction,
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT,
-            timestamp=now - timedelta(seconds=350),
-        ),
-        generate_class_instance(
-            ClientInteraction,
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_START,
-            timestamp=now - timedelta(seconds=330),
-        ),
-    ]
-
     state = runner_state(
-        active_test=active_test, request_history=request_history_comprehensive(), client_interactions=interactions
+        active_test=active_test, request_history=request_history_comprehensive(), last_client_interaction=now
     )
 
     checks = {
@@ -523,6 +489,6 @@ def _create_reading(seed: int, time_period_seconds: int | None) -> dict:
         seed=seed,
         site_reading_type_id=1,
         value=seed * 100,
-        time_period_start=BASIS + timedelta(seconds=seed * 60),
+        time_period_start=DT_NOW + timedelta(seconds=seed * 60),
         time_period_seconds=time_period_seconds,
     ).__dict__

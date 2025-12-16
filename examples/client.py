@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from cactus_test_definitions.client import TestProcedureId
 
@@ -7,10 +8,7 @@ from cactus_runner.client import (
     ClientTimeout,
     RunnerClient,
 )
-from cactus_runner.models import (
-    ClientInteraction,
-    RunnerStatus,
-)
+from cactus_runner.models import RunnerStatus
 
 
 async def main():
@@ -20,10 +18,10 @@ async def main():
         status: RunnerStatus = await RunnerClient.status(session=session)
         print(status)
 
-        last_interaction: ClientInteraction = await RunnerClient.last_interaction(session=session)
+        last_interaction: datetime = await RunnerClient.last_interaction(session=session)
         print(last_interaction)
 
-        test_id = TestProcedureId.ALL_01
+        # test_id = TestProcedureId.ALL_01
         # await RunnerClient.start(session=session, test_id=test_id, aggregator_certificate=None)
         # await RunnerClient.finalize(session=session)
 

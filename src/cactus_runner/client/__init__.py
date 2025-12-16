@@ -1,17 +1,10 @@
+from datetime import datetime
 import logging
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
 from cactus_test_definitions.client import TestProcedureId
 
-from cactus_runner.models import (
-    ClientInteraction,
-    InitResponseBody,
-    RequestData,
-    RequestList,
-    RunnerStatus,
-    RunRequest,
-    StartResponseBody,
-)
+from cactus_runner.models import InitResponseBody, RequestData, RequestList, RunnerStatus, RunRequest, StartResponseBody
 
 __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProcedureId", "RunnerClient"]
 
@@ -110,7 +103,7 @@ class RunnerClient:
             raise RunnerClientException("Unexpected failure while requesting test procedure status.")
 
     @staticmethod
-    async def last_interaction(session: ClientSession) -> ClientInteraction:
+    async def last_interaction(session: ClientSession) -> datetime | None:
         status = await RunnerClient.status(session=session)
         return status.last_client_interaction
 

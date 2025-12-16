@@ -1,6 +1,8 @@
+from datetime import datetime
 import http
 from unittest.mock import AsyncMock, MagicMock, call
 
+from freezegun import freeze_time
 import pytest
 from aiohttp import ContentTypeError
 from aiohttp.web import Response
@@ -15,8 +17,6 @@ from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
-    ClientInteraction,
-    ClientInteractionType,
     InitResponseBody,
     Listener,
     RequestEntry,
@@ -36,6 +36,7 @@ from tests.integration.certificate1 import (
 from tests.integration.certificate2 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_2_PEM,
 )
+from tests.unit.app.test_status import BASIS
 
 
 def mocked_ProxyResult(status: int) -> ProxyResult:
@@ -63,6 +64,7 @@ def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = Fals
     )
 
 
+@freeze_time(BASIS)
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "test_procedure_id,use_device_cert,is_immediate_start",
@@ -82,7 +84,7 @@ async def test_initialise_handler(
     )
     mock_request.raise_for_status = MagicMock()
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
-    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+    mock_request.app[APPKEY_RUNNER_STATE].last_client_interaction = None
 
     mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
     mock_register_aggregator = mocker.patch(
@@ -113,11 +115,7 @@ async def test_initialise_handler(
     assert response.is_started == is_immediate_start
 
     # Assert - side-effects
-    assert len(mock_request.app[APPKEY_RUNNER_STATE].client_interactions) == 1
-    assert (
-        mock_request.app[APPKEY_RUNNER_STATE].client_interactions[0].interaction_type
-        == ClientInteractionType.TEST_PROCEDURE_INIT
-    )
+    assert mock_request.app[APPKEY_RUNNER_STATE].last_client_interaction == BASIS
     mock_reset_db.assert_called_once()
     mock_register_aggregator.assert_called_once()
     mock_attempt_apply_actions.assert_called_once()
@@ -447,13 +445,13 @@ async def test_status_handler(mocker):
 
 
 @pytest.mark.asyncio
-async def test_status_handler_handles_no_active_test_procedure(example_client_interaction: ClientInteraction, mocker):
+async def test_status_handler_handles_no_active_test_procedure(mocker):
     """
     `mocker` is a fixture provided by the `pytest-mock` plugin
     """
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
-    request.app[APPKEY_RUNNER_STATE].last_client_interaction = example_client_interaction
+    request.app[APPKEY_RUNNER_STATE].last_client_interaction = datetime.now()
     get_runner_status_spy = mocker.spy(handler.status, "get_runner_status")
 
     response = await handler.status_handler(request=request)
@@ -548,12 +546,8 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
 
     #  ... verify we update the last client interaction
     assert len(request.app[APPKEY_RUNNER_STATE].client_interactions) == num_client_interactions_before + 1
-    assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
-    assert (
-        request.app[APPKEY_RUNNER_STATE].last_client_interaction.interaction_type
-        == ClientInteractionType.PROXIED_REQUEST
-    )
-    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
+    assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, datetime)
+    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction)
 
     #  ... verify aiohttp.client.request is passed values from the request argument
     mock_proxy_request.assert_called_once()
@@ -632,12 +626,8 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     assert response is expected_response.response
 
     #  ... verify we update the last client interaction
-    assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, ClientInteraction)
-    assert (
-        request.app[APPKEY_RUNNER_STATE].last_client_interaction.interaction_type
-        == ClientInteractionType.PROXIED_REQUEST
-    )
-    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
+    assert isinstance(request.app[APPKEY_RUNNER_STATE].last_client_interaction, datetime)
+    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction)
 
     #  ... verify aiohttp.client.request is passed values from the request argument
     mock_proxy_request.assert_called_once()

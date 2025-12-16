@@ -1,6 +1,6 @@
 import http
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum, StrEnum, auto
 from typing import Any
 
@@ -96,20 +96,6 @@ class RequestEntry(JSONWizard):
     request_id: int  # Increments per test
 
 
-class ClientInteractionType(StrEnum):
-    RUNNER_START = "Runner Started"
-    TEST_PROCEDURE_INIT = "Test Procedure Initialised"
-    TEST_PROCEDURE_START = "Test Procedure Started"
-    PROXIED_REQUEST = "Request Proxied"
-    TEST_PROCEDURE_FINALIZED = "Test Procedure Finalized"  # Let playlists see prior tests
-
-
-@dataclass
-class ClientInteraction(JSONWizard):
-    interaction_type: ClientInteractionType
-    timestamp: datetime
-
-
 @dataclass
 class RunnerState:
     """Represents the current state of the Runner.
@@ -144,25 +130,10 @@ class RunnerState:
 
     active_test_procedure: ActiveTestProcedure | None = None
     request_history: list[RequestEntry] = field(default_factory=list)
-    client_interactions: list[ClientInteraction] = field(
-        default_factory=lambda: [
-            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
-        ]
-    )
+    last_client_interaction: datetime | None = None
     playlist: list[TestProcedure] | None = (
         None  # To track between test procedures, corresponds to test procedure name, in order of test execution
     )
-
-    @property
-    def last_client_interaction(self) -> ClientInteraction:
-        return self.client_interactions[-1]
-
-    def interaction_timestamp(self, interaction_type: ClientInteractionType) -> datetime | None:
-        """Returns the timestamp of the first client interaction of type 'interaction_type'"""
-        for client_interaction in self.client_interactions:
-            if client_interaction.interaction_type == interaction_type:
-                return client_interaction.timestamp
-        return None
 
 
 @dataclass
@@ -259,7 +230,7 @@ class RunnerStatus(JSONWizard):
     timestamp_initialise: datetime | None  # When did the test initialise
     timestamp_start: datetime | None  # When did the test start
     status_summary: str
-    last_client_interaction: ClientInteraction
+    last_client_interaction: datetime | None
     csip_aus_version: str  # The CSIPAus version that is registered in the active test procedure (can be empty)
     log_envoy: str  # Snapshot of the current envoy logs
     criteria: list[CriteriaEntry] = field(default_factory=list)

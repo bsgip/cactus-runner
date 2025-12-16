@@ -19,7 +19,6 @@ from cactus_runner.app.database import remove_database_connection
 from cactus_runner.app.requests_archive import ensure_request_data_dir
 from cactus_runner.client import RunnerClient, RunnerClientException
 from cactus_runner.models import (
-    ClientInteraction,
     InitResponseBody,
     RequestData,
     RequestList,
@@ -124,7 +123,7 @@ async def test_client_interactions(
     assert isinstance(status_response.csip_aus_version, str)
     assert status_response.test_procedure_name == test_procedure_id.value
     assert status_response.csip_aus_version == csip_aus_version.value
-    assert isinstance(status_response.last_client_interaction, ClientInteraction)
+    assert isinstance(status_response.last_client_interaction, datetime)
     assert_dict_type(str, StepInfo, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
 

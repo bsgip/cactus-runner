@@ -33,8 +33,6 @@ from cactus_runner.app.shared import (
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
-    ClientInteraction,
-    ClientInteractionType,
     InitResponseBody,
     Listener,
     RequestData,
@@ -110,9 +108,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 
     # Update last client interaction
     now = datetime.now(timezone.utc)
-    runner_state.client_interactions.append(
-        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=now)
-    )
+    runner_state.last_client_interaction = now
     active_test_procedure.started_at = now
 
     # Fire any precondition actions
@@ -190,11 +186,7 @@ async def initialise_handler(request: web.Request):  # noqa: C901
         )
 
     # Update last client interaction
-    request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
-        )
-    )
+    request.app[APPKEY_RUNNER_STATE].last_client_interaction = datetime.now(timezone.utc)
 
     # Reset envoy database
     # This must happen before the aggregator is registered or any test preconditions applied
@@ -573,9 +565,7 @@ async def proxied_request_handler(request: web.Request):
         )
 
     # Update last client interaction
-    runner_state.client_interactions.append(
-        ClientInteraction(interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp)
-    )
+    runner_state.last_client_interaction = request_timestamp
 
     # Determine paths, url and HTTP method
     relative_url = request.path

@@ -10,7 +10,6 @@ from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
     ActiveTestProcedure,
-    ClientInteraction,
     CriteriaEntry,
     DataStreamPoint,
     EndDeviceMetadata,
@@ -127,7 +126,7 @@ async def get_active_runner_status(
     session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
-    last_client_interaction: ClientInteraction,
+    last_client_interaction: datetime | None,
 ) -> RunnerStatus:
 
     step_status = active_test_procedure.step_status
@@ -201,7 +200,7 @@ async def get_active_runner_status(
     )
 
 
-def get_runner_status(last_client_interaction: ClientInteraction) -> RunnerStatus:
+def get_runner_status(last_client_interaction: datetime) -> RunnerStatus:
     return RunnerStatus(
         timestamp_status=datetime.now(tz=timezone.utc),
         timestamp_start=None,

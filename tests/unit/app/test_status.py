@@ -14,13 +14,13 @@ from cactus_runner.app.check import CheckResult
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import (
     ActiveTestProcedure,
-    ClientInteraction,
     CriteriaEntry,
     DataStreamPoint,
     RunnerStatus,
     StepInfo,
     TimelineDataStreamEntry,
 )
+from tests.unit.app.test_reporting import DT_NOW
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
@@ -240,12 +240,12 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
     assert runner_status.end_device_metadata is None
 
 
-def test_get_runner_status(example_client_interaction: ClientInteraction):
-    runner_status = status.get_runner_status(last_client_interaction=example_client_interaction)
+def test_get_runner_status():
+    runner_status = status.get_runner_status(last_client_interaction=DT_NOW)
 
     assert isinstance(runner_status, RunnerStatus)
     assert runner_status.status_summary == "No test procedure running"
-    assert runner_status.last_client_interaction == example_client_interaction
+    assert runner_status.last_client_interaction == DT_NOW
     assert runner_status.test_procedure_name == "-"
     assert runner_status.csip_aus_version == ""
     assert runner_status.step_status is None

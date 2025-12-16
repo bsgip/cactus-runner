@@ -6,12 +6,7 @@ import pytest
 from aiohttp import ConnectionTimeoutError
 
 from cactus_runner.client import RunnerClient, RunnerClientException
-from cactus_runner.models import (
-    ClientInteraction,
-    InitResponseBody,
-    RunnerStatus,
-    StartResponseBody,
-)
+from cactus_runner.models import InitResponseBody, RunnerStatus, StartResponseBody
 
 
 @pytest.mark.asyncio
@@ -173,7 +168,7 @@ async def test_last_interaction(runner_status_fixture):
     # Assert
     mock_session.get.assert_called_once_with(url="/status")
     assert mock_session.get.return_value.__aenter__.return_value.text.call_count == 1
-    assert isinstance(last_interaction, ClientInteraction)
+    assert isinstance(last_interaction, datetime)
     assert last_interaction == expected_last_interaction
 
 

@@ -3,7 +3,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import partial
-from http import HTTPStatus
 from typing import Sequence
 
 import pandas as pd
@@ -56,14 +55,7 @@ from cactus_runner import __version__ as cactus_runner_version
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.timeline import Timeline, duration_to_label
-from cactus_runner.models import (
-    ClientCertificateType,
-    ClientInteraction,
-    ClientInteractionType,
-    RequestEntry,
-    RunnerState,
-    StepStatus,
-)
+from cactus_runner.models import ClientCertificateType, RunnerState, StepStatus
 
 logger = logging.getLogger(__name__)
 
@@ -485,94 +477,6 @@ def generate_criteria_section(
         elements.append(generate_criteria_failure_table(check_results=check_results, stylesheet=stylesheet))
     elements.append(stylesheet.spacer)
     return elements
-
-
-def get_request_timestamps(
-    runner_state: RunnerState, time_relative_to_test_start: bool
-) -> tuple[list[datetime] | list[float], str]:
-    request_timestamps: list[datetime] = [request_entry.timestamp for request_entry in runner_state.request_history]
-    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
-    timestamps: list[datetime] | list[float]
-
-    if time_relative_to_test_start and base_timestamp is not None:
-        # Timedeltas (timestamp - base_timestamp) are represented strangely by plotly
-        # For example it displays 0, 5B, 10B to mean 0, 5 and 10 seconds.
-        # Here convert the timedeltas to total seconds to avoid this problem.
-        timestamps = [(timestamp - base_timestamp).total_seconds() for timestamp in request_timestamps]
-        description = "Time relative to start of test (s)"
-    else:
-        timestamps = request_timestamps
-        description = "Time (UTC)"
-
-    return timestamps, description
-
-
-def get_requests_with_errors(runner_state: RunnerState) -> dict[int, RequestEntry]:
-    return {
-        index: request_entry
-        for index, request_entry in enumerate(runner_state.request_history)
-        if request_entry.status >= HTTPStatus(400)
-    }
-
-
-def get_requests_with_validation_errors(runner_state: RunnerState) -> dict[int, RequestEntry]:
-    return {
-        index: request_entry
-        for index, request_entry in enumerate(runner_state.request_history)
-        if len(request_entry.body_xml_errors) > 0
-    }
-
-
-def generate_requests_with_errors_table(requests_with_errors: dict[int, RequestEntry], stylesheet: StyleSheet) -> Table:
-    data = [
-        [
-            i,
-            req.timestamp.strftime("%Y-%m-%d %H:%M"),
-            f"{req.method} {req.path}",
-            f"{req.status.name.replace('_', ' ').title()} ({req.status.value})",
-        ]
-        for i, req in requests_with_errors.items()
-    ]
-
-    data.insert(0, ["#", "Time (UTC)", "Request", "Error Status"])
-
-    column_widths = [
-        int(0.07 * stylesheet.table_width),  # #
-        int(0.28 * stylesheet.table_width),  # Time
-        int(0.55 * stylesheet.table_width),  # Request
-        int(0.20 * stylesheet.table_width),  # Error Status
-    ]
-
-    table = Table(data, colWidths=column_widths)
-    table.setStyle(stylesheet.table)
-    return table
-
-
-def generate_requests_with_validation_errors_table(
-    requests_with_validation_errors: dict[int, RequestEntry], stylesheet: StyleSheet
-) -> Table:
-    data = []
-    for i, req in requests_with_validation_errors.items():
-        request_description = f"{str(req.method)} {req.path} {req.status}"
-        validation_errors = "\n".join(req.body_xml_errors)
-
-        # Limit to a reasonable size the validation error information
-        if len(validation_errors) > stylesheet.max_cell_length_chars:
-            validation_errors = validation_errors[: stylesheet.max_cell_length_chars] + stylesheet.truncation_marker
-
-        data.append(
-            [
-                i,
-                request_description,
-                Paragraph(validation_errors),
-            ]
-        )
-
-    data.insert(0, ["", "", "Validation Errors"])
-    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.2, 0.2, 0.6]]
-    table = Table(data, colWidths=column_widths)
-    table.setStyle(stylesheet.table)
-    return table
 
 
 def get_non_null_attributes(obj: object, attributes_to_include: list[str]) -> list[str]:
@@ -1136,7 +1040,11 @@ def generate_readings_timeline(
     x_axis_column = "time_period_start"
     x_axis_label = "Time (UTC)"
 
-    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
+    # We should never be calling generate readings before a test has started
+    if runner_state.active_test_procedure is None or runner_state.active_test_procedure.started_at is None:
+        raise Exception("Cannot generate readings for a test which has not started.")
+
+    base_timestamp = runner_state.active_test_procedure.started_at
     alternative_x_axis_label = "Time relative to test start (s)"
     if time_relative_to_test_start and base_timestamp is not None:
         new_x_axis_column = "timedelta_from_start"
@@ -1457,15 +1365,6 @@ def generate_readings_section(
     return elements
 
 
-def first_client_interaction_of_type(
-    client_interactions: list[ClientInteraction], interaction_type: ClientInteractionType
-) -> ClientInteraction:
-    for client_interaction in client_interactions:
-        if client_interaction.interaction_type == interaction_type:
-            return client_interaction
-    raise ValueError(f"No client interactions found with type={interaction_type}")
-
-
 def generate_page_elements(
     runner_state: RunnerState,
     test_run_id: str,
@@ -1494,17 +1393,15 @@ def generate_page_elements(
     # Check if the test contains classes that require witness testing
     requires_witness_testing = any(test_class in WITNESS_TEST_CLASSES for test_class in test_procedure_classes)
 
+    # We should never be calling generate page elements before a test has started
+    if active_test_procedure.started_at is None:
+        raise Exception("Cannot generate a PDF for a test which hasn't started.")
+
     # Overview Section
     try:
-        init_timestamp = first_client_interaction_of_type(
-            client_interactions=runner_state.client_interactions,
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT,
-        ).timestamp
-        start_timestamp = first_client_interaction_of_type(
-            client_interactions=runner_state.client_interactions,
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_START,
-        ).timestamp
-        duration = runner_state.last_client_interaction.timestamp - init_timestamp
+        init_timestamp = active_test_procedure.initialised_at
+        start_timestamp = active_test_procedure.started_at
+        duration = datetime.now(tz=timezone.utc) - init_timestamp
 
         page_elements.extend(
             generate_overview_section(
