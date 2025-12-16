@@ -128,6 +128,7 @@ async def get_active_runner_status(
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
+    crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
 
     step_status = active_test_procedure.step_status
@@ -147,6 +148,11 @@ async def get_active_runner_status(
             interval_seconds = 20
             now = datetime.now(timezone.utc)
             end = now + timedelta(seconds=120)
+
+            # Optionally crop to reduce status size for UI
+            if crop_minutes is not None:
+                crop_start = now - timedelta(minutes=crop_minutes)
+                basis = max(basis, crop_start)  # Don't go earlier than crop_start
 
             data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
             now_offset = duration_to_label(((now - basis).seconds // interval_seconds) * interval_seconds)
@@ -181,6 +187,11 @@ async def get_active_runner_status(
     except Exception as exc:
         logger.error("Error getting end device metadata", exc_info=exc)
         end_device_metadata = None
+
+    # Optionally crop request_history to reduce status size for UI
+    if crop_minutes is not None:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=crop_minutes)
+        request_history = [req for req in request_history if req.timestamp >= cutoff_time]
 
     return RunnerStatus(
         timestamp_status=datetime.now(tz=timezone.utc),

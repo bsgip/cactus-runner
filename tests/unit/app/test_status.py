@@ -316,3 +316,77 @@ async def test_get_timeline_data_streams(mocker, interval_seconds, data_streams,
     assert_list_type(TimelineDataStreamEntry, result, len(expected_data_streams))
     assert result == expected_data_streams
     mock_generate_timeline.assert_called_once_with(mock_session, start, interval_seconds, end)
+
+
+@freeze_time(BASIS)
+@pytest.mark.anyio
+async def test_get_active_runner_status_with_cropping(mocker):
+    # Arrange
+    now = BASIS
+    mock_session = create_mock_session()
+    mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
+    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
+    mocker.patch("cactus_runner.app.status.get_active_site", return_value=None)
+
+    mock_get_timeline_streams = mocker.patch("cactus_runner.app.status.get_timeline_data_streams")
+    mock_timeline_data = [generate_class_instance(TimelineDataStreamEntry)]
+    mock_get_timeline_streams.return_value = mock_timeline_data
+
+    test_started_at = now - timedelta(minutes=60)
+
+    # request history spanning 60 minutes
+    request_history = [
+        Mock(timestamp=now - timedelta(minutes=60)),
+        Mock(timestamp=now - timedelta(minutes=50)),
+        Mock(timestamp=now - timedelta(minutes=40)),
+        Mock(timestamp=now - timedelta(minutes=30)),
+        Mock(timestamp=now - timedelta(minutes=20)),
+        Mock(timestamp=now - timedelta(minutes=14)),  # keep below here only
+        Mock(timestamp=now - timedelta(minutes=10)),
+        Mock(timestamp=now - timedelta(minutes=5)),
+        Mock(timestamp=now - timedelta(minutes=1)),
+    ]
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        name="TEST_CROP",
+        step_status={},
+        csip_aus_version=CSIPAusVersion.RELEASE_1_2,
+        definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
+        listeners=[],
+        started_at=test_started_at,
+        finished_zip_data=None,
+    )
+
+    last_client_interaction = Mock()
+
+    # Act - crop to last 15 minutes
+    runner_status = await status.get_active_runner_status(
+        session=mock_session,
+        active_test_procedure=active_test_procedure,
+        request_history=request_history,
+        last_client_interaction=last_client_interaction,
+        crop_minutes=15,
+    )
+
+    # Assert - request_history should only contain last 15 minutes
+    assert len(runner_status.request_history) == 4
+    assert runner_status.request_history[0].timestamp == now - timedelta(minutes=14)
+    assert runner_status.request_history[1].timestamp == now - timedelta(minutes=10)
+    assert runner_status.request_history[2].timestamp == now - timedelta(minutes=5)
+    assert runner_status.request_history[3].timestamp == now - timedelta(minutes=1)
+
+    # Assert - timeline basis should be adjusted to 15 minutes ago (not 60 minutes ago)
+    expected_crop_start = now - timedelta(minutes=15)
+    expected_basis = max(test_started_at, expected_crop_start)  # Should be expected_crop_start
+    expected_end = now + timedelta(seconds=120)
+
+    mock_get_timeline_streams.assert_called_once_with(
+        mock_session,
+        expected_basis,  # Should be cropped basis, not original test_started_at
+        20,  # interval_seconds
+        expected_end,
+    )
+
+    assert runner_status.timeline is not None
+    assert runner_status.timeline.data_streams == mock_timeline_data

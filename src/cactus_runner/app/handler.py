@@ -449,6 +449,7 @@ async def status_handler(request):
 
     Returns:
         aiohttp.web.Response: The body (json) contains the status of the runner.
+        This will be cropped to the last 15 mins of requests and timeline data to ensure UI does not slow down.
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
 
@@ -461,6 +462,7 @@ async def status_handler(request):
                 active_test_procedure=active_test_procedure,
                 request_history=request.app[APPKEY_RUNNER_STATE].request_history,
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+                crop_minutes=15,
             )
         logger.info(
             f"Status of test procedure '{runner_status.test_procedure_name}': {runner_status.step_status}",
