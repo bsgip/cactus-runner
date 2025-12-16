@@ -101,6 +101,7 @@ class ClientInteractionType(StrEnum):
     TEST_PROCEDURE_INIT = "Test Procedure Initialised"
     TEST_PROCEDURE_START = "Test Procedure Started"
     PROXIED_REQUEST = "Request Proxied"
+    TEST_PROCEDURE_FINALIZED = "Test Procedure Finalized"  # Let playlists see prior tests
 
 
 @dataclass
@@ -147,6 +148,9 @@ class RunnerState:
         default_factory=lambda: [
             ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
         ]
+    )
+    playlist: list[TestProcedure] | None = (
+        None  # To track between test procedures, corresponds to test procedure name, in order of test execution
     )
 
     @property

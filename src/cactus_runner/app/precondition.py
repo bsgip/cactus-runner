@@ -94,3 +94,75 @@ END $$;
         async with connection.begin() as txn:
             await connection.execute(text(reset_sql))
             await txn.commit()
+
+
+async def reset_playlist_db() -> None:
+    """
+    Selective database reset for playlist mode.
+    NOTE/TODO: This should be replaced with API calls to ENVOY admin rather than raw sql. It will then ensure that the
+    correct notifications are sent out (e.g. DER control cancellations occur rather than being silently dropped from
+    the server). This is a placeholder for runner/orchestrator/UI behaviour.
+    """
+
+    # Tables to delete
+    deleted_tables = [
+        "archive_dynamic_operating_envelope",
+        "archive_site_control_group",
+        "archive_site_reading",
+        "archive_site_reading_type",
+        "archive_subscription",
+        "archive_subscription_condition",
+        "archive_tariff",
+        "archive_tariff_generated_rate",
+        "calculation_log",
+        "calculation_log_label_metadata",
+        "calculation_log_label_value",
+        "calculation_log_variable_metadata",
+        "calculation_log_variable_value",
+        "dynamic_operating_envelope",
+        "dynamic_operating_envelope_response",
+        "site_control_group",
+        "site_group",
+        "site_group_assignment",
+        "site_log_event",
+        "site_reading",
+        "site_reading_type",
+        "subscription",
+        "subscription_condition",
+        "tariff",
+        "tariff_generated_rate",
+        "tariff_generated_rate_response",
+        "transmit_notification_log",
+    ]
+
+    deleted_tables_sql = ", ".join(f"'{t}'" for t in deleted_tables)
+
+    reset_sql = f"""
+DO $$ DECLARE
+    r RECORD;
+    epoch_time BIGINT;
+BEGIN
+    epoch_time := EXTRACT(EPOCH FROM NOW())::BIGINT;
+
+    -- Truncate all tables specified
+    FOR r IN (
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+        AND tablename IN ({deleted_tables_sql})
+    ) LOOP
+        EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' RESTART IDENTITY CASCADE';
+    END LOOP;
+
+    -- Reset ID sequences for tables that generate new IDs with each test
+    EXECUTE 'ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH ' || epoch_time;
+    EXECUTE 'ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH ' || epoch_time;
+END $$;
+    """
+
+    async with open_connection() as connection:
+        async with connection.begin() as txn:
+            await connection.execute(text(reset_sql))
+            await txn.commit()
+
+    logger.info("Playlist database reset complete - preserved site/aggregator/certs, cleared transactional data")

@@ -8,15 +8,22 @@ from cactus_runner.models import RequestEntry
 
 logger = logging.getLogger(__name__)
 
-# nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
+# nosec B108: Safe in short lived K8s pods (destroyed after run)
 # Alternatives tried: hardcoded paths (permission errors), tempfile (failed on write to zip, issue on finalise?)
 REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
+PLAYLIST_ARTIFACTS_DIR = Path("/tmp/playlist_artifacts")  # nosec B108
 
 
 def ensure_request_data_dir() -> Path:
     """Ensure the request data directory exists and return it."""
     REQUEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
     return REQUEST_DATA_DIR
+
+
+def ensure_playlist_data_dir() -> Path:
+    """Ensure the playlist data directory exists and return it."""
+    PLAYLIST_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    return PLAYLIST_ARTIFACTS_DIR
 
 
 def sanitise_url_to_filename(url: str) -> str:
@@ -209,3 +216,29 @@ def get_all_request_ids() -> list[int]:
     except Exception as exc:
         logger.error("Failed to get request IDs", exc_info=exc)
         return []
+
+
+def save_test_zip(playlist_id: str, test_index: int, zip_data: bytes) -> str:
+    """NOTE: This behaviour should be superseded when zip artefactss are moved to the orchestrator not the runner.
+    For now, we save a test's zip file to disk and return the filepath."""
+    ensure_playlist_data_dir()
+    filepath = str(PLAYLIST_ARTIFACTS_DIR / f"{playlist_id}_test_{test_index}.zip")
+
+    with open(filepath, "wb") as f:
+        f.write(zip_data)
+
+    logger.info(f"Saved playlist test zip: {filepath} ({len(zip_data)} bytes)")
+    return str(filepath)
+
+
+def load_test_zip(filepath: str) -> bytes | None:
+    """Load a test's zip file from disk"""
+    try:
+        with open(filepath, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.warning(f"Zip file not found: {filepath}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading zip file {filepath}: {e}")
+        return None
