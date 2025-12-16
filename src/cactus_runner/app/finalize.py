@@ -63,6 +63,7 @@ def get_file_name_no_extension(file_path: str) -> str:
 
 def get_zip_contents(
     json_status_summary: str | None,
+    json_reporting_data: str | None,
     log_file_paths: list[str],
     pdf_data: bytes | None,
     errors: list[str],
@@ -85,6 +86,12 @@ def get_zip_contents(
             file_path = archive_dir / f"CactusTestProcedureSummary{filename_infix}.json"
             with open(file_path, "w") as f:
                 f.write(json_status_summary)
+
+        # Create reporting data json file
+        if json_reporting_data is not None:
+            file_path = archive_dir / f"ReportingData{filename_infix}.json"
+            with open(file_path, "w") as f:
+                f.write(json_reporting_data)
 
         # Copy all log files into the archive - preserving the names
         for log_file_path in log_file_paths:
@@ -215,6 +222,18 @@ async def generate_pdf(
     return pdf_data
 
 
+async def generate_json_reporting_data(
+    runner_state,
+    check_results,
+    readings,
+    reading_counts,
+    sites,
+    timeline,
+    errors,
+) -> str | None:
+    return None
+
+
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
     """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
     contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState
@@ -305,15 +324,28 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             timeline=test_timeline,
             errors=errors,
         )
+
+        # Collect reporting state into json object
+        json_reporting_data = await generate_json_reporting_data(
+            runner_state=runner_state,
+            check_results=check_results,
+            readings=readings,
+            reading_counts=reading_counts,
+            sites=sites,
+            timeline=test_timeline,
+            errors=errors,
+        )
     except Exception as exc:
         logger.error("Failed to generate PDF report", exc_info=exc)
         errors.append(f"Failed to generate PDF report: {exc}")
         pdf_data = None
+        json_reporting_data = None
 
     generation_timestamp = now.replace(microsecond=0)
 
     active_test_procedure.finished_zip_data = get_zip_contents(
         json_status_summary=json_status_summary,
+        json_reporting_data=json_reporting_data,
         log_file_paths=[
             LOG_FILE_ENVOY_SERVER,
             LOG_FILE_ENVOY_ADMIN,
