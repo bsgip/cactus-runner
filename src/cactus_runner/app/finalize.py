@@ -238,6 +238,9 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
+    playlist_procedure_ids = (
+        [p.test_definition.test_procedure_id.value for p in runner_state.playlist] if runner_state.playlist else []
+    )
     # Collect status summary
     try:
         json_status_summary = (
@@ -246,6 +249,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure=active_test_procedure,
                 request_history=runner_state.request_history,
                 last_client_interaction=runner_state.last_client_interaction,
+                playlist_procedure_ids=playlist_procedure_ids,
+                playlist_index=runner_state.playlist_index,
             )
         ).to_json()
     except Exception as exc:

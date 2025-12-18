@@ -461,6 +461,10 @@ async def status_handler(request):
         aiohttp.web.Response: The body (json) contains the status of the runner.
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    playlist = request.app[APPKEY_RUNNER_STATE].playlist
+    playlist_index = request.app[APPKEY_RUNNER_STATE].playlist_index
+
+    playlist_procedure_ids = [p.test_definition.test_procedure_id.value for p in playlist] if playlist else []
 
     logger.info("Test procedure status requested.")
 
@@ -471,6 +475,8 @@ async def status_handler(request):
                 active_test_procedure=active_test_procedure,
                 request_history=request.app[APPKEY_RUNNER_STATE].request_history,
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+                playlist_procedure_ids=playlist_procedure_ids,
+                playlist_index=playlist_index,
             )
         logger.info(
             f"Status of test procedure '{runner_status.test_procedure_name}': {runner_status.step_status}",

@@ -201,6 +201,8 @@ class RunnerStatus(JSONWizard):
     request_history: list[RequestEntry] = field(default_factory=list)
     timeline: TimelineStatus | None = None  # Streaming timeline data snapshot
     end_device_metadata: EndDeviceMetadata | None = None  # Snapshot of current active end device (if any)
+    playlist_procedure_ids: list[str] | None = None  # List of test procedure ids in a playlist
+    playlist_index: int | None = None  # The current index we are up to in the list above
 
 
 @dataclass
@@ -281,6 +283,5 @@ class RunnerState:
     active_test_procedure: ActiveTestProcedure | None = None
     request_history: list[RequestEntry] = field(default_factory=list)
     last_client_interaction: datetime | None = None
-    playlist: list[RunRequest] | None = (
-        None  # To track between test procedures, corresponds to test procedure name, in order of test execution
-    )
+    playlist: list[RunRequest] | None = None  # List of RunRequests from orchestrator in order of test execution
+    playlist_index: int | None = None  # The current index we are up to in the list above

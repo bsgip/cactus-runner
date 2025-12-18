@@ -127,6 +127,8 @@ async def get_active_runner_status(
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: datetime | None,
+    playlist_procedure_ids: list[str],
+    playlist_index: int | None,
 ) -> RunnerStatus:
 
     step_status = active_test_procedure.step_status
@@ -197,6 +199,8 @@ async def get_active_runner_status(
         request_history=request_history,
         timeline=timeline,
         end_device_metadata=end_device_metadata,
+        playlist_index=playlist_index,
+        playlist_procedure_ids=playlist_procedure_ids,
     )
 
 
