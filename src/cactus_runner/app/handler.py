@@ -140,28 +140,31 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 async def initialise_handler(request: web.Request):  # noqa: C901
     """Handler for initialise requests.
 
-        Sent by the client to initialise a test procedure.
+    Sent by the client to initialise a test procedure or playlist of test procedures.
 
-        The following initialization steps are performed:
+    The following initialization steps are performed:
 
-        1. All tables in the database are truncated
-        2. Register the aggregator (along with its certificate)
-        3. Apply database preconditions
-        4. Trigger the envoy server to start with the correction configuration.
-    .
-        Args:
-            request: An aiohttp.web.Request instance, the body of the request should be a json encoded instance
-            of 'Run'.
+    1. All tables in the database are truncated
+    2. Register the aggregator (along with its certificate)
+    3. Apply database preconditions
+    4. Trigger the envoy server to start with the correction configuration.
 
-        Returns:
-            aiohttp.web.Response:
-            201 (Created) The body contains a simple json message (status msg, test name and timestamp, is_started) or
-            400 (Bad Request) if a RunRequest instance can't be instantiated from the json request body or
-            409 (Conflict) if there is already a test procedure initialised or
-            400 (Bad Request) if both aggregator and device certificates supplied for neither supplied or
-            400 (Bad Request) if invalid test procedure definition supplied or
-            412 (Precondition Failed) if an error occurred when applying the test procedure preconditions or
-            409 (Conflict)/412 (Precondition Failed) if a test with immediate start failed to start
+    If multiple run requests are provided, the first is set as active and the rest
+    are added to the playlist queue for sequential execution.
+
+    Args:
+        request: An aiohttp.web.Request instance, the body of the request should be a json encoded instance
+        of 'RunRequest' or a list of 'RunRequest'.
+
+    Returns:
+        aiohttp.web.Response:
+        201 (Created) The body contains a simple json message (status msg, test name and timestamp, is_started) or
+        400 (Bad Request) if a RunRequest instance can't be instantiated from the json request body or
+        409 (Conflict) if there is already a test procedure initialised or
+        400 (Bad Request) if both aggregator and device certificates supplied for neither supplied or
+        400 (Bad Request) if invalid test procedure definition supplied or
+        412 (Precondition Failed) if an error occurred when applying the test procedure preconditions or
+        409 (Conflict)/412 (Precondition Failed) if a test with immediate start failed to start
     """
     try:
         raw_json = await request.text()
@@ -169,9 +172,14 @@ async def initialise_handler(request: web.Request):  # noqa: C901
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing JSON body")
 
     try:
-        run_request = RunRequest.from_json(raw_json)
-        if isinstance(run_request, list):
-            raise ValueError("Run request must be a RunRequest instance and not list[RunRequest]")
+        run_request_data = RunRequest.from_json(raw_json)
+        # Handle both single RunRequest and list[RunRequest] (playlist)
+        if isinstance(run_request_data, list):
+            run_requests = run_request_data
+            if len(run_requests) == 0:
+                raise ValueError("Run request list cannot be empty")
+        else:
+            run_requests = [run_request_data]
     except Exception as e:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST, text=f"Unable to parse JSON body to RunRequest instance {e}"
@@ -192,6 +200,9 @@ async def initialise_handler(request: web.Request):  # noqa: C901
     # This must happen before the aggregator is registered or any test preconditions applied
     logger.debug("Resetting envoy database")
     await precondition.reset_db()
+
+    # Process the first run request to set as active
+    run_request = run_requests[0]
 
     # Get the certificate of the aggregator to register
     aggregator_certificate = run_request.run_group.test_certificates.aggregator
@@ -301,6 +312,13 @@ async def initialise_handler(request: web.Request):  # noqa: C901
     )
 
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
+
+    # Initialize the playlist with remaining run requests (if any)
+    if len(run_requests) > 1:
+        request.app[APPKEY_RUNNER_STATE].playlist = run_requests[1:]
+        logger.info(f"Playlist initialized with {len(run_requests) - 1} additional test procedure(s)")
+    else:
+        request.app[APPKEY_RUNNER_STATE].playlist = None
 
     # if this test has "init_actions" - now is the time to fire them
     if active_test_procedure.definition.preconditions:
