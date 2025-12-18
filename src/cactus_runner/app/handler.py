@@ -202,62 +202,30 @@ async def initialize_next_test(
     runner_state: RunnerState,
     envoy_client: EnvoyAdminClient,
 ) -> None:
-    """
-    Initialize the next test procedure in a playlist. Overwrites the relevant new ActiveTestProcedure test
-    definition and metadata.
-
-    Args:
-        run_request: The RunRequest for the next test to initialize
-        runner_state: Current runner state containing previous test info
-        envoy_client: Client for communicating with envoy admin API
-    """
-    # Update last client interaction
+    """Initialize the next test procedure in a playlist."""
     runner_state.last_client_interaction = datetime.now(timezone.utc)
 
-    # Get the previous test procedure to reuse certificate info
     prev_test = runner_state.active_test_procedure
     if prev_test is None:
         raise ValueError("Cannot initialize next test: no previous test procedure exists")
 
-    # Reuse certificate information from previous test
-    client_lfdi = prev_test.client_lfdi
-    client_aggregator_id = prev_test.client_aggregator_id
-    client_type = prev_test.client_certificate_type
-
-    logger.info(
-        f"Initializing next playlist test with reused {client_type} certificate {client_lfdi} "
-        f"under aggregator id {client_aggregator_id}"
+    # Reuse certificate information and create new ActiveTestProcedure
+    runner_state.active_test_procedure = await setup_test_procedure_from_request(
+        run_request, prev_test.client_lfdi, prev_test.client_aggregator_id, prev_test.client_certificate_type
     )
 
-    # Setup the test procedure
-    active_test_procedure = await setup_test_procedure_from_request(
-        run_request, client_lfdi, client_aggregator_id, client_type
-    )
+    logger.info(f"Test Procedure '{runner_state.active_test_procedure.name}' initialised.")
 
-    logger.info(
-        f"Test Procedure '{active_test_procedure.name}' initialised.",
-        extra={"test_procedure": active_test_procedure.name},
-    )
-
-    runner_state.active_test_procedure = active_test_procedure
-
-    # if this test has "init_actions" - now is the time to fire them
-    if active_test_procedure.definition.preconditions:
+    # Apply init_actions and handle immediate_start
+    if runner_state.active_test_procedure.definition.preconditions:
         await attempt_apply_actions(
-            active_test_procedure.definition.preconditions.init_actions,
-            runner_state,
-            envoy_client,
+            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, envoy_client
         )
 
-    # if this test is marked as immediate_start - we can trigger the "start" now
-    if (
-        active_test_procedure.definition.preconditions
-        and active_test_procedure.definition.preconditions.immediate_start
-    ):
-        start_result = await attempt_start_for_state(runner_state, envoy_client)
-        if not start_result.success:
-            logger.error(f"Unable to trigger immediate start: {start_result.content}")
-            raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
+        if runner_state.active_test_procedure.definition.preconditions.immediate_start:
+            start_result = await attempt_start_for_state(runner_state, envoy_client)
+            if not start_result.success:
+                raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
 
 
 async def initialise_handler(request: web.Request):  # noqa: C901
