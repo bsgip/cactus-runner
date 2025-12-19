@@ -1,5 +1,5 @@
 import unittest.mock as mock
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -597,6 +597,92 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
         doe = (await session.execute(select(DynamicOperatingEnvelope).limit(1))).scalar_one()
         tagged_control_id = active_test_procedure.resource_annotations.der_control_ids_by_alias[tag]
         assert tagged_control_id == doe.dynamic_operating_envelope_id
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config, envoy_admin_client):
+    """Verifies that creating a DER control with a tag properly annotates it in the active test procedure (even if
+    it's superseding an existing control which has caused us troubles in the past)"""
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1)
+        session.add(site)
+        site_ctrl_grp = generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=1)
+        session.add(site_ctrl_grp)
+
+        existing_creation_time = datetime.now(timezone.utc) - timedelta(seconds=20)
+
+        existing_derc = generate_class_instance(
+            DynamicOperatingEnvelope,
+            dynamic_operating_envelope_id=None,
+            calculation_log_id=None,
+            site_control_group=site_ctrl_grp,
+            site=site,
+            start_time=existing_creation_time,
+            end_time=existing_creation_time + timedelta(seconds=3600),
+            duration_seconds=3600,
+            export_limit_watts=123,
+            created_time=existing_creation_time,
+            superseded=False,
+        )
+        session.add(existing_derc)
+
+        await session.flush()
+
+        existing_derc_id = existing_derc.dynamic_operating_envelope_id
+
+        await session.commit()
+
+    existing_derc_tag = "DERC-EXISTING"
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        step_status={},
+        finished_zip_data=None,
+        resource_annotations=ResourceAnnotations({existing_derc_tag: existing_derc_id}),
+    )
+
+    inserted_tag = "DERC-NEW"
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "opModExpLimW": 456,
+        "tag": inserted_tag,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
+
+    # Verify the tag was added to the active test procedure
+    derc_id_by_alias = active_test_procedure.resource_annotations.der_control_ids_by_alias
+    assert inserted_tag in derc_id_by_alias
+    assert derc_id_by_alias[existing_derc_tag] == existing_derc_id
+    assert derc_id_by_alias[inserted_tag] != existing_derc_id
+
+    # Verify the tagged control ID matches the created control
+    async with generate_async_session(pg_base_config) as session:
+        does = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+        assert len(does) == 2
+
+        if does[0].dynamic_operating_envelope_id == existing_derc_id:
+            existing = does[0]
+            inserted = does[1]
+        else:
+            existing = does[1]
+            inserted = does[0]
+
+        assert existing.superseded
+        assert not inserted.superseded
+
+        assert existing.changed_time == inserted.changed_time, "Both should've updated together"
+
+        assert existing.export_limit_watts == 123
+        assert inserted.export_limit_watts == 456
+
+        assert derc_id_by_alias[existing_derc_tag] == existing.dynamic_operating_envelope_id
+        assert derc_id_by_alias[inserted_tag] == inserted.dynamic_operating_envelope_id
 
 
 @pytest.mark.anyio

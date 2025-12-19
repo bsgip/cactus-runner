@@ -234,7 +234,7 @@ async def action_create_der_control(
         controls: list[SiteControlResponse] = await envoy_client.get_all_site_controls(group_id=site_control_group_id)
 
         if controls:
-            sorted_controls = sorted(controls, key=lambda c: c.changed_time, reverse=True)
+            sorted_controls = sorted(controls, key=lambda c: c.created_time, reverse=True)
             latest_site_control_id = sorted_controls[0].site_control_id
         else:
             raise FailedActionError("No controls exist for this site control group despite creation in this action.")
