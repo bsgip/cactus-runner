@@ -1291,11 +1291,7 @@ def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list
     null_or_zero = durations.isna() | (durations == 0)
     dropped_count = int(null_or_zero.sum())
 
-    if dropped_count > 0:
-        warnings.append(
-            f"{dropped_count} reading{'s' if dropped_count != 1 else ''}"
-            " excluded from timeline generation due to null or zero duration values"
-        )
+    # For v1.3-beta/storage, duration 0 values are acceptable for storage readings.
 
     # Check remaining readings are divisible by 60s
     valid_durations = durations[~null_or_zero]
