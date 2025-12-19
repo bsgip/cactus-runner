@@ -1286,12 +1286,10 @@ def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list
 
     warnings: list[str] = []
 
-    # Count null or zero durations
+    # Isolate null or zero durations
+    # For v1.3-beta/storage, duration 0 or null values are acceptable for storage readings.
     durations = readings_df["time_period_seconds"]
     null_or_zero = durations.isna() | (durations == 0)
-    dropped_count = int(null_or_zero.sum())
-
-    # For v1.3-beta/storage, duration 0 values are acceptable for storage readings.
 
     # Check remaining readings are divisible by 60s
     valid_durations = durations[~null_or_zero]
@@ -1307,7 +1305,7 @@ def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list
                 " invalid duration (not divisible by 60). This may indicate a configuration issue."
             )
 
-    return dropped_count, invalid_count, warnings
+    return 0, invalid_count, warnings
 
 
 def generate_reading_count_table(
