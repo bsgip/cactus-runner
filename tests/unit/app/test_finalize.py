@@ -5,8 +5,10 @@ import tempfile
 import zipfile
 
 import pytest
+from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import finalize
+from cactus_runner.models import CheckResult, RunnerState
 
 
 @pytest.mark.parametrize(

@@ -40,7 +40,7 @@ from cactus_runner.app.evaluator import (
     ResolvedParam,
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import ActiveTestProcedure, ClientCertificateType
+from cactus_runner.models import ActiveTestProcedure, CheckResult, ClientCertificateType
 
 logger = logging.getLogger(__name__)
 
@@ -140,14 +140,6 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
     ] = None
     vpp_modes_supported_set: Annotated[str | None, pydantic.Field(alias="vppModesSupported_set")] = None
     vpp_modes_supported_unset: Annotated[str | None, pydantic.Field(alias="vppModesSupported_unset")] = None
-
-
-@dataclass
-class CheckResult:
-    """Represents the results of a running a single check"""
-
-    passed: bool  # True if the check is considered passed or successful. False otherwise
-    description: Optional[str]  # Human readable description of what the check "considered" or wants to elaborate about
 
 
 class SoftChecker:

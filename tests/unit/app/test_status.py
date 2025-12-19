@@ -10,10 +10,10 @@ from cactus_test_definitions.client import Check
 from freezegun import freeze_time
 
 from cactus_runner.app import status
-from cactus_runner.app.check import CheckResult
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import (
     ActiveTestProcedure,
+    CheckResult,
     ClientInteraction,
     CriteriaEntry,
     DataStreamPoint,

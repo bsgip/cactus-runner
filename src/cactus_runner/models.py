@@ -10,6 +10,14 @@ from dataclass_wizard import JSONWizard
 
 
 @dataclass
+class CheckResult:
+    """Represents the results of a running a single check"""
+
+    passed: bool  # True if the check is considered passed or successful. False otherwise
+    description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
+
+
+@dataclass
 class Listener:
     step: str
     event: Event

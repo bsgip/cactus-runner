@@ -2,7 +2,7 @@ import http
 import random
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from envoy.server.model.site_reading import SiteReading
+
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -16,6 +16,7 @@ from envoy.server.model import (
     SiteDERStatus,
     SiteReadingType,
 )
+from envoy.server.model.site_reading import SiteReading
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     DeviceCategory,
@@ -25,7 +26,6 @@ from envoy_schema.server.schema.sep2.types import (
     UomType,
 )
 
-from cactus_runner.app.check import CheckResult
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.reporting import (
     device_category_to_string,
@@ -36,6 +36,7 @@ from cactus_runner.app.reporting import (
 from cactus_runner.app.timeline import Timeline, TimelineDataStream
 from cactus_runner.models import (
     ActiveTestProcedure,
+    CheckResult,
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,

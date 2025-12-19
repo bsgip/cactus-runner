@@ -11,7 +11,7 @@ from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import check, reporting, timeline
+from cactus_runner.app import reporting, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -32,7 +32,7 @@ from cactus_runner.app.readings import (
 )
 from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
-from cactus_runner.models import RunnerState
+from cactus_runner.models import CheckResult, ReportingData, RunnerState
 
 GENERATION_ERRORS_FILE_NAME = "generation-errors.txt"
 
