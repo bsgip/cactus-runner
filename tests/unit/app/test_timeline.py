@@ -7,10 +7,11 @@ from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
-from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
-from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope
-from envoy.server.model.site import DefaultSiteControl
+from envoy.server.model.archive.doe import (
+    ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
+)
+from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroupDefault
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from intervaltree import Interval, IntervalTree
 
@@ -651,13 +652,13 @@ def def_ctrl(
     exp_watts: int | None = None,
     load_watts: int | None = None,
     gen_watts: int | None = None,
-) -> DefaultSiteControl | ArchiveDefaultSiteControl:
+) -> SiteControlGroupDefault | ArchiveSiteControlGroupDefault:
     """Utility function for reducing boilerplate"""
     if archive_time is None:
-        t = DefaultSiteControl
+        t = SiteControlGroupDefault
         extra_kwargs = {}
     else:
-        t = ArchiveDefaultSiteControl
+        t = ArchiveSiteControlGroupDefault
         extra_kwargs = {"archive_time": archive_time, "deleted_time": None}
 
     return generate_class_instance(
@@ -712,15 +713,15 @@ def def_ctrl(
         ),
     ],
 )
-@mock.patch("cactus_runner.app.timeline.get_site_defaults_with_archive")
+@mock.patch("cactus_runner.app.timeline.get_site_control_group_defaults_with_archive")
 @pytest.mark.asyncio
 async def test_generate_default_control_data_streams(
-    mock_get_site_defaults_with_archive: mock.MagicMock, defaults, start, interval, end, expected
+    mock_get_site_control_group_defaults_with_archive: mock.MagicMock, defaults, start, interval, end, expected
 ):
 
     mock_session = create_mock_session()
 
-    mock_get_site_defaults_with_archive.return_value = defaults
+    mock_get_site_control_group_defaults_with_archive.return_value = defaults
 
     # Act
     result = await generate_default_control_data_streams(mock_session, start, end, interval)
@@ -732,7 +733,7 @@ async def test_generate_default_control_data_streams(
     assert expected == actual
 
     assert_mock_session(mock_session)
-    mock_get_site_defaults_with_archive.assert_called_once_with(mock_session)
+    mock_get_site_control_group_defaults_with_archive.assert_called_once_with(mock_session)
 
 
 @pytest.mark.parametrize(
