@@ -5,10 +5,13 @@ from typing import Sequence
 
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
 )
-from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope
-from envoy.server.model.site import DefaultSiteControl, Site, SiteDER
+from envoy.server.model.doe import (
+    DynamicOperatingEnvelope,
+    SiteControlGroupDefault,
+)
+from envoy.server.model.site import Site, SiteDER
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -204,25 +207,12 @@ async def get_site_controls_active_archived(
     return list(chain(active_controls, deleted_controls))
 
 
-async def get_site_defaults_with_archive(session: AsyncSession) -> list[DefaultSiteControl | ArchiveDefaultSiteControl]:
-    """Fetches all DefaultSiteControl's for the active site, both current and historic (including update values)"""
-    site = await get_active_site(session)
-    if not site:
-        return []
-
-    active_control_groups = (
-        (await session.execute(select(DefaultSiteControl).where(DefaultSiteControl.site_id == site.site_id)))
-        .scalars()
-        .all()
-    )
-    deleted_control_groups = (
-        (
-            await session.execute(
-                select(ArchiveDefaultSiteControl).where(ArchiveDefaultSiteControl.site_id == site.site_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
+async def get_site_control_group_defaults_with_archive(
+    session: AsyncSession,
+) -> list[SiteControlGroupDefault | ArchiveSiteControlGroupDefault]:
+    """Fetches all SiteControlGroupDefault's for all SiteControlGroups, both current and historic
+    (including update values)"""
+    active_control_groups = (await session.execute(select(SiteControlGroupDefault))).scalars().all()
+    deleted_control_groups = (await session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
 
     return list(chain(active_control_groups, deleted_control_groups))

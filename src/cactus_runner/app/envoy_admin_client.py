@@ -11,24 +11,24 @@ from aiohttp import BasicAuth, ClientSession, ClientTimeout, TCPConnector
 from aiohttp.typedefs import StrOrURL
 from envoy_schema.admin.schema.aggregator import AggregatorPageResponse
 from envoy_schema.admin.schema.config import (
-    ControlDefaultRequest,
-    ControlDefaultResponse,
     RuntimeServerConfigRequest,
     RuntimeServerConfigResponse,
 )
 from envoy_schema.admin.schema.site import SiteResponse, SiteUpdateRequest
 from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupDefaultRequest,
+    SiteControlGroupDefaultResponse,
     SiteControlGroupPageResponse,
     SiteControlGroupRequest,
     SiteControlGroupResponse,
+    SiteControlPageResponse,
     SiteControlRequest,
     SiteControlResponse,
-    SiteControlPageResponse,
 )
 from envoy_schema.admin.schema.uri import (
     AggregatorListUri,
     ServerConfigRuntimeUri,
-    SiteControlDefaultConfigUri,
+    SiteControlGroupDefaultUri,
     SiteControlGroupListUri,
     SiteControlGroupUri,
     SiteControlRangeUri,
@@ -111,9 +111,11 @@ class EnvoyAdminClient:
         href = resp.headers["Location"]
         return int(href.split("/")[-1])
 
-    async def post_site_control_default(self, site_id: int, control_default: ControlDefaultRequest) -> HTTPStatus:
+    async def post_site_control_default(
+        self, group_id: int, control_default: SiteControlGroupDefaultRequest
+    ) -> HTTPStatus:
         resp = await self._session.post(
-            SiteControlDefaultConfigUri.format(site_id=site_id),
+            SiteControlGroupDefaultUri.format(group_id=group_id),
             data=control_default.model_dump_json(),
             headers={"Content-Type": "application/json"},
         )
@@ -198,10 +200,10 @@ class EnvoyAdminClient:
             json = await resp.json()
             return RuntimeServerConfigResponse(**json)
 
-    async def get_site_control_default(self, site_id: int) -> ControlDefaultResponse:
+    async def get_site_control_default(self, group_id: int) -> SiteControlGroupDefaultResponse:
         async with self._session.get(
-            SiteControlDefaultConfigUri.format(site_id=site_id),
+            SiteControlGroupDefaultUri.format(group_id=group_id),
         ) as resp:
             resp.raise_for_status()
             json = await resp.json()
-            return ControlDefaultResponse(**json)
+            return SiteControlGroupDefaultResponse(**json)

@@ -4,15 +4,19 @@ from decimal import Decimal
 from typing import Any
 
 from cactus_test_definitions.client import Action
+from envoy.server.crud.doe import select_site_control_groups
 from envoy.server.model.site import Site
 from envoy_schema.admin.schema.config import (
-    ControlDefaultRequest,
     RuntimeServerConfigRequest,
+)
+from envoy_schema.admin.schema.site import SiteUpdateRequest
+from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupDefaultRequest,
+    SiteControlGroupRequest,
+    SiteControlRequest,
+    SiteControlResponse,
     UpdateDefaultValue,
 )
-
-from envoy_schema.admin.schema.site import SiteUpdateRequest
-from envoy_schema.admin.schema.site_control import SiteControlGroupRequest, SiteControlRequest, SiteControlResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -21,7 +25,12 @@ from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.app.finalize import finish_active_test
-from cactus_runner.models import ActiveTestProcedure, ClientCertificateType, Listener, RunnerState
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    ClientCertificateType,
+    Listener,
+    RunnerState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,23 +109,28 @@ async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
 async def action_set_default_der_control(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
-    # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
-    active_site = await get_active_site(session)
-    if active_site is None:
-        raise FailedActionError("Unable to identify an active testing EndDevice / site.")
 
+    derp_id: int | None = resolved_parameters.get("derp_id", None)
     import_limit_watts = resolved_parameters.get("opModImpLimW", None)
     export_limit_watts = resolved_parameters.get("opModExpLimW", None)
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
     setGradW = resolved_parameters.get("setGradW", None)
     cancelled = resolved_parameters.get("cancelled", False)
-
     default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
+    # if the test doesn't specifically call out a DERProgram - we select the first one (lowest primacy)
+    if derp_id is None:
+        all_site_control_groups = await select_site_control_groups(
+            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None
+        )
+        if len(all_site_control_groups) == 0:
+            raise Exception("There are no configured DERPrograms - unable to set the DefaultDERControl")
+        derp_id = all_site_control_groups[0].site_control_group_id
+
     await envoy_client.post_site_control_default(
-        active_site.site_id,
-        ControlDefaultRequest(
+        derp_id,
+        SiteControlGroupDefaultRequest(
             import_limit_watts=(
                 UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else default_val
             ),

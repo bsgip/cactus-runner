@@ -8,10 +8,14 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions.client import ACTION_PARAMETER_SCHEMA, Action, Event
-from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
+from envoy.server.model.doe import (
+    DynamicOperatingEnvelope,
+    SiteControlGroup,
+    SiteControlGroupDefault,
+)
 from envoy.server.model.server import RuntimeServerConfig
-from envoy.server.model.site import DefaultSiteControl, Site
-from sqlalchemy import select
+from envoy.server.model.site import Site
+from sqlalchemy import func, select
 
 from cactus_runner.app.action import (
     UnknownActionError,
@@ -260,12 +264,13 @@ async def test_apply_actions(mocker, listener: Listener):
 
 @pytest.mark.parametrize("cancelled", [True, False, None])
 @pytest.mark.anyio
-async def test_action_set_default_der_control(pg_base_config, envoy_admin_client, cancelled: bool | None):
+async def test_action_set_default_der_control_with_derp_id(pg_base_config, envoy_admin_client, cancelled: bool | None):
     """Success tests"""
     # Arrange
-    SITE_ID = 2
+    derp_id = 123
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1, site_id=SITE_ID))
+        session.add(generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=derp_id + 1))
+        session.add(generate_class_instance(SiteControlGroup, seed=202, site_control_group_id=derp_id))
         await session.commit()
     resolved_params = {
         "opModImpLimW": 10,
@@ -273,6 +278,7 @@ async def test_action_set_default_der_control(pg_base_config, envoy_admin_client
         "opModGenLimW": 12,
         "opModLoadLimW": 13,
         "setGradW": 14,
+        "derp_id": derp_id,
     }
     if cancelled is not None:
         resolved_params["cancelled"] = cancelled
@@ -285,8 +291,62 @@ async def test_action_set_default_der_control(pg_base_config, envoy_admin_client
 
     # Assert
     async with generate_async_session(pg_base_config) as session:
-        result = await session.execute(select(DefaultSiteControl).where(DefaultSiteControl.site_id == SITE_ID))
+        result = await session.execute(
+            select(SiteControlGroupDefault).where(SiteControlGroupDefault.site_control_group_id == derp_id)
+        )
         saved_result = result.scalar_one()
+        assert saved_result.import_limit_active_watts == 10
+        assert saved_result.export_limit_active_watts == 11
+        assert saved_result.generation_limit_active_watts == 12
+        assert saved_result.load_limit_active_watts == 13
+        assert saved_result.ramp_rate_percent_per_second == 14
+
+
+@pytest.mark.parametrize(
+    "site_control_groups, expected_scg_id",
+    [
+        ([generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=1, primacy=11)], 1),
+        (
+            [
+                generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=1, primacy=11),
+                generate_class_instance(SiteControlGroup, seed=202, site_control_group_id=2, primacy=5),
+                generate_class_instance(SiteControlGroup, seed=303, site_control_group_id=3, primacy=22),
+            ],
+            2,
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_action_set_default_der_control_missing_derp_id(
+    pg_base_config, envoy_admin_client, site_control_groups: list[SiteControlGroup], expected_scg_id: int
+):
+    """Success tests when the derp_id is missing (and the DB has to be consulted for a matching DERProgram)"""
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        if site_control_groups:
+            session.add_all(site_control_groups)
+        await session.commit()
+    resolved_params = {
+        "opModImpLimW": 10,
+        "opModExpLimW": 11,
+        "opModGenLimW": 12,
+        "opModLoadLimW": 13,
+        "setGradW": 14,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_set_default_der_control(
+            session=session, envoy_client=envoy_admin_client, resolved_parameters=resolved_params
+        )
+
+    # Assert
+    async with generate_async_session(pg_base_config) as session:
+        assert (await session.execute(select(func.count()).select_from(SiteControlGroupDefault))).scalar() == 1
+        updated_rec = await session.execute(
+            select(SiteControlGroupDefault).where(SiteControlGroupDefault.site_control_group_id == expected_scg_id)
+        )
+        saved_result = updated_rec.scalar_one()
         assert saved_result.import_limit_active_watts == 10
         assert saved_result.export_limit_active_watts == 11
         assert saved_result.generation_limit_active_watts == 12
@@ -298,9 +358,9 @@ async def test_action_set_default_der_control(pg_base_config, envoy_admin_client
 async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_admin_client):
     """Success tests when cancelling"""
     # Arrange
-    SITE_ID = 2
+    derp_id = 456
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1, site_id=SITE_ID))
+        session.add(generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=derp_id))
         await session.commit()
     resolved_params = {
         "cancelled": True,
@@ -313,7 +373,9 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
 
     # Assert
     async with generate_async_session(pg_base_config) as session:
-        result = await session.execute(select(DefaultSiteControl).where(DefaultSiteControl.site_id == SITE_ID))
+        result = await session.execute(
+            select(SiteControlGroupDefault).where(SiteControlGroupDefault.site_control_group_id == derp_id)
+        )
         saved_result = result.scalar_one()
         assert saved_result.import_limit_active_watts is None
         assert saved_result.export_limit_active_watts is None

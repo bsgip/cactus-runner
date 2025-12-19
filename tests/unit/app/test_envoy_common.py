@@ -8,10 +8,14 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
 )
-from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
-from envoy.server.model.site import DefaultSiteControl, Site, SiteDER, SiteDERSetting
+from envoy.server.model.doe import (
+    DynamicOperatingEnvelope,
+    SiteControlGroup,
+    SiteControlGroupDefault,
+)
+from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -25,8 +29,8 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_csip_aus_site_reading_types,
     get_reading_counts_grouped_by_reading_type,
+    get_site_control_group_defaults_with_archive,
     get_site_controls_active_archived,
-    get_site_defaults_with_archive,
     get_site_readings,
 )
 
@@ -438,40 +442,58 @@ async def test_get_reading_counts_grouped_by_reading_type(pg_base_config):
 
 
 @pytest.mark.anyio
-async def test_get_site_defaults_with_archive_empty_db(pg_empty_config):
+async def test_get_site_control_group_defaults_with_archive_empty_db(pg_empty_config):
     async with generate_async_session(pg_empty_config) as session:
-        result = await get_site_defaults_with_archive(session)
+        result = await get_site_control_group_defaults_with_archive(session)
         assert isinstance(result, list)
         assert len(result) == 0
 
 
 @pytest.mark.anyio
-async def test_get_site_defaults_with_archive(pg_base_config):
-    """Really simple test - can get_site_defaults_with_archive fetch all active/archive site defaults"""
+async def test_get_site_control_group_defaults_with_archive(pg_base_config):
+    """Really simple test - can get_site_control_group_defaults_with_archive fetch all active/archive site defaults"""
     # Arrange
     async with generate_async_session(pg_base_config) as session:
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
-        session.add(site1)
+        scg1 = generate_class_instance(SiteControlGroup, seed=101)
+        scg2 = generate_class_instance(SiteControlGroup, seed=202)
+        session.add(scg1)
+        session.add(scg2)
 
-        session.add(generate_class_instance(DefaultSiteControl, seed=101, site=site1, ramp_rate_percent_per_second=1))
-        session.add(generate_class_instance(DefaultSiteControl, seed=202, site=site1, ramp_rate_percent_per_second=2))
         session.add(
             generate_class_instance(
-                ArchiveDefaultSiteControl, seed=303, site_id=1, optional_is_none=True, ramp_rate_percent_per_second=3
+                SiteControlGroupDefault, seed=101, site_control_group=scg1, ramp_rate_percent_per_second=1
             )
         )
         session.add(
-            generate_class_instance(ArchiveDefaultSiteControl, seed=404, site_id=1, ramp_rate_percent_per_second=4)
+            generate_class_instance(
+                SiteControlGroupDefault, seed=202, site_control_group=scg2, ramp_rate_percent_per_second=2
+            )
         )
+
         session.add(
-            generate_class_instance(ArchiveDefaultSiteControl, seed=505, site_id=2, ramp_rate_percent_per_second=5)
+            generate_class_instance(
+                ArchiveSiteControlGroupDefault,
+                seed=303,
+                optional_is_none=True,
+                site_control_group_id=scg1.site_control_group_id,
+                ramp_rate_percent_per_second=3,
+            )
+        )
+
+        session.add(
+            generate_class_instance(
+                ArchiveSiteControlGroupDefault,
+                seed=404,
+                site_control_group_id=scg1.site_control_group_id,
+                ramp_rate_percent_per_second=4,
+            )
         )
 
         await session.commit()
 
     # Act / Assert
     async with generate_async_session(pg_base_config) as session:
-        result = await get_site_defaults_with_archive(session)
+        result = await get_site_control_group_defaults_with_archive(session)
         assert isinstance(result, list)
         assert len(result) == 4
 
@@ -479,27 +501,7 @@ async def test_get_site_defaults_with_archive(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, DefaultSiteControl) and sc.ramp_rate_percent_per_second == 1, result
-                    )
-                )
-            )
-            == 1
-        )
-        assert (
-            len(
-                list(
-                    filter(
-                        lambda sc: isinstance(sc, DefaultSiteControl) and sc.ramp_rate_percent_per_second == 2, result
-                    )
-                )
-            )
-            == 1
-        )
-        assert (
-            len(
-                list(
-                    filter(
-                        lambda sc: isinstance(sc, ArchiveDefaultSiteControl) and sc.ramp_rate_percent_per_second == 3,
+                        lambda sc: isinstance(sc, SiteControlGroupDefault) and sc.ramp_rate_percent_per_second == 1,
                         result,
                     )
                 )
@@ -510,7 +512,31 @@ async def test_get_site_defaults_with_archive(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, ArchiveDefaultSiteControl) and sc.ramp_rate_percent_per_second == 4,
+                        lambda sc: isinstance(sc, SiteControlGroupDefault) and sc.ramp_rate_percent_per_second == 2,
+                        result,
+                    )
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda sc: isinstance(sc, ArchiveSiteControlGroupDefault)
+                        and sc.ramp_rate_percent_per_second == 3,
+                        result,
+                    )
+                )
+            )
+            == 1
+        )
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda sc: isinstance(sc, ArchiveSiteControlGroupDefault)
+                        and sc.ramp_rate_percent_per_second == 4,
                         result,
                     )
                 )

@@ -141,7 +141,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     )
 
 
-async def initialise_handler(request: web.Request):  # noqa: C901
+async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C901
     """Handler for initialise requests.
 
         Sent by the client to initialise a test procedure.
@@ -349,7 +349,7 @@ async def initialise_handler(request: web.Request):  # noqa: C901
     return web.Response(status=http.HTTPStatus.CREATED, content_type="application/json", text=body.to_json())
 
 
-async def start_handler(request: web.Request):
+async def start_handler(request: web.Request) -> web.Response:
     """Handler for start requests.
 
     This handler enables the first listener in the test procedure.
@@ -367,7 +367,7 @@ async def start_handler(request: web.Request):
     return web.Response(status=result.status, text=result.content, content_type=result.content_type)
 
 
-async def finalize_handler(request):
+async def finalize_handler(request: web.Request) -> web.Response:
     """Handler for finalize requests.
 
     Finalises the test procedure and returns test artifacts in response as a zipped archive.
@@ -429,7 +429,7 @@ async def finalize_handler(request):
         )
 
 
-async def health_handler(request):
+async def health_handler(request: web.Request) -> web.Response:
     """Handler for health requests. Serves a HTTP 200 if the Runner is fully operational - HTTP 503 otherwise
 
     Returns:
@@ -441,7 +441,7 @@ async def health_handler(request):
         return web.Response(status=http.HTTPStatus.SERVICE_UNAVAILABLE)
 
 
-async def status_handler(request):
+async def status_handler(request: web.Request) -> web.Response:
     """Handler for status requests; returns the status of runner.
 
     Args:
@@ -478,7 +478,7 @@ async def status_handler(request):
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
 
 
-async def get_request_raw_data_handler(request: web.Request):
+async def get_request_raw_data_handler(request: web.Request) -> web.Response:
     """
     GET /request/{request_id}
 
@@ -521,7 +521,7 @@ async def list_request_ids_handler(request: web.Request) -> web.Response:
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=request_list.to_json())
 
 
-async def proxied_request_handler(request: web.Request):
+async def proxied_request_handler(request: web.Request) -> web.Response:
     """Handler for requests that should be forwarded to the utility server.
 
     The handler also logs all requests to `request.app[APPKEY_RUNNER_STATE].request_history`, tagging
