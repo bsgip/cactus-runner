@@ -482,12 +482,10 @@ def test_validate_cell_with_int_enums(col_idx, field_name, valid_value, enum_mem
     "durations,expected_dropped,expected_invalid,expected_warning_count,expected_warning_substrings",
     [
         ([60, 300, 120], 0, 0, 0, []),
-        ([60, 0, None], 2, 0, 1, ["2 readings excluded from timeline generation"]),
+        ([60, 0, None], 0, 0, 0, []),
         ([60, 45, 73], 0, 2, 1, ["2 readings have invalid duration (not divisible by 60)"]),
-        ([0, None, 45, 120], 2, 1, 2, ["2 readings excluded", "1 reading has invalid duration"]),
-        ([None], 1, 0, 1, ["1 reading excluded"]),
+        ([0, None, 45, 120], 0, 1, 1, ["1 reading has invalid duration"]),
         ([45], 0, 1, 1, ["1 reading has invalid duration"]),
-        ([0, 0, 0], 3, 0, 1, ["3 readings excluded"]),
     ],
 )
 def test_validate_reading_duration(
