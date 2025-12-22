@@ -316,3 +316,10 @@ class RunRequest(JSONWizard):
     run_group: RunGroup
     test_config: TestConfig
     test_user: TestUser
+
+
+@dataclass
+class ReportingData(JSONWizard):
+    created_at: datetime
+    runner_state: RunnerState
+    check_results: dict[str, CheckResult]

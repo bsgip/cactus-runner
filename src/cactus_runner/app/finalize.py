@@ -231,7 +231,16 @@ async def generate_json_reporting_data(
     timeline,
     errors,
 ) -> str | None:
-    return None
+    created_at = datetime.now(timezone.utc)
+    try:
+        reporting_data = ReportingData(created_at=created_at, runner_state=runner_state, check_results=check_results)
+        json_reporting_data = reporting_data.to_json()
+    except Exception as exc:
+        logger.error("Error generating reporting data. Omitting reporting data from final zip.", exc_info=exc)
+        errors.append(f"Error generating reporting data: {exc}")
+        json_reporting_data = None
+
+    return json_reporting_data
 
 
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
@@ -287,11 +296,11 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     # Add a "virtual" check covering XSD errors in incoming requests
     xsd_error_counts = [len(rh.body_xml_errors) for rh in runner_state.request_history if rh.body_xml_errors]
     if xsd_error_counts:
-        xsd_check = check.CheckResult(
+        xsd_check = CheckResult(
             False, f"Detected {sum(xsd_error_counts)} xsd errors over {len(xsd_error_counts)} request(s)."
         )
     else:
-        xsd_check = check.CheckResult(True, "No XSD errors detected in any requests.")
+        xsd_check = CheckResult(True, "No XSD errors detected in any requests.")
     check_results["all-requests-xsd-valid"] = xsd_check
 
     # Figure out the testing timeline
