@@ -6,6 +6,7 @@ from urllib.parse import quote
 import pytest
 from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from assertical.fixtures.postgres import generate_async_session
+from cactus_schema.runner import RunnerStatus, RunRequest, StepStatus
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
@@ -13,7 +14,6 @@ from pytest_aiohttp.plugin import TestClient
 from sqlalchemy import func, select
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import assert_success_response
 

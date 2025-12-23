@@ -4,13 +4,13 @@ import pytest
 from aiohttp import ClientSession, ClientTimeout
 from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
+from cactus_schema.runner import RunnerStatus, RunRequest
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RunnerStatus, RunRequest
 from tests.integration.certificate1 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
 )

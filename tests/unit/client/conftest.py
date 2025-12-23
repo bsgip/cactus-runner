@@ -2,8 +2,13 @@ import http
 from datetime import datetime, timezone
 
 import pytest
-
-from cactus_runner.models import ClientInteraction, ClientInteractionType, RequestEntry, RunnerStatus, StepInfo
+from cactus_schema.runner import (
+    ClientInteraction,
+    ClientInteractionType,
+    RequestEntry,
+    RunnerStatus,
+    StepInfo,
+)
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))

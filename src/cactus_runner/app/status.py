@@ -1,8 +1,23 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from cactus_schema.runner import (
+    CriteriaEntry,
+    DataStreamPoint,
+    EndDeviceMetadata,
+    PreconditionCheckEntry,
+    RequestEntry,
+    RunnerStatus,
+)
+from cactus_schema.runner import StepInfo as PublicStepInfo
+from cactus_schema.runner import (
+    StepStatus,
+    TimelineDataStreamEntry,
+    TimelineStatus,
+)
 from envoy.server.model.site import Site
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cactus_runner.app.check import run_check
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
@@ -11,16 +26,7 @@ from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
-    CriteriaEntry,
-    DataStreamPoint,
-    EndDeviceMetadata,
-    PreconditionCheckEntry,
-    RequestEntry,
-    RunnerStatus,
     StepInfo,
-    StepStatus,
-    TimelineDataStreamEntry,
-    TimelineStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,7 +137,10 @@ async def get_active_runner_status(
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
 
-    step_status = active_test_procedure.step_status
+    step_status = {
+        step_name: PublicStepInfo(step_status.started_at, step_status.completed_at)
+        for step_name, step_status in active_test_procedure.step_status.items()
+    }
 
     # If there is a set max w available - return it - otherwise client likely has registered anything yet
     # This is used by both timeline and EndDeviceMetadata classes
@@ -204,7 +213,7 @@ async def get_active_runner_status(
         criteria=await get_criteria_summary(session, active_test_procedure),
         precondition_checks=await get_precondition_checks_summary(session, active_test_procedure),
         instructions=await get_current_instructions(active_test_procedure),
-        status_summary=get_runner_status_summary(step_status=step_status),
+        status_summary=get_runner_status_summary(step_status=active_test_procedure.step_status),
         step_status=step_status,
         request_history=request_history,
         timeline=timeline,

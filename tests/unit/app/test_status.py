@@ -5,6 +5,16 @@ import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from cactus_schema.runner import (
+    ClientInteraction,
+    CriteriaEntry,
+    DataStreamPoint,
+    RunnerStatus,
+)
+from cactus_schema.runner import StepInfo as PublicStepInfo
+from cactus_schema.runner import (
+    TimelineDataStreamEntry,
+)
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Check
 from freezegun import freeze_time
@@ -12,15 +22,7 @@ from freezegun import freeze_time
 from cactus_runner.app import status
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
-from cactus_runner.models import (
-    ActiveTestProcedure,
-    ClientInteraction,
-    CriteriaEntry,
-    DataStreamPoint,
-    RunnerStatus,
-    StepInfo,
-    TimelineDataStreamEntry,
-)
+from cactus_runner.models import ActiveTestProcedure, StepInfo
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
@@ -76,7 +78,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         mock_get_timeline_streams.return_value = timeline_streams_result
 
     expected_test_name = "TEST_NAME"
-    expected_step_status = {"step_name": StepInfo(started_at=datetime.now(tz=timezone.utc))}
+    expected_step_status = {"step_name": PublicStepInfo(started_at=datetime.now(tz=timezone.utc))}
     expected_status_summary = "0/1 steps complete."
     expected_csip_aus_version = CSIPAusVersion.RELEASE_1_2
     expected_started_at = BASIS - timedelta(seconds=123, microseconds=45)
@@ -91,7 +93,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         name=expected_test_name,
-        step_status=expected_step_status,
+        step_status={"step_name": StepInfo(started_at=datetime.now(tz=timezone.utc))},
         csip_aus_version=expected_csip_aus_version,
         definition=mock_definition,
         listeners=[],
@@ -141,9 +143,8 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     get_runner_status_summary_spy = mocker.spy(status, "get_runner_status_summary")
 
     mock_session = create_mock_session()
-    expected_step_status = {"step_name": StepInfo()}
     active_test_procedure = Mock()
-    active_test_procedure.step_status = expected_step_status
+    active_test_procedure.step_status = {"step_name": StepInfo()}
     active_test_procedure.listeners = []
     active_test_procedure.definition = Mock()
     active_test_procedure.definition.criteria = None
@@ -158,7 +159,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
         request_history=request_history,
         last_client_interaction=last_client_interaction,
     )
-    get_runner_status_summary_spy.assert_called_once_with(step_status=expected_step_status)
+    get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
     assert_mock_session(mock_session)
 
 

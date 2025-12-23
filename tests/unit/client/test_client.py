@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 from aiohttp import ConnectionTimeoutError
-
-from cactus_runner.client import RunnerClient, RunnerClientException
-from cactus_runner.models import (
+from cactus_schema.runner import (
     ClientInteraction,
     InitResponseBody,
     RunnerStatus,
     StartResponseBody,
 )
+
+from cactus_runner.client import RunnerClient, RunnerClientException
 
 
 @pytest.mark.asyncio

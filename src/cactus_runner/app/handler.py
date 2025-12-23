@@ -5,6 +5,16 @@ from datetime import datetime, timezone
 from typing import cast
 
 from aiohttp import ContentTypeError, web
+from cactus_schema.runner import (
+    ClientInteraction,
+    ClientInteractionType,
+    InitResponseBody,
+    RequestData,
+    RequestEntry,
+    RequestList,
+    RunRequest,
+    StartResponseBody,
+)
 from cactus_test_definitions.client import Action, TestProcedure
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
@@ -33,16 +43,8 @@ from cactus_runner.app.shared import (
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
-    ClientInteraction,
-    ClientInteractionType,
-    InitResponseBody,
     Listener,
-    RequestData,
-    RequestEntry,
-    RequestList,
     RunnerState,
-    RunRequest,
-    StartResponseBody,
     StepInfo,
 )
 

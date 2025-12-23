@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 import pytest
 from aiohttp import ClientResponse, ClientSession, ClientTimeout
+from cactus_schema.runner import RunnerStatus, RunRequest, StepStatus
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from envoy_schema.server.schema.sep2.der import ConnectStatusTypeValue, DERStatus
@@ -12,7 +13,6 @@ from envoy_schema.server.schema.sep2.end_device import EndDeviceRequest
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())

@@ -1,9 +1,7 @@
 import logging
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
-from cactus_test_definitions.client import TestProcedureId
-
-from cactus_runner.models import (
+from cactus_schema.runner import (
     ClientInteraction,
     InitResponseBody,
     RequestData,
@@ -11,7 +9,9 @@ from cactus_runner.models import (
     RunnerStatus,
     RunRequest,
     StartResponseBody,
+    uri,
 )
+from cactus_test_definitions.client import TestProcedureId
 
 __all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProcedureId", "RunnerClient"]
 
@@ -54,7 +54,7 @@ class RunnerClient:
     @staticmethod
     async def initialise(session: ClientSession, run_request: RunRequest) -> InitResponseBody:
         try:
-            async with session.post(url="/initialise", data=run_request.to_json()) as response:
+            async with session.post(url=uri.Initialise, data=run_request.to_json()) as response:
                 await ensure_success_response(response)
                 response_json = await response.text()
                 init_response_body = InitResponseBody.from_json(response_json)
@@ -70,7 +70,7 @@ class RunnerClient:
     @staticmethod
     async def start(session: ClientSession) -> StartResponseBody:
         try:
-            async with session.post(url="/start") as response:
+            async with session.post(url=uri.Start) as response:
                 await ensure_success_response(response)
                 json = await response.text()
                 start_response_body = StartResponseBody.from_json(json)
@@ -86,7 +86,7 @@ class RunnerClient:
     @staticmethod
     async def finalize(session: ClientSession) -> bytes:
         try:
-            async with session.post(url="/finalize") as response:
+            async with session.post(url=uri.Finalize) as response:
                 await ensure_success_response(response)
                 return await response.read()
         except ConnectionTimeoutError as e:
@@ -96,7 +96,7 @@ class RunnerClient:
     @staticmethod
     async def status(session: ClientSession) -> RunnerStatus:
         try:
-            async with session.get(url="/status") as response:
+            async with session.get(url=uri.Status) as response:
                 await ensure_success_response(response)
                 json = await response.text()
                 runner_status = RunnerStatus.from_json(json)
@@ -117,7 +117,7 @@ class RunnerClient:
     @staticmethod
     async def health(session: ClientSession) -> bool:
         try:
-            async with session.get(url="/health") as response:
+            async with session.get(url=uri.Health) as response:
                 await ensure_success_response(response)
                 return True
         except Exception as e:
@@ -127,7 +127,7 @@ class RunnerClient:
     @staticmethod
     async def get_request(session: ClientSession, request_id: int) -> RequestData:
         try:
-            async with session.get(url=f"/request/{request_id}") as response:
+            async with session.get(url=uri.Request.format(request_id=request_id)) as response:
                 await ensure_success_response(response)
                 json = await response.text()
                 request_data = RequestData.from_json(json)
@@ -143,7 +143,7 @@ class RunnerClient:
     @staticmethod
     async def list_requests(session: ClientSession) -> RequestList:
         try:
-            async with session.get(url="/requests") as response:
+            async with session.get(url=uri.RequestList) as response:
                 await ensure_success_response(response)
                 json = await response.text()
                 request_list = RequestList.from_json(json)

@@ -6,6 +6,20 @@ from aiohttp import ContentTypeError
 from aiohttp.web import Response
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
+from cactus_schema.runner import (
+    ClientInteraction,
+    ClientInteractionType,
+    InitResponseBody,
+    RequestEntry,
+    RunGroup,
+    RunnerStatus,
+    RunRequest,
+    StepStatus,
+    TestCertificates,
+    TestConfig,
+    TestDefinition,
+    TestUser,
+)
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from cactus_test_definitions.client.test_procedures import get_yaml_contents
@@ -15,20 +29,8 @@ from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
-    ClientInteraction,
-    ClientInteractionType,
-    InitResponseBody,
     Listener,
-    RequestEntry,
-    RunGroup,
     RunnerState,
-    RunnerStatus,
-    RunRequest,
-    StepStatus,
-    TestCertificates,
-    TestConfig,
-    TestDefinition,
-    TestUser,
 )
 from tests.integration.certificate1 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,

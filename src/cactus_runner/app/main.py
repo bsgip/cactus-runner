@@ -11,6 +11,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import web
+from cactus_schema.runner import uri
 
 from cactus_runner import __version__
 from cactus_runner.app import event, handler
@@ -134,19 +135,19 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[log_error_middleware])
 
     # Add routes for Test Runner
-    mount = MOUNT_POINT.rstrip("/") + "/" if MOUNT_POINT else "/"  # Ensure MOUNT_POINT ends with / for concatenation
-    app.router.add_route("GET", mount + "health", handler.health_handler)
-    app.router.add_route("GET", mount + "status", handler.status_handler)
-    app.router.add_route("POST", mount + "initialise", handler.initialise_handler)
-    app.router.add_route("POST", mount + "start", handler.start_handler)
-    app.router.add_route("POST", mount + "finalize", handler.finalize_handler)
+    mount = MOUNT_POINT.rstrip("/") if MOUNT_POINT else ""  # Ensure MOUNT_POINT ends with / for concatenation
+    app.router.add_route("GET", mount + uri.Health, handler.health_handler)
+    app.router.add_route("GET", mount + uri.Status, handler.status_handler)
+    app.router.add_route("POST", mount + uri.Initialise, handler.initialise_handler)
+    app.router.add_route("POST", mount + uri.Start, handler.start_handler)
+    app.router.add_route("POST", mount + uri.Finalize, handler.finalize_handler)
 
     # For retrieving request logs
-    app.router.add_route("GET", mount + "request/{request_id}", handler.get_request_raw_data_handler)
-    app.router.add_route("GET", mount + "requests", handler.list_request_ids_handler)
+    app.router.add_route("GET", mount + uri.Request, handler.get_request_raw_data_handler)
+    app.router.add_route("GET", mount + uri.RequestList, handler.list_request_ids_handler)
 
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
-    app.router.add_route("*", mount + "{proxyPath:.*}", handler.proxied_request_handler)
+    app.router.add_route("*", mount + "/{proxyPath:.*}", handler.proxied_request_handler)
 
     # Set up shared state
     app[APPKEY_INITIALISED_CERTS] = InitialisedCertificates()

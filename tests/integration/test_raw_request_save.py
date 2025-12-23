@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 from aiohttp import ClientSession, ClientTimeout
+from cactus_schema.runner import RequestData, RequestList, RunRequest
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from fastapi.testclient import TestClient
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RequestData, RequestList, RunRequest
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import URI_ENCODED_CERT, assert_success_response
 
