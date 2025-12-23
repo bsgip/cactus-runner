@@ -1276,7 +1276,14 @@ def format_cell_value(value, is_error: bool) -> str | Paragraph:
     return value
 
 
-def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list[str]]:
+def allow_zero_width_duration(srt: SiteReadingType) -> bool:
+    """Certain SiteReadingTypes (eg BESS types) expect zero duration readings. Most other reading types do NOT
+
+    Returns True if the supplied SiteReadingType is permitted to have zero duration readings. False otherwise"""
+    return srt.uom == UomType.REAL_ENERGY_WATT_HOURS  # This is our shorthand for identifying BESS readings
+
+
+def validate_reading_duration(readings_df: pd.DataFrame, allow_zero_duration: bool) -> tuple[int, int, list[str]]:
     """
     Validate reading durations and return warning messages.
     Returns tuple: (dropped_count, invalid_duration_count, warning_messages)
@@ -1290,6 +1297,15 @@ def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list
     # For v1.3-beta/storage, duration 0 or null values are acceptable for storage readings.
     durations = readings_df["time_period_seconds"]
     null_or_zero = durations.isna() | (durations == 0)
+    dropped_count = 0
+
+    if not allow_zero_duration:
+        dropped_count = int(null_or_zero.sum())
+        if dropped_count > 0:
+            warnings.append(
+                f"{dropped_count} reading{'s' if dropped_count != 1 else ''}"
+                " excluded from timeline generation due to null or zero duration values"
+            )
 
     # Check remaining readings are divisible by 60s
     valid_durations = durations[~null_or_zero]
@@ -1305,7 +1321,7 @@ def validate_reading_duration(readings_df: pd.DataFrame) -> tuple[int, int, list
                 " invalid duration (not divisible by 60). This may indicate a configuration issue."
             )
 
-    return 0, invalid_count, warnings
+    return dropped_count, invalid_count, warnings
 
 
 def generate_reading_count_table(
@@ -1347,7 +1363,9 @@ def generate_reading_count_table(
 
         # Validate duration if readings DataFrame is available
         if readings and reading_type in readings:
-            dropped_count, invalid_count, duration_warnings = validate_reading_duration(readings[reading_type])
+            dropped_count, invalid_count, duration_warnings = validate_reading_duration(
+                readings[reading_type], allow_zero_width_duration(reading_type)
+            )
 
             if duration_warnings:
                 current_row_errors.extend(duration_warnings)
