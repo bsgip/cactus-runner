@@ -8,9 +8,7 @@ from cactus_schema.runner import (
     PreconditionCheckEntry,
     RequestEntry,
     RunnerStatus,
-)
-from cactus_schema.runner import StepInfo as PublicStepInfo
-from cactus_schema.runner import (
+    StepEventStatus,
     StepStatus,
     TimelineDataStreamEntry,
     TimelineStatus,
@@ -129,6 +127,38 @@ async def get_timeline_data_streams(
     ]
 
 
+def get_event_status(
+    now: datetime, step_name: str, step_info: StepInfo, active_test_procedure: ActiveTestProcedure
+) -> str | None:
+    """Generates a short, human readable status message for an active step (or None if the test isn't active)"""
+    if step_info.get_step_status() != StepStatus.ACTIVE:
+        return None
+
+    for listener in active_test_procedure.listeners:
+        if listener.step != step_name:
+            continue
+
+        event = listener.event
+        if event.type == "wait":
+            # Figure out how many more seconds are we waiting for
+            duration_seconds = event.parameters.get("duration_seconds", None)
+            if duration_seconds is None or step_info.started_at is None:
+                return "Waiting ???s."
+
+            finish_time = step_info.started_at + timedelta(seconds=duration_seconds)
+            if now >= finish_time:
+                return "Triggering..."
+            wait_time_seconds = int((now - finish_time).total_seconds())
+            return f"Waiting {wait_time_seconds}s"
+        else:
+            # We have a GET / PUT / DELETE etc event
+            method = event.type.split("-")[0]
+            endpoint = event.parameters.get("endpoint", "???")
+            return f"{method} {endpoint}"
+
+    return None
+
+
 async def get_active_runner_status(
     session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
@@ -136,11 +166,12 @@ async def get_active_runner_status(
     last_client_interaction: ClientInteraction,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
+    now = datetime.now(timezone.utc)
 
-    step_status = {
-        step_name: PublicStepInfo(step_status.started_at, step_status.completed_at)
-        for step_name, step_status in active_test_procedure.step_status.items()
-    }
+    step_status: dict[str, StepEventStatus] = {}
+    for step_name, step_info in active_test_procedure.step_status.items():
+        event_status = get_event_status(now, step_name, step_info, active_test_procedure)
+        step_status[step_name] = StepEventStatus(step_info.started_at, step_info.completed_at, event_status)
 
     # If there is a set max w available - return it - otherwise client likely has registered anything yet
     # This is used by both timeline and EndDeviceMetadata classes
@@ -155,7 +186,6 @@ async def get_active_runner_status(
         basis = active_test_procedure.started_at
         if basis is not None:
             interval_seconds = 20
-            now = datetime.now(timezone.utc)
             end = now + timedelta(seconds=120)
 
             # Optionally crop to reduce status size for UI

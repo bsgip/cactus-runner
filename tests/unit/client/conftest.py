@@ -7,11 +7,13 @@ from cactus_schema.runner import (
     ClientInteractionType,
     RequestEntry,
     RunnerStatus,
-    StepInfo,
+    StepEventStatus,
 )
 
-PENDING_STEP = StepInfo()
-RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
+PENDING_STEP = StepEventStatus(started_at=None, completed_at=None, event_status=None)
+RESOLVED_STEP = StepEventStatus(
+    started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc), event_status=None
+)
 
 
 @pytest.fixture

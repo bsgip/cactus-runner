@@ -10,9 +10,7 @@ from cactus_schema.runner import (
     CriteriaEntry,
     DataStreamPoint,
     RunnerStatus,
-)
-from cactus_schema.runner import StepInfo as PublicStepInfo
-from cactus_schema.runner import (
+    StepEventStatus,
     TimelineDataStreamEntry,
 )
 from cactus_test_definitions import CSIPAusVersion
@@ -78,7 +76,9 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         mock_get_timeline_streams.return_value = timeline_streams_result
 
     expected_test_name = "TEST_NAME"
-    expected_step_status = {"step_name": PublicStepInfo(started_at=datetime.now(tz=timezone.utc))}
+    expected_step_status = {
+        "step_name": StepEventStatus(started_at=datetime.now(tz=timezone.utc), completed_at=None, event_status=None)
+    }
     expected_status_summary = "0/1 steps complete."
     expected_csip_aus_version = CSIPAusVersion.RELEASE_1_2
     expected_started_at = BASIS - timedelta(seconds=123, microseconds=45)
