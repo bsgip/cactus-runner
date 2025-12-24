@@ -143,13 +143,13 @@ def get_event_status(
             # Figure out how many more seconds are we waiting for
             duration_seconds = event.parameters.get("duration_seconds", None)
             if duration_seconds is None or step_info.started_at is None:
-                return "Waiting ???s."
+                return "Waiting for ???s."
 
             finish_time = step_info.started_at + timedelta(seconds=duration_seconds)
             if now >= finish_time:
                 return "Triggering..."
-            wait_time_seconds = int((now - finish_time).total_seconds())
-            return f"Waiting {wait_time_seconds}s"
+            wait_time_seconds = int((finish_time - now).total_seconds())
+            return f"Waiting for {wait_time_seconds}s"
         else:
             # We have a GET / PUT / DELETE etc event
             method = event.type.split("-")[0]
