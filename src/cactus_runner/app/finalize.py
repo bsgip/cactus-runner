@@ -7,8 +7,11 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import cast
+from typing import Sequence, cast
 
+import pandas as pd
+from envoy.server.model.site import Site
+from envoy.server.model.site_reading import SiteReadingType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import reporting, timeline
@@ -223,17 +226,22 @@ async def generate_pdf(
 
 
 async def generate_json_reporting_data(
-    runner_state,
-    check_results,
-    readings,
-    reading_counts,
-    sites,
-    timeline,
+    runner_state: RunnerState,
+    check_results: dict[str, CheckResult],
+    readings: dict[SiteReadingType, pd.DataFrame],
+    reading_counts: dict[SiteReadingType, int],
+    sites: Sequence[Site],
+    timeline: timeline.Timeline,
     errors,
 ) -> str | None:
     created_at = datetime.now(timezone.utc)
     try:
-        reporting_data = ReportingData(created_at=created_at, runner_state=runner_state, check_results=check_results)
+        reporting_data = ReportingData(
+            created_at=created_at,
+            runner_state=runner_state,
+            check_results=check_results,
+            reading_counts=reading_counts,
+        )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
         logger.error("Error generating reporting data. Omitting reporting data from final zip.", exc_info=exc)

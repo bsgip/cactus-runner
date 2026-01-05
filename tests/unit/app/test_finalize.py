@@ -3,12 +3,18 @@ import random
 import string
 import tempfile
 import zipfile
+from datetime import datetime, timezone
+from decimal import Decimal
 
+import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
+from envoy.server.model.site_reading import SiteReadingType
 
 from cactus_runner.app import finalize
-from cactus_runner.models import CheckResult, RunnerState
+from cactus_runner.models import CheckResult, ReportingData, RunnerState
+
+DT_NOW = datetime.now(timezone.utc)
 
 
 @pytest.mark.parametrize(
@@ -178,8 +184,18 @@ async def test_generate_json_reporting_data():
             for i in range(num)
         }
 
+    def fake_readings(num=3):
+        sample_df = pd.DataFrame(
+            {
+                "scaled_value": [Decimal(1.0)],
+                "time_period_start": [DT_NOW],
+            }
+        )
+        return {generate_class_instance(SiteReadingType): sample_df for _ in range(num)}
+
     runner_state = RunnerState()
     checks = check_results()
+    # readings = fake_readings()
     readings = None
     reading_counts = None
     sites = None
@@ -187,7 +203,7 @@ async def test_generate_json_reporting_data():
     errors = []
 
     # Act
-    reporting_data = await finalize.generate_json_reporting_data(
+    reporting_data_str = await finalize.generate_json_reporting_data(
         runner_state=runner_state,
         check_results=checks,
         readings=readings,
@@ -197,5 +213,8 @@ async def test_generate_json_reporting_data():
         errors=errors,
     )
 
+    reporting_data = ReportingData.from_json(reporting_data_str)
+
     # Assert
+    print(reporting_data_str)
     print(reporting_data)

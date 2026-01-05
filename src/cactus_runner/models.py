@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from enum import Enum, StrEnum, auto
 from typing import Any
 
+import pandas as pd
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Event, TestProcedure, TestProcedureId
 from dataclass_wizard import JSONWizard
+from envoy.server.model.site_reading import SiteReadingType
 
 
 @dataclass
@@ -323,3 +325,5 @@ class ReportingData(JSONWizard):
     created_at: datetime
     runner_state: RunnerState
     check_results: dict[str, CheckResult]
+    # readings: dict[SiteReadingType, pd.DataFrame]
+    reading_counts: dict[SiteReadingType, int]
