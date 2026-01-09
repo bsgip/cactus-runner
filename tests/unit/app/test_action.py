@@ -904,6 +904,35 @@ async def test_action_register_aggregator_end_device_agg_cert(
             assert site_1.sfdi == expected_sfdi
 
 
+@pytest.mark.asyncio
+async def test_action_reregister_existing_device(pg_base_config):
+    """
+    Test that re-registering an existing end-device doesn't raise an error and should not create a duplicate site."""
+    # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        step_status={},
+        client_certificate_type=ClientCertificateType.DEVICE,
+        finished_zip_data=None,
+        client_aggregator_id=0,
+    )
+    resolved_params = {"nmi": "1234567890"}
+
+    # Act - register the device twice
+    async with generate_async_session(pg_base_config) as session:
+        await action_register_end_device(active_test_procedure, resolved_params, session)
+
+    async with generate_async_session(pg_base_config) as session:
+        # This should not raise an error
+        await action_register_end_device(active_test_procedure, resolved_params, session)
+
+    # Assert - only one site should exist
+    async with generate_async_session(pg_base_config) as session:
+        sites = (await session.execute(select(Site))).scalars().all()
+        assert len(sites) == 1
+        assert sites[0].lfdi == active_test_procedure.client_lfdi.upper()
+
+
 @pytest.mark.parametrize(
     "resolved_params, expected",
     [

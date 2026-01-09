@@ -6,6 +6,7 @@ from typing import Any
 from cactus_test_definitions.client import Action
 from envoy.server.crud.doe import select_site_control_groups
 from envoy.server.model.site import Site
+from sqlalchemy import select
 from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
 )
@@ -304,8 +305,10 @@ async def action_set_comms_rate(
 async def action_register_end_device(
     active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any], session: AsyncSession
 ):
-
-    # This is only really used for out of band registration tests - it just needs to work "once"
+    """
+    Register an end device for the test. Skip if a site with the same lfdi already exists, allowing the action to be
+    re-run in playlist mode where site data is preserved between tests.
+    """
     nmi: str | None = resolved_parameters.get("nmi", None)
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
     aggregator_lfdi: str | None = resolved_parameters.get("aggregator_lfdi", None)
@@ -325,6 +328,13 @@ async def action_register_end_device(
         lfdi = active_test_procedure.client_lfdi
         sfdi = active_test_procedure.client_sfdi
 
+    # Check if site already exists
+    lfdi_upper = lfdi.upper()
+    existing_site = await session.execute(select(Site).where(Site.lfdi == lfdi_upper))
+    if existing_site.scalar_one_or_none() is not None:
+        logger.info(f"Site with lfdi {lfdi_upper} already exists, skipping registration")
+        return
+
     session.add(
         Site(
             nmi=nmi,
@@ -332,7 +342,7 @@ async def action_register_end_device(
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,
-            lfdi=lfdi.upper(),
+            lfdi=lfdi_upper,
             sfdi=sfdi,
             device_category=0,
             registration_pin=registration_pin if registration_pin is not None else 1,

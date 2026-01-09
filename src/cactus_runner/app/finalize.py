@@ -35,6 +35,9 @@ from cactus_runner.app.status import get_active_runner_status
 from cactus_runner.models import RunnerState
 
 GENERATION_ERRORS_FILE_NAME = "generation-errors.txt"
+# Playlist ZIP storage
+PLAYLIST_ZIP_DIR = Path("/tmp/cactus_playlist_zips")  # nosec B108
+
 
 logger = logging.getLogger(__name__)
 
@@ -325,3 +328,26 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         errors=errors,
     )
     return active_test_procedure.finished_zip_data
+
+
+def save_playlist_zip(zip_contents: bytes, test_name: str, index: int) -> Path:
+    """Save a playlist test's ZIP to the filesystem.
+
+    Args:
+        zip_contents: The ZIP file contents as bytes
+        test_name: Name of the test procedure
+        index: The 0-based index of this test in the playlist
+
+    Returns:
+        The path where the ZIP was saved
+    """
+    PLAYLIST_ZIP_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).replace(microsecond=0)
+    filename = f"{index:03d}_{test_name}_{int(timestamp.timestamp())}.zip"
+    file_path = PLAYLIST_ZIP_DIR / filename
+
+    with open(file_path, "wb") as f:
+        f.write(zip_contents)
+
+    logger.info(f"Saved playlist ZIP to {file_path}")
+    return file_path

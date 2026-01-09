@@ -1,12 +1,14 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,
+    RunRequest,
     StepStatus,
 )
 from cactus_test_definitions import CSIPAusVersion
@@ -26,6 +28,7 @@ class InitialisedCertificates:
     client_certificate_type: str | None = None  # Will read as either "aggregator" or "device"
     client_certificate: str | None = None
     client_lfdi: str | None = None
+    client_aggregator_id: int | None = None  # Stored for reuse in playlist tests
 
 
 @dataclass
@@ -93,6 +96,16 @@ class ActiveTestProcedure:
 
 
 @dataclass
+class PlaylistItem:
+    """A completed test in the playlist"""
+
+    test_name: str
+    zip_file_path: Path | None
+    completed_at: datetime
+    success: bool
+
+
+@dataclass
 class RunnerState:
     """Represents the current state of the Runner.
 
@@ -131,6 +144,11 @@ class RunnerState:
             ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
         ]
     )
+
+    # Playlist support
+    playlist: list[RunRequest] | None = None  # Remaining tests to run (not including current)
+    playlist_index: int = 0  # Current position (0-based index into original playlist)
+    completed_playlist_items: list[PlaylistItem] = field(default_factory=list)  # Completed tests with ZIP paths
 
     @property
     def last_client_interaction(self) -> ClientInteraction:

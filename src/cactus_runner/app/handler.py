@@ -27,6 +27,7 @@ from cactus_runner.app.env import (
     MOUNT_POINT,
     SERVER_URL,
 )
+
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
@@ -143,31 +144,129 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     )
 
 
+async def setup_test_procedure_from_request(
+    run_request: RunRequest,
+    client_lfdi: str,
+    client_aggregator_id: int,
+    client_type: ClientCertificateType,
+) -> ActiveTestProcedure:
+    """Create an ActiveTestProcedure from a RunRequest.
+
+    Args:
+        run_request: The run request containing test definition and metadata
+        client_lfdi: The LFDI of the client certificate
+        client_aggregator_id: The aggregator ID for the client
+        client_type: The type of client certificate (AGGREGATOR or DEVICE)
+
+    Returns:
+        Configured ActiveTestProcedure instance
+
+    Raises:
+        ValueError: If test procedure definition is invalid
+    """
+    # Get the definition of the test procedure
+    try:
+        definition = TestProcedure.from_yaml(run_request.test_definition.yaml_definition)
+        if isinstance(definition, list):
+            raise ValueError("Definition must be a TestProcedure instance and not list[TestProcedure]")
+    except Exception as e:
+        raise ValueError(f"Received invalid test procedure definition {e}")
+
+    # Create listeners for all test procedure events
+    listeners = []
+    for step_name, step in definition.steps.items():
+        listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
+
+    # Set steps to pending (no created/finished time)
+    step_status = {step: StepInfo() for step in definition.steps.keys()}
+
+    # Create and return the ActiveTestProcedure
+    return ActiveTestProcedure(
+        name=run_request.test_definition.test_procedure_id,
+        definition=definition,
+        csip_aus_version=run_request.run_group.csip_aus_version,
+        initialised_at=datetime.now(tz=timezone.utc),
+        started_at=None,  # Test hasn't started yet
+        listeners=listeners,
+        step_status=step_status,
+        client_lfdi=client_lfdi,
+        client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
+        client_aggregator_id=client_aggregator_id,
+        client_certificate_type=client_type,
+        run_id=run_request.run_id,
+        pen=run_request.test_config.pen,
+        subscription_domain=run_request.test_config.subscription_domain,
+        is_static_url=run_request.test_config.is_static_url,
+        run_group_id=run_request.run_group.run_group_id,
+        run_group_name=run_request.run_group.name,
+        user_id=run_request.test_user.user_id,
+        user_name=run_request.test_user.name,
+    )
+
+
+async def initialize_next_test(
+    run_request: RunRequest,
+    runner_state: RunnerState,
+    envoy_client: EnvoyAdminClient,
+) -> None:
+    """Initialize the next test procedure in a playlist."""
+    runner_state.client_interactions.append(
+        ClientInteraction(
+            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
+        )
+    )
+
+    prev_test = runner_state.active_test_procedure
+    if prev_test is None:
+        raise ValueError("Cannot initialize next test: no previous test procedure exists")
+
+    # Reuse certificate information and create new ActiveTestProcedure
+    runner_state.active_test_procedure = await setup_test_procedure_from_request(
+        run_request, prev_test.client_lfdi, prev_test.client_aggregator_id, prev_test.client_certificate_type
+    )
+
+    logger.info(f"Test Procedure '{runner_state.active_test_procedure.name}' initialised (playlist).")
+
+    # Apply init_actions and handle immediate_start
+    if runner_state.active_test_procedure.definition.preconditions:
+        await attempt_apply_actions(
+            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, envoy_client
+        )
+
+        if runner_state.active_test_procedure.definition.preconditions.immediate_start:
+            start_result = await attempt_start_for_state(runner_state, envoy_client)
+            if not start_result.success:
+                raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
+
+
 async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C901
     """Handler for initialise requests.
 
-        Sent by the client to initialise a test procedure.
+    Sent by the client to initialise a test procedure or playlist of test procedures.
 
-        The following initialization steps are performed:
+    The following initialization steps are performed:
 
-        1. All tables in the database are truncated
-        2. Register the aggregator (along with its certificate)
-        3. Apply database preconditions
-        4. Trigger the envoy server to start with the correction configuration.
-    .
-        Args:
-            request: An aiohttp.web.Request instance, the body of the request should be a json encoded instance
-            of 'Run'.
+    1. All tables in the database are truncated
+    2. Register the aggregator (along with its certificate)
+    3. Apply database preconditions
+    4. Trigger the envoy server to start with the correction configuration.
 
-        Returns:
-            aiohttp.web.Response:
-            201 (Created) The body contains a simple json message (status msg, test name and timestamp, is_started) or
-            400 (Bad Request) if a RunRequest instance can't be instantiated from the json request body or
-            409 (Conflict) if there is already a test procedure initialised or
-            400 (Bad Request) if both aggregator and device certificates supplied for neither supplied or
-            400 (Bad Request) if invalid test procedure definition supplied or
-            412 (Precondition Failed) if an error occurred when applying the test procedure preconditions or
-            409 (Conflict)/412 (Precondition Failed) if a test with immediate start failed to start
+    If multiple run requests are provided, the first is set as active and the rest
+    are added to the playlist queue for sequential execution.
+
+    Args:
+        request: An aiohttp.web.Request instance, the body of the request should be a json encoded instance
+        of 'RunRequest' or a list of 'RunRequest'.
+
+    Returns:
+        aiohttp.web.Response:
+        201 (Created) The body contains a simple json message (status msg, test name and timestamp, is_started) or
+        400 (Bad Request) if a RunRequest instance can't be instantiated from the json request body or
+        409 (Conflict) if there is already a test procedure initialised or
+        400 (Bad Request) if both aggregator and device certificates supplied for neither supplied or
+        400 (Bad Request) if invalid test procedure definition supplied or
+        412 (Precondition Failed) if an error occurred when applying the test procedure preconditions or
+        409 (Conflict)/412 (Precondition Failed) if a test with immediate start failed to start
     """
     try:
         raw_json = await request.text()
@@ -175,13 +274,21 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Missing JSON body")
 
     try:
-        run_request = RunRequest.from_json(raw_json)
-        if isinstance(run_request, list):
-            raise ValueError("Run request must be a RunRequest instance and not list[RunRequest]")
+        run_request_data = RunRequest.from_json(raw_json)
+        # Handle both single RunRequest and list[RunRequest] (playlist)
+        if isinstance(run_request_data, list):
+            run_requests = run_request_data
+            if len(run_requests) == 0:
+                return web.Response(status=http.HTTPStatus.BAD_REQUEST, text="Empty playlist not allowed")
+        else:
+            run_requests = [run_request_data]
     except Exception as e:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST, text=f"Unable to parse JSON body to RunRequest instance {e}"
         )
+
+    # Process the first run request to set as active
+    run_request = run_requests[0]
 
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
     # We cannot initialise another test procedure if one is already active
@@ -263,47 +370,16 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     request.app[APPKEY_INITIALISED_CERTS].client_lfdi = client_lfdi
     request.app[APPKEY_INITIALISED_CERTS].client_certificate = client_certificate
 
-    # Get the definition of the test procedure
+    # Setup the test procedure
     try:
-        definition = TestProcedure.from_yaml(run_request.test_definition.yaml_definition)
-        if isinstance(definition, list):
-            raise ValueError("Definition must be a TestProcedure instance and not list[TestProcedure]")
-    except Exception as e:
+        active_test_procedure = await setup_test_procedure_from_request(
+            run_request, client_lfdi, client_aggregator_id, client_type
+        )
+    except ValueError as e:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST,
-            text=f"Received invalid test procedure definition {e}",  # noqa: E501
+            text=str(e),
         )
-
-    # Create listeners for all test procedure events
-    listeners = []
-    for step_name, step in definition.steps.items():
-        listeners.append(Listener(step=step_name, event=step.event, actions=step.actions))
-
-    # Set steps to pending (no created/finished time)
-    step_status = {step: StepInfo() for step in definition.steps.keys()}
-
-    # Set 'active_test_procedure' to the requested test procedure
-    active_test_procedure = ActiveTestProcedure(
-        name=run_request.test_definition.test_procedure_id,
-        definition=definition,
-        csip_aus_version=run_request.run_group.csip_aus_version,
-        initialised_at=datetime.now(tz=timezone.utc),
-        started_at=None,  # Test hasn't started yet
-        listeners=listeners,
-        step_status=step_status,
-        client_lfdi=client_lfdi,
-        client_sfdi=convert_lfdi_to_sfdi(client_lfdi),
-        client_aggregator_id=client_aggregator_id,
-        client_certificate_type=client_type,
-        run_id=run_request.run_id,
-        pen=run_request.test_config.pen,
-        subscription_domain=run_request.test_config.subscription_domain,
-        is_static_url=run_request.test_config.is_static_url,
-        run_group_id=run_request.run_group.run_group_id,
-        run_group_name=run_request.run_group.name,
-        user_id=run_request.test_user.user_id,
-        user_name=run_request.test_user.name,
-    )
 
     logger.info(
         f"Test Procedure '{active_test_procedure.name}' initialised.",
@@ -311,6 +387,15 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     )
 
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = active_test_procedure
+
+    # Initialize the playlist with remaining run requests (if playlist)
+    if len(run_requests) > 1:
+        request.app[APPKEY_RUNNER_STATE].playlist = run_requests[1:]
+        request.app[APPKEY_RUNNER_STATE].playlist_index = 0
+        logger.info(f"Playlist initialized with {len(run_requests) - 1} additional test procedure(s)")
+    else:
+        request.app[APPKEY_RUNNER_STATE].playlist = None
+        request.app[APPKEY_RUNNER_STATE].playlist_index = 0
 
     # if this test has "init_actions" - now is the time to fire them
     if active_test_procedure.definition.preconditions:
@@ -329,7 +414,10 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
 
     # if this test is marked as immediate_start - we can trigger the "start" now
     is_started = False
-    if definition.preconditions and definition.preconditions.immediate_start:
+    if (
+        active_test_procedure.definition.preconditions
+        and active_test_procedure.definition.preconditions.immediate_start
+    ):
         is_started = True
         start_result = await attempt_start_for_state(
             request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT]
@@ -401,6 +489,12 @@ async def finalize_handler(request: web.Request) -> web.Response:
                 logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
                 zip_contents = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
 
+        # Save certificate info before clearing active test (needed for playlist advancement)
+        finished_test = runner_state.active_test_procedure
+        client_lfdi = finished_test.client_lfdi
+        client_aggregator_id = finished_test.client_aggregator_id
+        client_certificate_type = finished_test.client_certificate_type
+
         # Clear the active test procedure and request history
         runner_state.active_test_procedure = None
         runner_state.request_history.clear()
@@ -414,8 +508,57 @@ async def finalize_handler(request: web.Request) -> web.Response:
         generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
         zip_filename = (
             f"CactusTestProcedureArtifacts_{generation_timestamp.isoformat()}_{finalized_test_procedure_name}.zip"
-            # f"CactusTestProcedureArtifacts_{finalized_test_procedure_name}.zip"
         )
+
+        # If we are in a playlist, handle playlist advancement
+        playlist = runner_state.playlist
+        if playlist is not None:
+            # Save the ZIP to filesystem for this playlist item
+            current_index = runner_state.playlist_index
+            finalize.save_playlist_zip(zip_contents, finalized_test_procedure_name, current_index)
+
+            # Check if there are more tests in the playlist
+            if current_index < len(playlist):
+                next_run_request = playlist[current_index]
+                runner_state.playlist_index += 1
+
+                try:
+                    # Do a partial clear of the DB for the next test (preserves aggregator/certs)
+                    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+                    await precondition.reset_playlist_db(envoy_client)
+
+                    # Initialize the next test using saved certificate info
+                    runner_state.client_interactions.append(
+                        ClientInteraction(
+                            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT,
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                    )
+                    runner_state.active_test_procedure = await setup_test_procedure_from_request(
+                        next_run_request, client_lfdi, client_aggregator_id, client_certificate_type
+                    )
+                    logger.info(f"Test Procedure '{runner_state.active_test_procedure.name}' initialised (playlist).")
+
+                    # Apply init_actions and handle immediate_start
+                    if runner_state.active_test_procedure.definition.preconditions:
+                        await attempt_apply_actions(
+                            runner_state.active_test_procedure.definition.preconditions.init_actions,
+                            runner_state,
+                            envoy_client,
+                        )
+
+                        if runner_state.active_test_procedure.definition.preconditions.immediate_start:
+                            start_result = await attempt_start_for_state(runner_state, envoy_client)
+                            if not start_result.success:
+                                logger.error(f"Unable to trigger immediate start: {start_result.content}")
+
+                    logger.info(
+                        f"Initialized next playlist test: {next_run_request.test_definition.test_procedure_id.value}"
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to initialize next playlist test: {exc}", exc_info=exc)
+                    # Clear playlist on error to prevent further issues
+                    runner_state.playlist = None
 
         return web.Response(
             body=zip_contents,

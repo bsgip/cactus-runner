@@ -13,6 +13,7 @@ from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from cactus_runner.app.database import begin_session, open_connection
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +95,79 @@ END $$;
         async with connection.begin() as txn:
             await connection.execute(text(reset_sql))
             await txn.commit()
+
+
+async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
+    """Performs a partial database reset suitable for playlist transitions.
+
+    Unlike reset_db() which truncates ALL tables, this preserves:
+    - aggregator, aggregator_certificate_assignment, aggregator_domain
+    - certificate
+    - site, site_der, site_der_rating, site_der_setting, site_der_availability, site_der_status
+    - runtime_server_config
+
+    And truncates test-specific transactional data.
+
+    NOTE: The admin API call ensures proper notifications are sent (e.g. DER control
+    cancellations occur rather than being silently dropped). This is important for
+    maintaining correct client state between playlist tests.
+    """
+    logger.info("Performing playlist database reset (partial)")
+
+    # Step 1: Call DELETE /site-control-groups admin endpoint
+    # This properly archives DOEs and sends notifications to subscribed clients
+    try:
+        await envoy_client.delete_all_site_control_groups()
+        logger.debug("Deleted all site control groups via admin API")
+    except Exception as exc:
+        logger.warning(f"Failed to delete site control groups via admin API: {exc}")
+
+    # Step 2: Truncate specific tables (not site/aggregator/certificate)
+    # Tables to delete - these will not notify the client, keeping state clean for the next test
+    tables_to_truncate = [
+        # Archive tables
+        "archive_site_reading",
+        "archive_site_reading_type",
+        "archive_subscription",
+        "archive_subscription_condition",
+        # Calculation logs
+        "calculation_log",
+        "calculation_log_label_metadata",
+        "calculation_log_label_value",
+        "calculation_log_variable_metadata",
+        "calculation_log_variable_value",
+        # Subscriptions and notifications
+        "transmit_notification_log",
+        "subscription_condition",
+        "subscription",
+        # DOE/Control (after the admin API call)
+        "dynamic_operating_envelope_response",
+        # Site events
+        "site_log_event",
+    ]
+
+    # Build SQL to truncate each table individually with CASCADE
+    truncate_statements = "\n    ".join(f"EXECUTE 'TRUNCATE TABLE {table} CASCADE';" for table in tables_to_truncate)
+
+    reset_sql = f"""
+DO $$ DECLARE
+    epoch_time BIGINT;
+BEGIN
+    epoch_time := EXTRACT(EPOCH FROM NOW())::BIGINT;
+
+    -- Truncate specific tables (order matters for foreign key dependencies, CASCADE handles this)
+    {truncate_statements}
+
+    -- Reset sequences that need epoch time (for new test to get unique IDs)
+    EXECUTE 'ALTER SEQUENCE site_control_group_default_site_control_group_default_id_seq RESTART WITH ' || epoch_time;
+    EXECUTE 'ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH ' || epoch_time;
+    EXECUTE 'ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH ' || epoch_time;
+END $$;
+"""
+
+    async with open_connection() as connection:
+        async with connection.begin() as txn:
+            await connection.execute(text(reset_sql))
+            await txn.commit()
+
+    logger.info("Playlist database reset complete - preserved site/aggregator/certs, cleared transactional data")

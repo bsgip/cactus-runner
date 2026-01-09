@@ -128,6 +128,51 @@ async def test_initialise_handler(
 
 
 @pytest.mark.asyncio
+async def test_initialise_handler_playlist(mocker):
+    """Test that initializing with a list of RunRequests sets up the playlist correctly."""
+    # Arrange - create a playlist with 3 tests
+    run_request_1 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
+    run_request_2 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
+    run_request_3 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
+
+    # Serialize as JSON array (same as integration tests)
+    playlist_json = "[" + ",".join(rr.to_json() for rr in [run_request_1, run_request_2, run_request_3]) + "]"
+
+    mock_request = MagicMock()
+    mock_request.text = AsyncMock(return_value=playlist_json)
+    mock_request.raise_for_status = MagicMock()
+    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
+    mock_request.app[APPKEY_RUNNER_STATE].playlist = None
+    mock_request.app[APPKEY_RUNNER_STATE].playlist_index = 0
+
+    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
+    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
+    mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
+    start_result = MagicMock()
+    start_result.success = True
+    mocker.patch("cactus_runner.app.handler.attempt_start_for_state", return_value=start_result)
+
+    # Act
+    raw_response = await handler.initialise_handler(request=mock_request)
+
+    # Assert - response is successful
+    assert isinstance(raw_response, Response)
+    assert raw_response.status == http.HTTPStatus.CREATED
+
+    # Assert - playlist is set up with remaining tests (2 and 3)
+    playlist = mock_request.app[APPKEY_RUNNER_STATE].playlist
+    assert playlist is not None
+    assert len(playlist) == 2  # run_request_2 and run_request_3
+
+    # Assert - playlist_index starts at 0
+    assert mock_request.app[APPKEY_RUNNER_STATE].playlist_index == 0
+
+    # Assert - first test is set as active
+    assert mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure is not None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "request_body,expected_response_text",
     [("{}", "Unable to parse JSON body to RunRequest instance"), (None, "Missing JSON body")],
@@ -347,6 +392,7 @@ async def test_finalize_handler(mocker):
     """
 
     request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     zip_data = bytes([99, 55])
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.return_value = zip_data
@@ -370,6 +416,7 @@ async def test_finalize_handler_finish_error(mocker):
     """
 
     request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     safe_error_data = bytes([0, 4, 1, 1])
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.side_effect = Exception("mock exception")
@@ -391,6 +438,7 @@ async def test_finalize_handler_finish_error(mocker):
 async def test_finalize_handler_resets_runner_state(mocker):
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].request_history = [None]  # a non-empty list stand-in
+    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     mocker.patch("cactus_runner.app.handler.begin_session")
     mocker.patch("cactus_runner.app.handler.status.get_active_runner_status").return_value = generate_class_instance(
         RunnerStatus, step_status={}
