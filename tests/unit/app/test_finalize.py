@@ -193,11 +193,14 @@ async def test_generate_json_reporting_data():
         )
         return {generate_class_instance(SiteReadingType): sample_df for _ in range(num)}
 
+    def fake_reading_counts():
+        return {generate_class_instance(SiteReadingType): 17}
+
     runner_state = RunnerState()
     checks = check_results()
     # readings = fake_readings()
     readings = None
-    reading_counts = None
+    reading_counts = fake_reading_counts()
     sites = None
     timeline = None
     errors = []
@@ -212,9 +215,9 @@ async def test_generate_json_reporting_data():
         timeline=timeline,
         errors=errors,
     )
+    print(reporting_data_str)
 
     reporting_data = ReportingData.from_json(reporting_data_str)
 
     # Assert
-    print(reporting_data_str)
     print(reporting_data)

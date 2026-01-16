@@ -243,7 +243,7 @@ async def generate_json_reporting_data(
             created_at=created_at,
             runner_state=runner_state,
             check_results=check_results,
-            reading_counts=reading_counts,
+            # reading_counts=reading_counts,
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
