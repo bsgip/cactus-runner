@@ -5,10 +5,11 @@ from itertools import chain
 from typing import Any, Callable, Sequence, cast
 
 from envoy.server.model.archive import ArchiveBase
-from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
-from envoy.server.model.archive.site import ArchiveDefaultSiteControl
-from envoy.server.model.doe import DynamicOperatingEnvelope
-from envoy.server.model.site import DefaultSiteControl
+from envoy.server.model.archive.doe import (
+    ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
+)
+from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroupDefault
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from intervaltree import Interval, IntervalTree  # type: ignore
@@ -17,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_csip_aus_site_reading_types,
+    get_site_control_group_defaults_with_archive,
     get_site_controls_active_archived,
-    get_site_defaults_with_archive,
     get_site_readings,
 )
 
@@ -307,12 +308,12 @@ async def generate_control_data_streams(
 async def generate_default_control_data_streams(
     session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
-    all_defaults = await get_site_defaults_with_archive(session)
+    all_defaults = await get_site_control_group_defaults_with_archive(session)
 
     intervals: list[Interval] = []
     for default_control in all_defaults:
 
-        if isinstance(default_control, ArchiveDefaultSiteControl):
+        if isinstance(default_control, ArchiveSiteControlGroupDefault):
             # An archive record was active only from when it was last changed and then archived
             start_time = default_control.changed_time
             end_time = default_control.archive_time
@@ -334,10 +335,10 @@ async def generate_default_control_data_streams(
         end,
         interval_seconds,
         [
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).import_limit_active_watts, False),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).export_limit_active_watts, True),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).load_limit_active_watts, False),
-            lambda e: decimal_to_watts(cast(DefaultSiteControl, e).generation_limit_active_watts, True),
+            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).import_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).export_limit_active_watts, True),
+            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).load_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).generation_limit_active_watts, True),
         ],
     )
 

@@ -8,15 +8,15 @@ from cactus_runner.app.database import begin_session
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_empty(pg_empty_config):
+async def test_resolve_named_variable_der_rating_min_pf_over_excited(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+            await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_no_setting(pg_base_config):
+async def test_resolve_named_variable_der_rating_min_pf_over_excited_no_rating(pg_base_config):
     """If there is everything up to (but not including) a DERCapability in the db  - fail in a predictable way"""
     async with begin_session() as session:
         session.add(
@@ -27,15 +27,15 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_no_setting
         await session.commit()
 
     async with begin_session() as session:
-        with pytest.raises(UnresolvableVariableError, match="rtgMaxDischargeRateW"):
-            await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        with pytest.raises(UnresolvableVariableError, match="rtgMinPFOverExcited"):
+            await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_setting(pg_base_config):
+async def test_resolve_named_variable_der_rating_min_pf_over_excited_single_rating(pg_base_config):
     """If there is a single DERCapability in the db  - return it"""
-    max_discharge_rate_w_value = 12345
-    max_discharge_rate_w_multiplier = -2
+    min_pf_over_excited_displacement = 950
+    min_pf_over_excited_multiplier = -3
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -50,8 +50,8 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_set
                             SiteDERRating,
                             site_der_rating_id=None,
                             site_der_id=None,
-                            max_discharge_rate_w_value=max_discharge_rate_w_value,
-                            max_discharge_rate_w_multiplier=max_discharge_rate_w_multiplier,
+                            min_pf_over_excited_displacement=min_pf_over_excited_displacement,
+                            min_pf_over_excited_multiplier=min_pf_over_excited_multiplier,
                         ),
                     )
                 ],
@@ -60,16 +60,16 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_set
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        result = await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
         assert isinstance(result, float)
-        assert result == 123.45
+        assert result == 0.95
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_settings(pg_base_config):
+async def test_resolve_named_variable_der_rating_min_pf_over_excited_many_ratings(pg_base_config):
     """If there are multiple DERCapabilities - return the most recent DERCapability"""
-    max_discharge_rate_w_value = 123
-    max_discharge_rate_w_multiplier = 2
+    min_pf_over_excited_displacement = 45
+    min_pf_over_excited_multiplier = -2
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -119,8 +119,8 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
                             seed=3203,
                             site_der_rating_id=None,
                             site_der_id=None,
-                            max_discharge_rate_w_value=max_discharge_rate_w_value,
-                            max_discharge_rate_w_multiplier=max_discharge_rate_w_multiplier,
+                            min_pf_over_excited_displacement=min_pf_over_excited_displacement,
+                            min_pf_over_excited_multiplier=min_pf_over_excited_multiplier,
                         ),
                     )
                 ],
@@ -129,6 +129,6 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        result = await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
         assert isinstance(result, float)
-        assert result == 12300
+        assert result == 0.45

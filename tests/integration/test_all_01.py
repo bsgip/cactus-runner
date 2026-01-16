@@ -4,12 +4,12 @@ from urllib.parse import quote
 
 import pytest
 from aiohttp import ClientResponse, ClientSession, ClientTimeout
+from cactus_schema.runner import RunnerStatus, RunRequest
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
-from cactus_runner.models import RunnerStatus, RunRequest, StepStatus
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
 URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
@@ -89,7 +89,8 @@ async def test_all_01_full(
     summary = RunnerStatus.from_json(summary_data.decode())
     assert summary.csip_aus_version == csip_aus_version.value
     for step, resolved in summary.step_status.items():
-        assert resolved.get_step_status() == StepStatus.RESOLVED, step
+        assert resolved.started_at is not None, step
+        assert resolved.completed_at is not None, step
 
     # Ensure PDF generated ok
     pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))

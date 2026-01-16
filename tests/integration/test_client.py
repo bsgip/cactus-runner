@@ -10,6 +10,17 @@ from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_dict_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
+from cactus_schema.runner import (
+    ClientInteraction,
+    InitResponseBody,
+    RequestData,
+    RequestList,
+    RunnerStatus,
+    RunRequest,
+    StartResponseBody,
+    StepEventStatus,
+    StepStatus,
+)
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from envoy.server.model.site import Site, SiteDER, SiteDERSetting
@@ -18,17 +29,6 @@ from pytest_aiohttp.plugin import TestClient
 from cactus_runner.app.database import remove_database_connection
 from cactus_runner.app.requests_archive import ensure_request_data_dir
 from cactus_runner.client import RunnerClient, RunnerClientException
-from cactus_runner.models import (
-    ClientInteraction,
-    InitResponseBody,
-    RequestData,
-    RequestList,
-    RunnerStatus,
-    RunRequest,
-    StartResponseBody,
-    StepInfo,
-    StepStatus,
-)
 from tests.integration.certificate1 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
 )
@@ -125,7 +125,7 @@ async def test_client_interactions(
     assert status_response.test_procedure_name == test_procedure_id.value
     assert status_response.csip_aus_version == csip_aus_version.value
     assert isinstance(status_response.last_client_interaction, ClientInteraction)
-    assert_dict_type(str, StepInfo, status_response.step_status)
+    assert_dict_type(str, StepEventStatus, status_response.step_status)
     assert_nowish(status_response.timestamp_status)
 
     # Interrogate list_requests response
@@ -237,11 +237,16 @@ async def test_status_steps_immediate_start(cactus_runner_client: TestClient, pg
         status_response = await RunnerClient.status(session)
 
     assert isinstance(status_response, RunnerStatus)
-    assert all(isinstance(s, StepInfo) for s in status_response.step_status.values())
+    assert all(isinstance(s, StepEventStatus) for s in status_response.step_status.values())
 
     step_status_counts: dict[StepStatus, int] = {}
     for step_info in status_response.step_status.values():
-        status = step_info.get_step_status()
+        if step_info.started_at is None:
+            status = StepStatus.PENDING
+        elif step_info.completed_at is None:
+            status = StepStatus.ACTIVE
+        else:
+            status = StepStatus.RESOLVED
         step_status_counts[status] = step_status_counts.get(status, 0) + 1
 
     assert step_status_counts.get(StepStatus.ACTIVE, 0) == 1, "One step should initially be active"

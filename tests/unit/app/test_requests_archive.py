@@ -1,12 +1,17 @@
-from assertical.fake.generator import generate_class_instance
-from http import HTTPStatus, HTTPMethod
 from datetime import datetime, timezone
-from aiohttp import web
-from multidict import CIMultiDict
+from http import HTTPMethod, HTTPStatus
+
 import pytest
-from cactus_runner.app.requests_archive import write_request_response_files, read_request_response_files
-from cactus_runner.models import RequestEntry, RequestData
+from aiohttp import web
+from assertical.fake.generator import generate_class_instance
+from cactus_schema.runner import RequestData, RequestEntry
+from multidict import CIMultiDict
+
 from cactus_runner.app.proxy import ProxyResult
+from cactus_runner.app.requests_archive import (
+    read_request_response_files,
+    write_request_response_files,
+)
 
 
 @pytest.fixture

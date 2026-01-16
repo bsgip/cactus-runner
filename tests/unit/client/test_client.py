@@ -1,17 +1,40 @@
 from datetime import datetime, timezone
 from http import HTTPStatus
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 import pytest
 from aiohttp import ConnectionTimeoutError
-
-from cactus_runner.client import RunnerClient, RunnerClientException
-from cactus_runner.models import (
+from cactus_schema.runner import (
     ClientInteraction,
     InitResponseBody,
+    RunGroup,
     RunnerStatus,
+    RunRequest,
     StartResponseBody,
+    TestCertificates,
+    TestConfig,
+    TestDefinition,
+    TestUser,
 )
+from cactus_test_definitions.client import TestProcedureId
+
+from cactus_runner.client import RunnerClient, RunnerClientException
+
+
+def make_run_request(run_id: str = "test-run-123") -> RunRequest:
+    """Create a minimal RunRequest for testing."""
+    return RunRequest(
+        run_id=run_id,
+        test_definition=TestDefinition(test_procedure_id=TestProcedureId.ALL_01, yaml_definition="test: yaml"),
+        run_group=RunGroup(
+            run_group_id="1",
+            name="test group",
+            csip_aus_version=None,
+            test_certificates=TestCertificates(aggregator=None, device=None),
+        ),
+        test_config=TestConfig(pen=12345, subscription_domain=None, is_static_url=False),
+        test_user=TestUser(user_id="user-1", name="Test User"),
+    )
 
 
 @pytest.mark.asyncio
@@ -23,8 +46,7 @@ async def test_initialise():
         timestamp=datetime.now(timezone.utc),
         is_started=False,
     )
-    run_request = MagicMock()
-    run_request.to_json = Mock(return_value="Dummy Run Request JSON")
+    run_request = make_run_request()
     mock_session = MagicMock()
     mock_session.post.return_value.__aenter__.return_value.status = 200
     mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_init_result.to_json()
@@ -44,15 +66,42 @@ async def test_initialise_connectionerror():
     mock_session = MagicMock()
     mock_session.post.side_effect = ConnectionTimeoutError
 
-    run_request = MagicMock()
-    run_request.to_json = Mock(return_value="Dummy Run Request JSON")
+    run_request = make_run_request()
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while initialising test."):
+    with pytest.raises(RunnerClientException, match="Unexpected failure while initialising test"):
         _ = await RunnerClient.initialise(
             session=mock_session,
             run_request=run_request,
         )
+
+
+@pytest.mark.asyncio
+async def test_initialise_playlist():
+    """Test initialising a playlist of multiple RunRequests."""
+    # Arrange
+    expected_init_result = InitResponseBody(
+        status="PLACEHOLDER-STATUS",
+        test_procedure="ALL-01",
+        timestamp=datetime.now(timezone.utc),
+        is_started=True,
+    )
+    run_requests = [make_run_request("test-1"), make_run_request("test-2"), make_run_request("test-3")]
+    mock_session = MagicMock()
+    mock_session.post.return_value.__aenter__.return_value.status = 200
+    mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_init_result.to_json()
+
+    # Act
+    init_result = await RunnerClient.initialise(session=mock_session, run_request=run_requests)
+
+    # Assert
+    assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
+    assert isinstance(init_result, InitResponseBody)
+    assert init_result == expected_init_result
+    call_kwargs = mock_session.post.call_args.kwargs
+    assert "json" in call_kwargs
+    assert isinstance(call_kwargs["json"], list)
+    assert len(call_kwargs["json"]) == 3
 
 
 @pytest.mark.asyncio

@@ -480,24 +480,28 @@ def test_validate_cell_with_int_enums(col_idx, field_name, valid_value, enum_mem
 
 
 @pytest.mark.parametrize(
-    "durations,expected_dropped,expected_invalid,expected_warning_count,expected_warning_substrings",
+    "durations,allow_zero,expected_dropped,expected_invalid,expected_warning_count,expected_warning_substrings",
     [
-        ([60, 300, 120], 0, 0, 0, []),
-        ([60, 0, None], 2, 0, 1, ["2 readings excluded from timeline generation"]),
-        ([60, 45, 73], 0, 2, 1, ["2 readings have invalid duration (not divisible by 60)"]),
-        ([0, None, 45, 120], 2, 1, 2, ["2 readings excluded", "1 reading has invalid duration"]),
-        ([None], 1, 0, 1, ["1 reading excluded"]),
-        ([45], 0, 1, 1, ["1 reading has invalid duration"]),
-        ([0, 0, 0], 3, 0, 1, ["3 readings excluded"]),
+        ([60, 300, 120], False, 0, 0, 0, []),
+        ([60, 0, None], False, 2, 0, 1, ["2 readings excluded from timeline generation"]),
+        ([60, 0, None], True, 0, 0, 0, []),
+        ([60, 0, None], False, 2, 0, 1, ["2 readings excluded from timeline generation"]),
+        ([0, None, 45, 120], False, 2, 1, 2, ["2 readings excluded", "1 reading has invalid duration"]),
+        ([None], False, 1, 0, 1, ["1 reading excluded"]),
+        ([60, 45, 73], False, 0, 2, 1, ["2 readings have invalid duration (not divisible by 60)"]),
+        ([0, None, 45, 120], False, 2, 1, 2, ["1 reading has invalid duration", "2 readings excluded from timeline"]),
+        ([45], False, 0, 1, 1, ["1 reading has invalid duration"]),
+        ([0, 0, 0], False, 3, 0, 1, ["3 readings excluded"]),
+        ([0, 0, 0], True, 0, 0, 0, []),
     ],
 )
 def test_validate_reading_duration(
-    durations, expected_dropped, expected_invalid, expected_warning_count, expected_warning_substrings
+    durations, allow_zero, expected_dropped, expected_invalid, expected_warning_count, expected_warning_substrings
 ):
     """Test validation of reading durations with various scenarios"""
     readings_df = pd.DataFrame([_create_reading(i + 1, dur) for i, dur in enumerate(durations)])
 
-    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df)
+    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df, allow_zero)
 
     assert dropped_count == expected_dropped
     assert invalid_count == expected_invalid
@@ -506,11 +510,12 @@ def test_validate_reading_duration(
         assert any(substring in w for w in warnings), f"Expected '{substring}' in warnings: {warnings}"
 
 
-def test_validate_reading_duration_empty_dataframe():
+@pytest.mark.parametrize("allow_zero_duration", [True, False])
+def test_validate_reading_duration_empty_dataframe(allow_zero_duration: bool):
     """Test that empty dataframe returns no issues"""
     readings_df = pd.DataFrame()
 
-    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df)
+    dropped_count, invalid_count, warnings = validate_reading_duration(readings_df, allow_zero_duration)
 
     assert dropped_count == 0
     assert invalid_count == 0

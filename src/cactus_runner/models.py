@@ -1,22 +1,36 @@
-import http
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum, StrEnum, auto
+from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
-import pandas as pd
+from cactus_schema.runner import (
+    ClientInteraction,
+    ClientInteractionType,
+    RequestEntry,
+    RunRequest,
+    StepStatus,
+)
 from cactus_test_definitions import CSIPAusVersion
-from cactus_test_definitions.client import Event, TestProcedure, TestProcedureId
+from cactus_test_definitions.client import Event, TestProcedure
 from dataclass_wizard import JSONWizard
 from envoy.server.model.site_reading import SiteReadingType
 
 
-@dataclass
-class CheckResult:
-    """Represents the results of a running a single check"""
+class ClientCertificateType(StrEnum):
+    AGGREGATOR = "Aggregator"
+    DEVICE = "Device"
 
-    passed: bool  # True if the check is considered passed or successful. False otherwise
-    description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
+
+@dataclass
+class InitialisedCertificates:
+    """Certificates shared with the runner during initialisation. These certs should be the ONLY certificates that can
+    interact with the runner/underlying envoy instance"""
+
+    client_certificate_type: str | None = None  # Will read as either "aggregator" or "device"
+    client_certificate: str | None = None
+    client_lfdi: str | None = None
+    client_aggregator_id: int | None = None  # Stored for reuse in playlist tests
 
 
 @dataclass
@@ -25,12 +39,6 @@ class Listener:
     event: Event
     actions: list[Any]
     enabled_time: datetime | None = None  # Set to the TZ aware datetime when this Listener was enabled. None = disabled
-
-
-class StepStatus(Enum):
-    PENDING = 0  # The step is not yet active
-    ACTIVE = auto()  # The step is currently active but not complete
-    RESOLVED = auto()  # The step has been full resolved
 
 
 @dataclass
@@ -45,11 +53,6 @@ class StepInfo:
             return StepStatus.ACTIVE
         else:
             return StepStatus.PENDING
-
-
-class ClientCertificateType(StrEnum):
-    AGGREGATOR = "Aggregator"
-    DEVICE = "Device"
 
 
 @dataclass
@@ -95,28 +98,13 @@ class ActiveTestProcedure:
 
 
 @dataclass
-class RequestEntry(JSONWizard):
-    url: str
-    path: str
-    method: http.HTTPMethod
-    status: http.HTTPStatus
-    timestamp: datetime
-    step_name: str
-    body_xml_errors: list[str]  # Any XML schema errors detected in the incoming body
-    request_id: int  # Increments per test
+class PlaylistItem:
+    """A completed test in the playlist"""
 
-
-class ClientInteractionType(StrEnum):
-    RUNNER_START = "Runner Started"
-    TEST_PROCEDURE_INIT = "Test Procedure Initialised"
-    TEST_PROCEDURE_START = "Test Procedure Started"
-    PROXIED_REQUEST = "Request Proxied"
-
-
-@dataclass
-class ClientInteraction(JSONWizard):
-    interaction_type: ClientInteractionType
-    timestamp: datetime
+    test_name: str
+    zip_file_path: Path | None
+    completed_at: datetime
+    success: bool
 
 
 @dataclass
@@ -159,6 +147,11 @@ class RunnerState:
         ]
     )
 
+    # Playlist support
+    playlist: list[RunRequest] | None = None  # All tests in the playlist (full array)
+    playlist_index: int = 0  # Current position (0-based index into playlist)
+    completed_playlist_items: list[PlaylistItem] = field(default_factory=list)  # Completed tests with ZIP paths
+
     @property
     def last_client_interaction(self) -> ClientInteraction:
         return self.client_interactions[-1]
@@ -172,152 +165,11 @@ class RunnerState:
 
 
 @dataclass
-class InitialisedCertificates:
-    """Certificates shared with the runner during initialisation. These certs should be the ONLY certificates that can
-    interact with the runner/underlying envoy instance"""
+class CheckResult:
+    """Represents the results of a running a single check"""
 
-    client_certificate_type: str | None = None  # Will read as either "aggregator" or "device"
-    client_certificate: str | None = None
-    client_lfdi: str | None = None
-
-
-@dataclass
-class InitResponseBody(JSONWizard):
-    status: str
-    test_procedure: str
-    timestamp: datetime
-    is_started: bool = (
-        False  # True if the run has progressed to the started state. False if it's still waiting for a call to start it
-    )
-
-
-@dataclass
-class StartResponseBody(JSONWizard):
-    status: str
-    test_procedure: str
-    timestamp: datetime
-
-
-@dataclass
-class CriteriaEntry(JSONWizard):
-    success: bool
-    type: str
-    details: str
-
-
-@dataclass
-class PreconditionCheckEntry(JSONWizard):
-    success: bool
-    type: str
-    details: str
-
-
-@dataclass
-class DataStreamPoint(JSONWizard):
-    watts: int | None  # The data point value (in watts)
-    offset: str  # Label for identifying the relative start - usually something like "2m20s"
-
-
-@dataclass
-class TimelineDataStreamEntry(JSONWizard):
-    label: str  # Descriptive label of this data stream
-    data: list[DataStreamPoint]
-    stepped: bool  # If True - this data should be presented as a stepped line chart
-    dashed: bool  # If True - this data should be a dashed line
-
-
-@dataclass
-class TimelineStatus(JSONWizard):
-    data_streams: list[TimelineDataStreamEntry]  # The set of data streams that should be rendered on the timeline
-    set_max_w: int | None  # The currently set set_max_w (if any)
-    now_offset: str  # The name of the DataStreamPoint.offset that corresponds with "now" (when this was calculated)
-
-
-@dataclass
-class EndDeviceMetadata(JSONWizard):  # All optional as a device may not always be registered
-    edevid: int | None = None  # Should always be 1, but nice to check
-    lfdi: str | None = None
-    sfdi: int | None = None
-    nmi: str | None = None
-    aggregator_id: int | None = None
-    set_max_w: int | None = None
-    doe_modes_enabled: int | None = None
-    device_category: int | None = None
-    timezone_id: str | None = None
-
-
-@dataclass
-class RequestData(JSONWizard):
-    request_id: int
-    request: str | None
-    response: str | None
-
-
-@dataclass
-class RequestList(JSONWizard):
-    request_ids: list[int]
-    count: int
-
-
-@dataclass
-class RunnerStatus(JSONWizard):
-    timestamp_status: datetime  # when was this status generated?
-    timestamp_initialise: datetime | None  # When did the test initialise
-    timestamp_start: datetime | None  # When did the test start
-    status_summary: str
-    last_client_interaction: ClientInteraction
-    csip_aus_version: str  # The CSIPAus version that is registered in the active test procedure (can be empty)
-    log_envoy: str  # Snapshot of the current envoy logs
-    criteria: list[CriteriaEntry] = field(default_factory=list)
-    precondition_checks: list[PreconditionCheckEntry] = field(default_factory=list)
-    instructions: list[str] | None = field(default=None)
-    test_procedure_name: str = field(default="-")  # '-' represents no active procedure
-    step_status: dict[str, StepInfo] | None = field(default=None)
-    request_history: list[RequestEntry] = field(default_factory=list)
-    timeline: TimelineStatus | None = None  # Streaming timeline data snapshot
-    end_device_metadata: EndDeviceMetadata | None = None  # Snapshot of current active end device (if any)
-
-
-@dataclass
-class TestDefinition(JSONWizard):
-    test_procedure_id: TestProcedureId
-    yaml_definition: str
-
-
-@dataclass
-class TestCertificates(JSONWizard):
-    aggregator: str | None
-    device: str | None
-
-
-@dataclass
-class RunGroup(JSONWizard):
-    run_group_id: str
-    name: str
-    csip_aus_version: CSIPAusVersion
-    test_certificates: TestCertificates
-
-
-@dataclass
-class TestConfig(JSONWizard):
-    subscription_domain: str | None
-    is_static_url: bool
-    pen: int = field(default=0)
-
-
-@dataclass
-class TestUser(JSONWizard):
-    user_id: str
-    name: str
-
-
-@dataclass
-class RunRequest(JSONWizard):
-    run_id: str
-    test_definition: TestDefinition
-    run_group: RunGroup
-    test_config: TestConfig
-    test_user: TestUser
+    passed: bool  # True if the check is considered passed or successful. False otherwise
+    description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
 
 
 @dataclass
@@ -326,4 +178,4 @@ class ReportingData(JSONWizard):
     runner_state: RunnerState
     check_results: dict[str, CheckResult]
     # readings: dict[SiteReadingType, pd.DataFrame]
-    reading_counts: dict[SiteReadingType, int]
+    # reading_counts: dict[SiteReadingType, int]

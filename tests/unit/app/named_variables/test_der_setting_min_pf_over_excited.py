@@ -1,23 +1,23 @@
 import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
-from envoy.server.model.site import Site, SiteDER, SiteDERRating
+from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 
 from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_empty(pg_empty_config):
+async def test_resolve_named_variable_der_setting_min_pf_over_excited(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
-        with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        with pytest.raises(UnresolvableVariableError, match="DERSetting"):
+            await resolvers.resolve_named_variable_der_setting_min_pf_over_excited(session)
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_no_setting(pg_base_config):
-    """If there is everything up to (but not including) a DERCapability in the db  - fail in a predictable way"""
+async def test_resolve_named_variable_der_setting_min_pf_over_excited_no_setting(pg_base_config):
+    """If there is everything up to (but not including) a DERSetting in the db  - fail in a predictable way"""
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -27,15 +27,15 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_no_setting
         await session.commit()
 
     async with begin_session() as session:
-        with pytest.raises(UnresolvableVariableError, match="rtgMaxDischargeRateW"):
-            await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        with pytest.raises(UnresolvableVariableError, match="setMinPFOverExcited"):
+            await resolvers.resolve_named_variable_der_setting_min_pf_over_excited(session)
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_setting(pg_base_config):
-    """If there is a single DERCapability in the db  - return it"""
-    max_discharge_rate_w_value = 12345
-    max_discharge_rate_w_multiplier = -2
+async def test_resolve_named_variable_der_setting_min_pf_over_excited_single_setting(pg_base_config):
+    """If there is a single DERSetting in the db  - return it"""
+    min_pf_over_excited_displacement = 950
+    min_pf_over_excited_multiplier = -3
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -46,12 +46,12 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_set
                     generate_class_instance(
                         SiteDER,
                         site_id=None,
-                        site_der_rating=generate_class_instance(
-                            SiteDERRating,
-                            site_der_rating_id=None,
+                        site_der_setting=generate_class_instance(
+                            SiteDERSetting,
+                            site_der_setting_id=None,
                             site_der_id=None,
-                            max_discharge_rate_w_value=max_discharge_rate_w_value,
-                            max_discharge_rate_w_multiplier=max_discharge_rate_w_multiplier,
+                            min_pf_over_excited_displacement=min_pf_over_excited_displacement,
+                            min_pf_over_excited_multiplier=min_pf_over_excited_multiplier,
                         ),
                     )
                 ],
@@ -60,16 +60,16 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_set
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        result = await resolvers.resolve_named_variable_der_setting_min_pf_over_excited(session)
         assert isinstance(result, float)
-        assert result == 123.45
+        assert result == 0.95
 
 
 @pytest.mark.asyncio
-async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_settings(pg_base_config):
-    """If there are multiple DERCapabilities - return the most recent DERCapability"""
-    max_discharge_rate_w_value = 123
-    max_discharge_rate_w_multiplier = 2
+async def test_resolve_named_variable_der_setting_min_pf_over_excited_many_settings(pg_base_config):
+    """If there are multiple DERSettings - return the most recent DERSetting"""
+    min_pf_over_excited_displacement = 45
+    min_pf_over_excited_multiplier = -2
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -91,10 +91,10 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
                         SiteDER,
                         seed=2102,
                         site_id=None,
-                        site_der_rating=generate_class_instance(
-                            SiteDERRating,
+                        site_der_setting=generate_class_instance(
+                            SiteDERSetting,
                             seed=2202,
-                            site_der_rating_id=None,
+                            site_der_setting_id=None,
                             site_der_id=None,
                         ),
                     )
@@ -102,7 +102,7 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
             )
         )
 
-        # This site's SiteDERRating should be returned as it's change_time will be the most recent
+        # This site's SiteDERSetting should be returned as it's change_time will be the most recent
         session.add(
             generate_class_instance(
                 Site,
@@ -114,13 +114,13 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
                         SiteDER,
                         seed=3103,
                         site_id=None,
-                        site_der_rating=generate_class_instance(
-                            SiteDERRating,
+                        site_der_setting=generate_class_instance(
+                            SiteDERSetting,
                             seed=3203,
-                            site_der_rating_id=None,
+                            site_der_setting_id=None,
                             site_der_id=None,
-                            max_discharge_rate_w_value=max_discharge_rate_w_value,
-                            max_discharge_rate_w_multiplier=max_discharge_rate_w_multiplier,
+                            min_pf_over_excited_displacement=min_pf_over_excited_displacement,
+                            min_pf_over_excited_multiplier=min_pf_over_excited_multiplier,
                         ),
                     )
                 ],
@@ -129,6 +129,6 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+        result = await resolvers.resolve_named_variable_der_setting_min_pf_over_excited(session)
         assert isinstance(result, float)
-        assert result == 12300
+        assert result == 0.45

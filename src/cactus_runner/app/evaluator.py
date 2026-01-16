@@ -49,10 +49,16 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                 return await resolvers.resolve_named_variable_der_setting_max_va(session)
             case NamedVariableType.DERSETTING_SET_MAX_VAR:
                 return await resolvers.resolve_named_variable_der_setting_max_var(session)
+            case NamedVariableType.DERSETTING_SET_MAX_VAR_NEG:
+                return await resolvers.resolve_named_variable_der_setting_max_var_neg(session)
             case NamedVariableType.DERSETTING_SET_MAX_CHARGE_RATE_W:
                 return await resolvers.resolve_named_variable_der_setting_max_charge_rate_w(session)
             case NamedVariableType.DERSETTING_SET_MAX_DISCHARGE_RATE_W:
                 return await resolvers.resolve_named_variable_der_setting_max_discharge_rate_w(session)
+            case NamedVariableType.DERSETTING_SET_MIN_PF_OVER_EXCITED:
+                return await resolvers.resolve_named_variable_der_setting_min_pf_over_excited(session)
+            case NamedVariableType.DERSETTING_SET_MIN_PF_UNDER_EXCITED:
+                return await resolvers.resolve_named_variable_der_setting_min_pf_under_excited(session)
             case NamedVariableType.DERSETTING_SET_MAX_WH:
                 return await resolvers.resolve_named_variable_der_setting_max_wh(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_W:
@@ -61,10 +67,16 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                 return await resolvers.resolve_named_variable_der_rating_max_va(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_VAR:
                 return await resolvers.resolve_named_variable_der_rating_max_var(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MAX_VAR_NEG:
+                return await resolvers.resolve_named_variable_der_rating_max_var_neg(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_CHARGE_RATE_W:
                 return await resolvers.resolve_named_variable_der_rating_max_charge_rate_w(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_DISCHARGE_RATE_W:
                 return await resolvers.resolve_named_variable_der_rating_max_discharge_rate_w(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MIN_PF_OVER_EXCITED:
+                return await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
+            case NamedVariableType.DERCAPABILITY_RTG_MIN_PF_UNDER_EXCITED:
+                return await resolvers.resolve_named_variable_der_rating_min_pf_under_excited(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_WH:
                 return await resolvers.resolve_named_variable_der_rating_max_wh(session)
         raise UnresolvableVariableError(f"Unable to resolve NamedVariable of type {v.variable} ({int(v.variable)})")

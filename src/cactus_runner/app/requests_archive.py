@@ -19,6 +19,24 @@ def ensure_request_data_dir() -> Path:
     return REQUEST_DATA_DIR
 
 
+def clear_request_data_dir() -> None:
+    """Remove all request/response files from the storage directory.
+
+    Called between playlist tests to ensure clean state.
+    """
+    try:
+        storage_dir = ensure_request_data_dir()
+        if storage_dir.exists():
+            for file_path in storage_dir.iterdir():
+                try:
+                    file_path.unlink()
+                except Exception as exc:
+                    logger.warning(f"Failed to delete {file_path.name}: {exc}")
+            logger.info("Cleared request data directory")
+    except Exception as exc:
+        logger.error("Failed to clear request data directory", exc_info=exc)
+
+
 def sanitise_url_to_filename(url: str) -> str:
     """Convert URL path to safe filename."""
     path = url.split("?")[0].lstrip("/")

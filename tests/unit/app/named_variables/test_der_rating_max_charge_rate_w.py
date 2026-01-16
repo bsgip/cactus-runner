@@ -17,7 +17,7 @@ async def test_resolve_named_variable_der_rating_max_charge_rate_w_empty(pg_empt
 
 @pytest.mark.asyncio
 async def test_resolve_named_variable_der_rating_max_charge_rate_w_no_setting(pg_base_config):
-    """If there is everything up to (but not including) a DERSetting in the db  - fail in a predictable way"""
+    """If there is everything up to (but not including) a DERCapability in the db  - fail in a predictable way"""
     async with begin_session() as session:
         session.add(
             generate_class_instance(
@@ -33,7 +33,7 @@ async def test_resolve_named_variable_der_rating_max_charge_rate_w_no_setting(pg
 
 @pytest.mark.asyncio
 async def test_resolve_named_variable_der_rating_max_charge_rate_w_single_setting(pg_base_config):
-    """If there is a single DERSetting in the db  - return it"""
+    """If there is a single DERCapability in the db  - return it"""
     max_charge_rate_w_value = 12345
     max_charge_rate_w_multiplier = -2
     async with begin_session() as session:
@@ -67,7 +67,7 @@ async def test_resolve_named_variable_der_rating_max_charge_rate_w_single_settin
 
 @pytest.mark.asyncio
 async def test_resolve_named_variable_der_rating_max_charge_rate_w_many_settings(pg_base_config):
-    """If there are multiple DERSettings - return the most recent DERSetting"""
+    """If there are multiple DERCapabilities - return the most recent DERCapability"""
     max_charge_rate_w_value = 123
     max_charge_rate_w_multiplier = 2
     async with begin_session() as session:

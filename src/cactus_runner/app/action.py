@@ -4,15 +4,20 @@ from decimal import Decimal
 from typing import Any
 
 from cactus_test_definitions.client import Action
+from envoy.server.crud.doe import select_site_control_groups
 from envoy.server.model.site import Site
+from sqlalchemy import select
 from envoy_schema.admin.schema.config import (
-    ControlDefaultRequest,
     RuntimeServerConfigRequest,
+)
+from envoy_schema.admin.schema.site import SiteUpdateRequest
+from envoy_schema.admin.schema.site_control import (
+    SiteControlGroupDefaultRequest,
+    SiteControlGroupRequest,
+    SiteControlRequest,
+    SiteControlResponse,
     UpdateDefaultValue,
 )
-
-from envoy_schema.admin.schema.site import SiteUpdateRequest
-from envoy_schema.admin.schema.site_control import SiteControlGroupRequest, SiteControlRequest, SiteControlResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
@@ -21,7 +26,12 @@ from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.app.finalize import finish_active_test
-from cactus_runner.models import ActiveTestProcedure, ClientCertificateType, Listener, RunnerState
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    ClientCertificateType,
+    Listener,
+    RunnerState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,23 +110,28 @@ async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
 async def action_set_default_der_control(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
-    # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
-    active_site = await get_active_site(session)
-    if active_site is None:
-        raise FailedActionError("Unable to identify an active testing EndDevice / site.")
 
+    derp_id: int | None = resolved_parameters.get("derp_id", None)
     import_limit_watts = resolved_parameters.get("opModImpLimW", None)
     export_limit_watts = resolved_parameters.get("opModExpLimW", None)
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
     setGradW = resolved_parameters.get("setGradW", None)
     cancelled = resolved_parameters.get("cancelled", False)
-
     default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
+    # if the test doesn't specifically call out a DERProgram - we select the first one (lowest primacy)
+    if derp_id is None:
+        all_site_control_groups = await select_site_control_groups(
+            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None
+        )
+        if len(all_site_control_groups) == 0:
+            raise Exception("There are no configured DERPrograms - unable to set the DefaultDERControl")
+        derp_id = all_site_control_groups[0].site_control_group_id
+
     await envoy_client.post_site_control_default(
-        active_site.site_id,
-        ControlDefaultRequest(
+        derp_id,
+        SiteControlGroupDefaultRequest(
             import_limit_watts=(
                 UpdateDefaultValue(value=import_limit_watts) if import_limit_watts is not None else default_val
             ),
@@ -220,7 +235,7 @@ async def action_create_der_control(
         controls: list[SiteControlResponse] = await envoy_client.get_all_site_controls(group_id=site_control_group_id)
 
         if controls:
-            sorted_controls = sorted(controls, key=lambda c: c.changed_time, reverse=True)
+            sorted_controls = sorted(controls, key=lambda c: c.created_time, reverse=True)
             latest_site_control_id = sorted_controls[0].site_control_id
         else:
             raise FailedActionError("No controls exist for this site control group despite creation in this action.")
@@ -290,8 +305,10 @@ async def action_set_comms_rate(
 async def action_register_end_device(
     active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any], session: AsyncSession
 ):
-
-    # This is only really used for out of band registration tests - it just needs to work "once"
+    """
+    Register an end device for the test. Skip if a site with the same lfdi already exists, allowing the action to be
+    re-run in playlist mode where site data is preserved between tests.
+    """
     nmi: str | None = resolved_parameters.get("nmi", None)
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
     aggregator_lfdi: str | None = resolved_parameters.get("aggregator_lfdi", None)
@@ -305,11 +322,18 @@ async def action_register_end_device(
         and aggregator_lfdi is not None
         and aggregator_sfdi is not None
     ):
-        lfdi = aggregator_lfdi[0:32] + f"{active_test_procedure.pen:08}"
+        lfdi = (aggregator_lfdi[0:32] + f"{active_test_procedure.pen:08}").upper()
         sfdi = aggregator_sfdi
     else:
-        lfdi = active_test_procedure.client_lfdi
+        lfdi = active_test_procedure.client_lfdi.upper()
         sfdi = active_test_procedure.client_sfdi
+
+    # Check if site already exists
+    lfdi_upper = lfdi.upper()
+    existing_site = await session.execute(select(Site).where(Site.lfdi == lfdi_upper))
+    if existing_site.scalar_one_or_none() is not None:
+        logger.info(f"Site with lfdi {lfdi_upper} already exists, skipping registration")
+        return
 
     session.add(
         Site(
@@ -318,7 +342,7 @@ async def action_register_end_device(
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,
-            lfdi=lfdi.upper(),
+            lfdi=lfdi_upper,
             sfdi=sfdi,
             device_category=0,
             registration_pin=registration_pin if registration_pin is not None else 1,

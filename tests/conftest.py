@@ -11,6 +11,14 @@ import pytest
 from assertical.fixtures.environment import environment_snapshot
 from assertical.fixtures.fastapi import start_app_with_client
 from assertical.fixtures.postgres import generate_async_conn_str_from_connection
+from cactus_schema.runner import (
+    RunGroup,
+    RunRequest,
+    TestCertificates,
+    TestConfig,
+    TestDefinition,
+    TestUser,
+)
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from cactus_test_definitions.client.test_procedures import get_yaml_contents
@@ -32,14 +40,6 @@ from cactus_runner.app.envoy_admin_client import (
 )
 from cactus_runner.app.main import create_app
 from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
-from cactus_runner.models import (
-    RunGroup,
-    RunRequest,
-    TestCertificates,
-    TestConfig,
-    TestDefinition,
-    TestUser,
-)
 from tests.adapter import HttpxClientSessionAdapter
 
 

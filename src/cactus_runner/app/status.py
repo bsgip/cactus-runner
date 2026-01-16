@@ -1,8 +1,21 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from cactus_schema.runner import (
+    CriteriaEntry,
+    DataStreamPoint,
+    EndDeviceMetadata,
+    PreconditionCheckEntry,
+    RequestEntry,
+    RunnerStatus,
+    StepEventStatus,
+    StepStatus,
+    TimelineDataStreamEntry,
+    TimelineStatus,
+)
 from envoy.server.model.site import Site
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cactus_runner.app.check import run_check
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
@@ -11,16 +24,7 @@ from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
-    CriteriaEntry,
-    DataStreamPoint,
-    EndDeviceMetadata,
-    PreconditionCheckEntry,
-    RequestEntry,
-    RunnerStatus,
     StepInfo,
-    StepStatus,
-    TimelineDataStreamEntry,
-    TimelineStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,14 +127,51 @@ async def get_timeline_data_streams(
     ]
 
 
+def get_event_status(
+    now: datetime, step_name: str, step_info: StepInfo, active_test_procedure: ActiveTestProcedure
+) -> str | None:
+    """Generates a short, human readable status message for an active step (or None if the test isn't active)"""
+    if step_info.get_step_status() != StepStatus.ACTIVE:
+        return None
+
+    for listener in active_test_procedure.listeners:
+        if listener.step != step_name:
+            continue
+
+        event = listener.event
+        if event.type == "wait":
+            # Figure out how many more seconds are we waiting for
+            duration_seconds = event.parameters.get("duration_seconds", None)
+            if duration_seconds is None or step_info.started_at is None:
+                return "Waiting for ???s."
+
+            finish_time = step_info.started_at + timedelta(seconds=duration_seconds)
+            if now >= finish_time:
+                return "Triggering..."
+            wait_time_seconds = int((finish_time - now).total_seconds())
+            return f"Waiting for {wait_time_seconds}s"
+        else:
+            # We have a GET / PUT / DELETE etc event
+            method = event.type.split("-")[0]
+            endpoint = event.parameters.get("endpoint", "???")
+            return f"{method} {endpoint}"
+
+    return None
+
+
 async def get_active_runner_status(
     session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
+    crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
+    now = datetime.now(timezone.utc)
 
-    step_status = active_test_procedure.step_status
+    step_status: dict[str, StepEventStatus] = {}
+    for step_name, step_info in active_test_procedure.step_status.items():
+        event_status = get_event_status(now, step_name, step_info, active_test_procedure)
+        step_status[step_name] = StepEventStatus(step_info.started_at, step_info.completed_at, event_status)
 
     # If there is a set max w available - return it - otherwise client likely has registered anything yet
     # This is used by both timeline and EndDeviceMetadata classes
@@ -145,8 +186,12 @@ async def get_active_runner_status(
         basis = active_test_procedure.started_at
         if basis is not None:
             interval_seconds = 20
-            now = datetime.now(timezone.utc)
             end = now + timedelta(seconds=120)
+
+            # Optionally crop to reduce status size for UI
+            if crop_minutes is not None:
+                crop_start = now - timedelta(minutes=crop_minutes)
+                basis = max(basis, crop_start)  # Don't go earlier than crop_start
 
             data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
             now_offset = duration_to_label(((now - basis).seconds // interval_seconds) * interval_seconds)
@@ -182,6 +227,11 @@ async def get_active_runner_status(
         logger.error("Error getting end device metadata", exc_info=exc)
         end_device_metadata = None
 
+    # Optionally crop request_history to reduce status size for UI
+    if crop_minutes is not None:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=crop_minutes)
+        request_history = [req for req in request_history if req.timestamp >= cutoff_time]
+
     return RunnerStatus(
         timestamp_status=datetime.now(tz=timezone.utc),
         timestamp_initialise=active_test_procedure.initialised_at,
@@ -193,7 +243,7 @@ async def get_active_runner_status(
         criteria=await get_criteria_summary(session, active_test_procedure),
         precondition_checks=await get_precondition_checks_summary(session, active_test_procedure),
         instructions=await get_current_instructions(active_test_procedure),
-        status_summary=get_runner_status_summary(step_status=step_status),
+        status_summary=get_runner_status_summary(step_status=active_test_procedure.step_status),
         step_status=step_status,
         request_history=request_history,
         timeline=timeline,
