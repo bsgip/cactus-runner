@@ -14,6 +14,7 @@ from cactus_schema.runner import (
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Event, TestProcedure
 from dataclass_wizard import JSONWizard
+from envoy.server.model.site import Site as EnvoySite
 from envoy.server.model.site_reading import SiteReadingType
 
 
@@ -176,6 +177,7 @@ from envoy_schema.server.schema.sep2.types import (
     AccumulationBehaviourType,
     CommodityType,
     DataQualifierType,
+    DeviceCategory,
     FlowDirectionType,
     KindType,
     PhaseCode,
@@ -246,6 +248,38 @@ class PackedReadings(JSONWizard):
     reading_type: ReadingType
     readings_as_json: str
     reading_counts: int
+
+
+@dataclass(frozen=True)
+class Site(JSONWizard):
+
+    site_id: int
+    nmi: str | None
+    aggregator_id: int
+    timezone_id: str
+    created_time: datetime
+    changed_time: datetime
+    lfdi: str
+    sfdi: int
+    device_category: DeviceCategory
+    registration_pin: int
+    post_rate_seconds: int | None
+
+    @classmethod
+    def from_site(cls, site: EnvoySite):
+        return cls(
+            site_id=site.site_id,
+            nmi=site.nmi,
+            aggregator_id=site.aggregator_id,
+            timezone_id=site.timezone_id,
+            created_time=site.created_time,
+            changed_time=site.changed_time,
+            lfdi=site.lfdi,
+            sfdi=site.sfdi,
+            device_category=site.device_category,
+            registration_pin=site.registration_pin,
+            post_rate_seconds=site.post_rate_seconds,
+        )
 
 
 @dataclass
