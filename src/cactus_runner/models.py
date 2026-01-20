@@ -172,10 +172,89 @@ class CheckResult:
     description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
 
 
+from envoy_schema.server.schema.sep2.types import (
+    AccumulationBehaviourType,
+    CommodityType,
+    DataQualifierType,
+    FlowDirectionType,
+    KindType,
+    PhaseCode,
+    RoleFlagsType,
+    UomType,
+)
+
+
+@dataclass(frozen=True)
+class ReadingType(JSONWizard):
+    site_reading_type_id: int
+    aggregator_id: int
+    site_id: int
+    mrid: str
+    group_id: int
+    group_mrid: str
+
+    uom: UomType
+    data_qualifier: DataQualifierType
+    flow_direction: FlowDirectionType
+    accumulation_behaviour: AccumulationBehaviourType
+    kind: KindType
+    phase: PhaseCode
+    power_of_ten_multiplier: int
+    default_interval_seconds: int
+    role_flags: RoleFlagsType
+
+    description: str | None
+    group_version: int | None
+    group_status: int | None
+    commodity: CommodityType | None
+
+    created_time: datetime
+    changed_time: datetime
+
+    # site: Site | None
+
+    @classmethod
+    def from_site_reading_type(cls, srt: SiteReadingType):
+        """Converts a sqlalchemy SiteReadingType (from envoy) to a serialisable ReadingType"""
+        return cls(
+            site_reading_type_id=srt.site_reading_type_id,
+            aggregator_id=srt.aggregator_id,
+            site_id=srt.site_id,
+            mrid=srt.mrid,
+            group_id=srt.group_id,
+            group_mrid=srt.group_mrid,
+            uom=srt.uom,
+            data_qualifier=srt.data_qualifier,
+            flow_direction=srt.flow_direction,
+            accumulation_behaviour=srt.accumulation_behaviour,
+            kind=srt.kind,
+            phase=srt.phase,
+            power_of_ten_multiplier=srt.power_of_ten_multiplier,
+            default_interval_seconds=srt.default_interval_seconds,
+            role_flags=srt.role_flags,
+            description=srt.description,
+            group_version=srt.group_version,
+            group_status=srt.group_status,
+            commodity=srt.commodity,
+            created_time=srt.created_time,
+            changed_time=srt.changed_time,
+        )
+
+
+@dataclass
+class PackedReadings(JSONWizard):
+    reading_type: ReadingType
+    readings_as_json: str
+    reading_counts: int
+
+
 @dataclass
 class ReportingData(JSONWizard):
     created_at: datetime
     runner_state: RunnerState
     check_results: dict[str, CheckResult]
-    # readings: dict[SiteReadingType, pd.DataFrame]
-    # reading_counts: dict[SiteReadingType, int]
+    readings: list[PackedReadings]
+    # readings: dict[ReadingType, pd.DataFrame]
+    # reading_counts: dict[ReadingType, int]
+    # sites: Sequence[Site]
+    # timeline: timeline.Timeline

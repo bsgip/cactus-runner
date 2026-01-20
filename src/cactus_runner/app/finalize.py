@@ -11,7 +11,6 @@ from typing import Sequence, cast
 
 import pandas as pd
 from envoy.server.model.site import Site
-from envoy.server.model.site_reading import SiteReadingType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import reporting, timeline
@@ -35,7 +34,13 @@ from cactus_runner.app.readings import (
 )
 from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
-from cactus_runner.models import CheckResult, ReportingData, RunnerState
+from cactus_runner.models import (
+    CheckResult,
+    PackedReadings,
+    ReadingType,
+    ReportingData,
+    RunnerState,
+)
 
 GENERATION_ERRORS_FILE_NAME = "generation-errors.txt"
 # Playlist ZIP storage
@@ -231,19 +236,26 @@ async def generate_pdf(
 async def generate_json_reporting_data(
     runner_state: RunnerState,
     check_results: dict[str, CheckResult],
-    readings: dict[SiteReadingType, pd.DataFrame],
-    reading_counts: dict[SiteReadingType, int],
+    readings: dict[ReadingType, pd.DataFrame],
+    reading_counts: dict[ReadingType, int],
     sites: Sequence[Site],
     timeline: timeline.Timeline,
     errors,
 ) -> str | None:
     created_at = datetime.now(timezone.utc)
+
+    # Repack readings into something serializable
+    packed_readings = [
+        # PackedReadings(reading_type=k, readings_as_json=readings[k].to_json(), reading_counts=v)
+        PackedReadings(reading_type=k, readings_as_json="", reading_counts=v)
+        for k, v in reading_counts.items()
+    ]
     try:
         reporting_data = ReportingData(
             created_at=created_at,
             runner_state=runner_state,
             check_results=check_results,
-            # reading_counts=reading_counts,
+            readings=packed_readings,
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
@@ -334,6 +346,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         sites = await get_sites(session)
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
         reading_counts = await get_reading_counts_grouped_by_reading_type(session)
+
+        # Convert to serialisable types
+        readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
+        reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
 
         pdf_data = await generate_pdf(
             runner_state=runner_state,

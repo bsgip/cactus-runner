@@ -3,16 +3,15 @@ import random
 import string
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pandas as pd
 import pytest
 from assertical.fake.generator import generate_class_instance
-from envoy.server.model.site_reading import SiteReadingType
 
 from cactus_runner.app import finalize
-from cactus_runner.models import CheckResult, ReportingData, RunnerState
+from cactus_runner.models import CheckResult, ReadingType, ReportingData, RunnerState
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -184,23 +183,25 @@ async def test_generate_json_reporting_data():
             for i in range(num)
         }
 
-    def fake_readings(num=3):
+    def fake_readings(reading_types: list[ReadingType]):
+        NUMBER_OF_READINGS = 5
         sample_df = pd.DataFrame(
             {
-                "scaled_value": [Decimal(1.0)],
-                "time_period_start": [DT_NOW],
+                "scaled_value": [Decimal(random.random()) for _ in range(NUMBER_OF_READINGS)],
+                "time_period_start": [DT_NOW + timedelta(seconds=_ * 5) for _ in range(NUMBER_OF_READINGS)],
             }
         )
-        return {generate_class_instance(SiteReadingType): sample_df for _ in range(num)}
+        return {rt: sample_df for rt in reading_types}
 
-    def fake_reading_counts():
-        return {generate_class_instance(SiteReadingType): 17}
+    def fake_reading_counts(reading_types: list[ReadingType]):
+        return {rt: random.randrange(10, 500) for rt in reading_types}
 
     runner_state = RunnerState()
     checks = check_results()
-    # readings = fake_readings()
-    readings = None
-    reading_counts = fake_reading_counts()
+    site_reading_type_counts = 3
+    reading_types = [generate_class_instance(ReadingType) for _ in range(site_reading_type_counts)]
+    readings = fake_readings(reading_types)
+    reading_counts = fake_reading_counts(reading_types)
     sites = None
     timeline = None
     errors = []
@@ -216,7 +217,6 @@ async def test_generate_json_reporting_data():
         errors=errors,
     )
     print(reporting_data_str)
-
     reporting_data = ReportingData.from_json(reporting_data_str)
 
     # Assert
