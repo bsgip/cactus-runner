@@ -11,7 +11,13 @@ import pytest
 from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import finalize
-from cactus_runner.models import CheckResult, ReadingType, ReportingData, RunnerState
+from cactus_runner.models import (
+    CheckResult,
+    ReadingType,
+    ReportingData,
+    RunnerState,
+    Site,
+)
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -199,10 +205,11 @@ async def test_generate_json_reporting_data():
     runner_state = RunnerState()
     checks = check_results()
     site_reading_type_counts = 3
+    site_count = 5
     reading_types = [generate_class_instance(ReadingType) for _ in range(site_reading_type_counts)]
     readings = fake_readings(reading_types)
     reading_counts = fake_reading_counts(reading_types)
-    sites = None
+    sites = [generate_class_instance(Site) for _ in range(site_count)]
     timeline = None
     errors = []
 

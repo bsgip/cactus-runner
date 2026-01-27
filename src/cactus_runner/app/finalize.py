@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Sequence, cast
 
 import pandas as pd
-from envoy.server.model.site import Site
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import reporting, timeline
@@ -40,6 +39,7 @@ from cactus_runner.models import (
     ReadingType,
     ReportingData,
     RunnerState,
+    Site,
 )
 
 GENERATION_ERRORS_FILE_NAME = "generation-errors.txt"
@@ -238,7 +238,7 @@ async def generate_json_reporting_data(
     check_results: dict[str, CheckResult],
     readings: dict[ReadingType, pd.DataFrame],
     reading_counts: dict[ReadingType, int],
-    sites: Sequence[Site],
+    sites: list[Site],
     timeline: timeline.Timeline,
     errors,
 ) -> str | None:
@@ -256,6 +256,7 @@ async def generate_json_reporting_data(
             runner_state=runner_state,
             check_results=check_results,
             readings=packed_readings,
+            sites=sites,
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
@@ -341,7 +342,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             errors.append(f"Failed to generate test timeline: {exc}")
             test_timeline = None
 
-    # Fetch raw DB data and create PDF
+        # Fetch raw DB data and create PDF
     try:
         sites = await get_sites(session)
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
@@ -350,6 +351,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         # Convert to serialisable types
         readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
         reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
+        sites = [Site.from_site(s) for s in sites]
 
         pdf_data = await generate_pdf(
             runner_state=runner_state,
