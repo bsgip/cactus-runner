@@ -35,6 +35,8 @@ from envoy_schema.server.schema.sep2.der import (
     StorageModeStatusType,
 )
 
+from cactus_runner.app.timeline import Timeline
+
 
 class ClientCertificateType(StrEnum):
     AGGREGATOR = "Aggregator"
@@ -627,4 +629,4 @@ class ReportingData(JSONWizard):
     check_results: dict[str, CheckResult]
     readings: list[PackedReadings]
     sites: list[Site]
-    # timeline: timeline.Timeline
+    timeline: Timeline | None

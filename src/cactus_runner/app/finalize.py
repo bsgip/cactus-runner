@@ -7,12 +7,12 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence, cast
+from typing import cast
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import reporting, timeline
+from cactus_runner.app import check, reporting, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -239,7 +239,7 @@ async def generate_json_reporting_data(
     readings: dict[ReadingType, pd.DataFrame],
     reading_counts: dict[ReadingType, int],
     sites: list[Site],
-    timeline: timeline.Timeline,
+    timeline: timeline.Timeline | None,
     errors,
 ) -> str | None:
     created_at = datetime.now(timezone.utc)
@@ -257,6 +257,7 @@ async def generate_json_reporting_data(
             check_results=check_results,
             readings=packed_readings,
             sites=sites,
+            timeline=timeline,
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
