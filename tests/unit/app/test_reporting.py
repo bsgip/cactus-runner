@@ -35,6 +35,8 @@ from cactus_runner.app.reporting import (
     validate_reading_duration,
 )
 from cactus_runner.app.timeline import Timeline, TimelineDataStream
+from cactus_schema.runner import RunRequest
+
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
@@ -348,9 +350,12 @@ def test_pdf_report_everything_set():
         ),
     ]
 
+    playlist = [generate_class_instance(RunRequest) for _ in range(5)]
     state = runner_state(
         active_test=active_test, request_history=request_history_comprehensive(), client_interactions=interactions
     )
+    state.playlist = playlist
+    state.playlist_index = 2
 
     checks = {
         "check0": generate_class_instance(
