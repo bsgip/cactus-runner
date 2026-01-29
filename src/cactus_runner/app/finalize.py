@@ -244,13 +244,13 @@ async def generate_json_reporting_data(
 ) -> str | None:
     created_at = datetime.now(timezone.utc)
 
-    # Repack readings into something serializable
-    packed_readings = [
-        # PackedReadings(reading_type=k, readings_as_json=readings[k].to_json(), reading_counts=v)
-        PackedReadings(reading_type=k, readings_as_json="", reading_counts=v)
-        for k, v in reading_counts.items()
-    ]
     try:
+        # Repack readings into something serializable
+        packed_readings = [
+            PackedReadings(reading_type=k, readings_as_json=readings[k].to_json(), reading_counts=v)
+            for k, v in reading_counts.items()
+        ]
+
         reporting_data = ReportingData(
             created_at=created_at,
             runner_state=runner_state,
@@ -351,7 +351,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
         # Convert to serialisable types
         readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
-        reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
+        reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
         sites = [Site.from_site(s) for s in sites]
 
         pdf_data = await generate_pdf(
