@@ -4,10 +4,7 @@ import pytest
 from assertical.asserts.type import assert_list_type
 
 from cactus_runner.app.proxy import ProxyResult
-from cactus_runner.app.schema_validator import (
-    validate_proxy_request_schema,
-    validate_xml,
-)
+from cactus_runner.app.schema_validator import validate_proxy_request_schema
 
 
 @pytest.mark.parametrize(

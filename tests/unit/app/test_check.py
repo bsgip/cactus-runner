@@ -2508,7 +2508,7 @@ async def test_check_response_contents_all(
             session.add(control)
 
         for idx, t in enumerate(response_status_values):
-            (response_control_id, response_status) = t
+            response_control_id, response_status = t
             session.add(
                 generate_class_instance(
                     DynamicOperatingEnvelopeResponse,
