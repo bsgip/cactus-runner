@@ -261,7 +261,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     if active_test_procedure.definition.criteria:
         try:
             check_results = await check.determine_check_results(
-                active_test_procedure.definition.criteria.checks, active_test_procedure, session
+                active_test_procedure.definition.criteria.checks,
+                active_test_procedure,
+                session,
+                runner_state.request_history,
             )
         except Exception as exc:
             logger.error("Failed to determine check results", exc_info=exc)

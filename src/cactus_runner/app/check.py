@@ -1,3 +1,4 @@
+import http
 import logging
 import re
 from dataclasses import dataclass
@@ -40,7 +41,7 @@ from cactus_runner.app.evaluator import (
     ResolvedParam,
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import ActiveTestProcedure, ClientCertificateType
+from cactus_runner.models import ActiveTestProcedure, ClientCertificateType, RequestEntry
 
 logger = logging.getLogger(__name__)
 
@@ -1224,7 +1225,84 @@ async def check_response_contents(
     return CheckResult(True, f"At least one DERControl response{context_description} of type {rt_string} was found")
 
 
-async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, session: AsyncSession) -> CheckResult:
+def check_all_polls_at_correct_time(
+    active_test_procedure: ActiveTestProcedure,
+    request_history: list[RequestEntry],
+    resolved_parameters: dict[str, Any],
+) -> CheckResult:
+    """
+    Validates that polling to a specific endpoint occurs at the expected frequency throughout the test.
+    Uses a window-based approach with 50% leeway - for each window of 3x the poll interval, checks that there is
+    at least 1 poll and fewer than 4 polls.
+
+    Parameters:
+        endpoint: The path to filter requests on (e.g., "/mup/1")
+        poll_interval_seconds: The expected poll interval in seconds (e.g., 60 for 1 minute)
+    """
+    endpoint: str = resolved_parameters.get("endpoint", "")
+    poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 60)
+
+    if not endpoint:
+        return CheckResult(False, "No endpoint specified for poll timing check")
+
+    # Get test start time
+    test_started_at = active_test_procedure.started_at
+    if test_started_at is None:
+        return CheckResult(False, "Test has not started - cannot check poll timing")
+
+    # Filter requests by endpoint (GET requests only for polling)
+    endpoint_requests = [
+        r
+        for r in request_history
+        if r.method == http.HTTPMethod.GET and (r.path == endpoint or r.path.startswith(endpoint + "?"))
+    ]
+
+    if not endpoint_requests:
+        return CheckResult(False, f"No requests found for endpoint '{endpoint}'")
+
+    # Sort by timestamp
+    endpoint_requests.sort(key=lambda r: r.timestamp)
+    last_request_time = endpoint_requests[-1].timestamp
+
+    # Calculate window size: 3x poll interval (giving 50% leeway either side of expected 2 polls)
+    window_seconds = poll_interval_seconds * 3
+    min_polls_per_window = 1
+    max_polls_per_window = 4  # inclusive
+
+    checker = SoftChecker()
+
+    # Iterate through windows from test start (doesnt count in precondition phase)
+    window_start = test_started_at
+    window_number = 0
+
+    while window_start < last_request_time:
+        window_end = window_start + timedelta(seconds=window_seconds)
+        window_number += 1
+
+        # Count polls in this window
+        polls_in_window = [r for r in endpoint_requests if window_start <= r.timestamp < window_end]
+        poll_count = len(polls_in_window)
+
+        if poll_count < min_polls_per_window or poll_count > max_polls_per_window:
+            checker.add(
+                f"Between {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
+                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {poll_count}",
+            )
+
+        window_start = window_end
+
+    result = checker.finalize()
+    if result.passed:
+        return CheckResult(True, f"All poll timing checks passed for '{endpoint}")
+    return result
+
+
+async def run_check(
+    check: Check,
+    active_test_procedure: ActiveTestProcedure,
+    session: AsyncSession,
+    request_history: list[RequestEntry] | None = None,
+) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
     Checks describe boolean (readonly) checks like "has the client sent a valid value".
@@ -1286,6 +1364,11 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
             case "response-contents":
                 check_result = await check_response_contents(resolved_parameters, session, active_test_procedure)
 
+            case "all-polls-at-correct-time":
+                check_result = check_all_polls_at_correct_time(
+                    active_test_procedure, request_history or [], resolved_parameters
+                )
+
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)
         raise FailedCheckError(f"Failed performing check {check}. {exc}")
@@ -1298,20 +1381,26 @@ async def run_check(check: Check, active_test_procedure: ActiveTestProcedure, se
 
 
 async def determine_check_results(
-    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+    checks: list[Check] | None,
+    active_test_procedure: ActiveTestProcedure,
+    session: AsyncSession,
+    request_history: list[RequestEntry] | None = None,
 ) -> dict[str, CheckResult]:
     check_results: dict[str, CheckResult] = {}
     if checks is None:
         return check_results
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session)
+        result = await run_check(check, active_test_procedure, session, request_history)
         check_results[check.type] = result
     return check_results
 
 
 async def first_failing_check(
-    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+    checks: list[Check] | None,
+    active_test_procedure: ActiveTestProcedure,
+    session: AsyncSession,
+    request_history: list[RequestEntry] | None = None,
 ) -> CheckResult | None:
     """Iterates through checks - looking for the first Check that returns a failing CheckResult. If all checks are
     passing, returns None
@@ -1324,7 +1413,7 @@ async def first_failing_check(
         return None
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session)
+        result = await run_check(check, active_test_procedure, session, request_history)
         if not result.passed:
             logger.info(f"{check} is not passing: {result}.")
             return result
@@ -1334,7 +1423,10 @@ async def first_failing_check(
 
 
 async def all_checks_passing(
-    checks: list[Check] | None, active_test_procedure: ActiveTestProcedure, session: AsyncSession
+    checks: list[Check] | None,
+    active_test_procedure: ActiveTestProcedure,
+    session: AsyncSession,
+    request_history: list[RequestEntry] | None = None,
 ) -> bool:
     """Returns True if every specified check is passing. An empty/unspecified list will return True.
 
@@ -1342,5 +1434,5 @@ async def all_checks_passing(
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
       FailedCheckError: Raised if this function encounters an exception while running the check."""
 
-    failing_check = await first_failing_check(checks, active_test_procedure, session)
+    failing_check = await first_failing_check(checks, active_test_procedure, session, request_history)
     return failing_check is None
