@@ -14,6 +14,7 @@ from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions import __version__ as cactus_test_definitions_version
 from envoy.server.model import (
     DynamicOperatingEnvelope,
+    Site,
     SiteDERAvailability,
     SiteDERRating,
     SiteDERSetting,
@@ -61,7 +62,6 @@ from cactus_runner.models import (
     ClientInteractionType,
     RequestEntry,
     RunnerState,
-    Site,
     StepStatus,
 )
 
@@ -849,7 +849,7 @@ def generate_site_section(site: Site, stylesheet: StyleSheet) -> list[Flowable]:
     return elements
 
 
-def generate_devices_section(sites: list[Site], stylesheet: StyleSheet) -> list[Flowable]:
+def generate_devices_section(sites: Sequence[Site], stylesheet: StyleSheet) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Devices", stylesheet.heading))
     if sites:
@@ -872,7 +872,7 @@ def generate_controls_chart(controls: list[DynamicOperatingEnvelope]) -> Image:
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
-def generate_timeline_chart(timeline: Timeline, sites: list[Site]) -> Image:
+def generate_timeline_chart(timeline: Timeline, sites: Sequence[Site]) -> Image:
     fig = go.Figure()
 
     # Add data streams with numeric x-axis
@@ -1112,7 +1112,7 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
 
 
 def generate_timeline_section(
-    timeline: Timeline | None, runner_state: RunnerState, sites: list[Site], stylesheet: StyleSheet
+    timeline: Timeline | None, runner_state: RunnerState, sites: Sequence[Site], stylesheet: StyleSheet
 ) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Timeline", stylesheet.heading))
@@ -1485,7 +1485,7 @@ def generate_page_elements(
     check_results: dict[str, CheckResult],
     readings: dict[SiteReadingType, pd.DataFrame],
     reading_counts: dict[SiteReadingType, int],
-    sites: list[Site],
+    sites: Sequence[Site],
     timeline: Timeline | None,
     stylesheet: StyleSheet,
 ) -> list[Flowable]:

@@ -349,11 +349,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
         reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
-        # Convert to serialisable types
-        readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
-        reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
-        sites = [Site.from_site(s) for s in sites]
-
         pdf_data = await generate_pdf(
             runner_state=runner_state,
             check_results=check_results,
@@ -364,13 +359,18 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             errors=errors,
         )
 
+        # Convert to serialisable types
+        serializable_readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
+        serializable_reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
+        serializable_sites = [Site.from_site(s) for s in sites]
+
         # Collect reporting state into json object
         json_reporting_data = await generate_json_reporting_data(
             runner_state=runner_state,
             check_results=check_results,
-            readings=readings,
-            reading_counts=reading_counts,
-            sites=sites,
+            readings=serializable_readings,
+            reading_counts=serializable_reading_counts,
+            sites=serializable_sites,
             timeline=test_timeline,
             errors=errors,
         )

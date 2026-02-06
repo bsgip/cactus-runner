@@ -34,6 +34,17 @@ from envoy_schema.server.schema.sep2.der import (
     OperationalModeStatusType,
     StorageModeStatusType,
 )
+from envoy_schema.server.schema.sep2.types import (
+    AccumulationBehaviourType,
+    CommodityType,
+    DataQualifierType,
+    DeviceCategory,
+    FlowDirectionType,
+    KindType,
+    PhaseCode,
+    RoleFlagsType,
+    UomType,
+)
 
 from cactus_runner.app.timeline import Timeline
 
@@ -191,19 +202,6 @@ class CheckResult:
 
     passed: bool  # True if the check is considered passed or successful. False otherwise
     description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
-
-
-from envoy_schema.server.schema.sep2.types import (
-    AccumulationBehaviourType,
-    CommodityType,
-    DataQualifierType,
-    DeviceCategory,
-    FlowDirectionType,
-    KindType,
-    PhaseCode,
-    RoleFlagsType,
-    UomType,
-)
 
 
 @dataclass(frozen=True)

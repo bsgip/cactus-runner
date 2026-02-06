@@ -1,6 +1,5 @@
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import chain
 from typing import Annotated, Any, Iterable, Optional, Sequence
