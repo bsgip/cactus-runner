@@ -53,10 +53,10 @@ from reportlab.platypus import (
 )
 
 from cactus_runner import __version__ as cactus_runner_version
-from cactus_runner.app.check import CheckResult
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.timeline import Timeline, duration_to_label
 from cactus_runner.models import (
+    CheckResult,
     ClientCertificateType,
     ClientInteraction,
     ClientInteractionType,
