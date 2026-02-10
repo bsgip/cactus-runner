@@ -40,9 +40,7 @@ logger = logging.getLogger(__name__)
 INT16_MAX = 32767
 
 
-def _effective_pow10_multiplier(
-    requested_multiplier: int, watt_values: list[Decimal | float | None]
-) -> int:
+def _effective_pow10_multiplier(requested_multiplier: int, watt_values: list[Decimal | float | None]) -> int:
     """Compute the effective pow10 multiplier, increasing it if any watt value would overflow Int16.
 
     This mirrors the server-side logic in DERControlMapper.map_to_active_power - if a value divided by
@@ -241,9 +239,7 @@ async def action_create_der_control(
                 f"Adjusting pow10 multiplier from {pow_10mult} to {effective_mult} "
                 f"to fit watt values within Int16 range"
             )
-        await envoy_client.update_runtime_config(
-            RuntimeServerConfigRequest(site_control_pow10_encoding=effective_mult)
-        )
+        await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=effective_mult))
 
     await envoy_client.create_site_controls(
         site_control_group_id,
