@@ -1278,10 +1278,11 @@ def check_all_polls_at_correct_time(
     endpoint_requests.sort(key=lambda r: r.timestamp)
     last_request_time = endpoint_requests[-1].timestamp
 
-    # Calculate window size: 3x poll interval (giving 50% leeway either side of expected 2 polls)
+    # Window of 3x poll interval: 2 interior polls always land in the window,
+    # 2 boundary polls may drift in/out with ±50% jitter, giving a range of 2-4.
     window_seconds = poll_interval_seconds * 3
-    min_polls_per_window = 1
-    max_polls_per_window = 4  # inclusive
+    min_polls_per_window = 2
+    max_polls_per_window = 4
 
     checker = SoftChecker()
 
