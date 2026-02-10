@@ -1231,34 +1231,48 @@ def check_all_polls_at_correct_time(
     resolved_parameters: dict[str, Any],
 ) -> CheckResult:
     """
-    Validates that polling to a specific endpoint occurs at the expected frequency throughout the test.
+    Validates that requests to a specific endpoint occur at the expected frequency throughout the test.
     Uses a window-based approach with 50% leeway - for each window of 3x the poll interval, checks that there is
-    at least 1 poll and fewer than 4 polls.
+    at least 1 request and fewer than 4 requests.
 
     Parameters:
-        endpoint: The path to filter requests on (e.g., "/mup/1")
-        poll_interval_seconds: The expected poll interval in seconds (e.g., 60 for 1 minute)
+        endpoint: e.g., "/mup/1"
+        poll_interval_seconds
+        request_type: "GET", "POST", or "PUT"
     """
     endpoint: str = resolved_parameters.get("endpoint", "")
-    poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 60)
+    poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 0)
+    request_type_str: str = resolved_parameters.get("request_type", "")
 
     if not endpoint:
         return CheckResult(False, "No endpoint specified for poll timing check")
+
+    if not poll_interval_seconds:
+        return CheckResult(False, "No poll_interval_seconds specified for poll timing check")
+
+    if not request_type_str:
+        return CheckResult(False, "No request_type specified for poll timing check")
+
+    request_type_str = request_type_str.upper()
+    try:
+        request_type = http.HTTPMethod(request_type_str)
+    except ValueError:
+        return CheckResult(False, f"Invalid request_type '{request_type_str}' - must be GET, POST, or PUT")
 
     # Get test start time
     test_started_at = active_test_procedure.started_at
     if test_started_at is None:
         return CheckResult(False, "Test has not started - cannot check poll timing")
 
-    # Filter requests by endpoint (GET requests only for polling)
+    # Filter requests by endpoint and method
     endpoint_requests = [
         r
         for r in request_history
-        if r.method == http.HTTPMethod.GET and (r.path == endpoint or r.path.startswith(endpoint + "?"))
+        if r.method == request_type and (r.path == endpoint or r.path.startswith(endpoint + "?"))
     ]
 
     if not endpoint_requests:
-        return CheckResult(False, f"No requests found for endpoint '{endpoint}'")
+        return CheckResult(False, f"No {request_type_str} requests found for endpoint '{endpoint}'")
 
     # Sort by timestamp
     endpoint_requests.sort(key=lambda r: r.timestamp)
@@ -1279,21 +1293,21 @@ def check_all_polls_at_correct_time(
         window_end = window_start + timedelta(seconds=window_seconds)
         window_number += 1
 
-        # Count polls in this window
-        polls_in_window = [r for r in endpoint_requests if window_start <= r.timestamp < window_end]
-        poll_count = len(polls_in_window)
+        # Count requests in this window
+        requests_in_window = [r for r in endpoint_requests if window_start <= r.timestamp < window_end]
+        request_count = len(requests_in_window)
 
-        if poll_count < min_polls_per_window or poll_count > max_polls_per_window:
+        if request_count < min_polls_per_window or request_count > max_polls_per_window:
             checker.add(
                 f"Between {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {poll_count}",
+                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {request_count}",
             )
 
         window_start = window_end
 
     result = checker.finalize()
     if result.passed:
-        return CheckResult(True, f"All poll timing checks passed for '{endpoint}")
+        return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
     return result
 
 
