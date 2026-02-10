@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 INT16_MAX = 32767
 
 
-def _effective_pow10_multiplier(requested_multiplier: int, watt_values: list[Decimal | None]) -> int:
+def _effective_pow10_multiplier(
+    requested_multiplier: int, watt_values: list[Decimal | float | None]
+) -> int:
     """Compute the effective pow10 multiplier, increasing it if any watt value would overflow Int16.
 
     This mirrors the server-side logic in DERControlMapper.map_to_active_power - if a value divided by
@@ -53,10 +55,10 @@ def _effective_pow10_multiplier(requested_multiplier: int, watt_values: list[Dec
     for value in watt_values:
         if value is None or value == 0:
             continue
-        abs_value = abs(value)
+        abs_value = abs(float(value))
         # Check if the value fits in Int16 at the current effective multiplier
-        if abs_value / Decimal(10**effective) > INT16_MAX:
-            required = math.ceil(math.log10(float(abs_value) / INT16_MAX))
+        if abs_value / 10**effective > INT16_MAX:
+            required = math.ceil(math.log10(abs_value / INT16_MAX))
             effective = max(effective, required)
     return effective
 
