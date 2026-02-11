@@ -11,6 +11,7 @@ from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.app.uri import does_endpoint_match
 from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -58,40 +59,6 @@ class EventTrigger:
     client_request: ClientRequestDetails | None  # Only specified if type == CLIENT_REQUEST
 
 
-def does_endpoint_match(request: ClientRequestDetails, match: str) -> bool:
-    """Performs all logic for matching an "endpoint" to an incoming request's path.
-
-    '*' can be a "wildcard" character for matching a single component of the path (a path component is part of the path
-    seperated by '/'). It will NOT partially match
-
-    eg:
-    match=/edev/*/derp/1  would match /edev/123/derp/1
-    match=/edev/1*3/derp/1  would NOT match /edev/123/derp/1
-
-    NOTE: This function expects paths WITHOUT any mount point prefix - those should be stripped before calling.
-    """
-
-    # If we don't have a wildcard - do an EXACT match
-    WILDCARD = "*"
-    if WILDCARD not in match:
-        return request.path == match
-
-    # Otherwise we need to do a component by component comparison
-    request_components = list(filter(None, request.path.split("/")))  # Remove empty strings
-    match_components = list(filter(None, match.split("/")))  # Remove empty strings
-
-    # Must have same number of components for a match
-    if len(request_components) != len(match_components):
-        return False
-
-    # Compare each component
-    for request_component, match_component in zip(request_components, match_components):
-        if match_component != WILDCARD and request_component != match_component:
-            return False
-
-    return True
-
-
 async def is_listener_triggerable(
     listener: Listener,
     trigger: EventTrigger,
@@ -123,7 +90,7 @@ async def is_listener_triggerable(
         endpoint = resolved_params.get("endpoint", evaluator.ResolvedParam(""))
         serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
 
-        if not does_endpoint_match(trigger.client_request, endpoint.value):
+        if not does_endpoint_match(trigger.client_request.path, endpoint.value):
             return False
 
         # Make sure that we are listening to the correct before/after serving event

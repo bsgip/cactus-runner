@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import chain
 from typing import Annotated, Any, Iterable, Optional, Sequence
-
+from cactus_runner.app.uri import does_endpoint_match
 import pydantic
 import pydantic.alias_generators
 import pydantic.fields
@@ -1266,9 +1266,7 @@ def check_all_polls_at_correct_time(
 
     # Filter requests by endpoint and method
     endpoint_requests = [
-        r
-        for r in request_history
-        if r.method == request_type and (r.path == endpoint or r.path.startswith(endpoint + "?"))
+        r for r in request_history if r.method == request_type and does_endpoint_match(r.path, endpoint)
     ]
 
     if not endpoint_requests:
