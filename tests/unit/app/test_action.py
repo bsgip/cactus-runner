@@ -1,5 +1,6 @@
 import unittest.mock as mock
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -18,7 +19,9 @@ from envoy.server.model.site import Site
 from sqlalchemy import func, select
 
 from cactus_runner.app.action import (
+    INT16_MAX,
     UnknownActionError,
+    _effective_pow10_multiplier,
     action_cancel_active_controls,
     action_communications_status,
     action_create_der_control,
@@ -382,6 +385,38 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
         assert saved_result.generation_limit_active_watts is None
         assert saved_result.load_limit_active_watts is None
         assert saved_result.ramp_rate_percent_per_second is None
+
+
+@pytest.mark.parametrize(
+    "requested_mult, watt_values, expected_mult",
+    [
+        # No adjustment needed - values fit at requested multiplier
+        (0, [Decimal("1000")], 0),
+        (0, [Decimal("32767")], 0),
+        (2, [Decimal("3276700")], 2),  # 3276700 / 100 = 32767, fits exactly
+        # Adjustment needed - values overflow Int16
+        (0, [Decimal("100000")], 1),  # 100000 / 10^1 = 10000, fits
+        (2, [Decimal("15000000")], 3),  # 15000000 / 10^3 = 15000, fits
+        # None and zero values ignored
+        (0, [None, Decimal("100"), None], 0),
+        (0, [Decimal("0"), Decimal("100")], 0),
+        (2, [None, None], 2),
+        (2, [], 2),
+        # Negative watt values handled via abs
+        (0, [Decimal("-100000")], 1),
+        # Max across multiple values
+        (0, [Decimal("100"), Decimal("100000")], 1),
+    ],
+)
+def test_effective_pow10_multiplier(requested_mult, watt_values, expected_mult):
+    """Verify _effective_pow10_multiplier adjusts the multiplier to keep watt values within Int16 range"""
+    result = _effective_pow10_multiplier(requested_mult, watt_values)
+    assert result == expected_mult
+
+    # Also verify the returned multiplier actually results in Int16-safe values
+    for v in watt_values:
+        if v is not None and v != 0:
+            assert abs(v) / Decimal(10**result) <= INT16_MAX
 
 
 @pytest.mark.parametrize("fsa_id", [None, 6812])

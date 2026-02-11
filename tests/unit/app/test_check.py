@@ -1,8 +1,11 @@
 import dataclasses
+import http
 import re
 import unittest.mock as mock
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
+
+from cactus_schema.runner import RequestEntry
 
 import pytest
 import pytest_mock
@@ -52,6 +55,7 @@ from cactus_runner.app.check import (
     UnknownCheckError,
     all_checks_passing,
     check_all_notifications_transmitted,
+    check_all_polls_at_correct_time,
     check_all_steps_complete,
     check_der_capability_contents,
     check_der_settings_contents,
@@ -3383,3 +3387,178 @@ async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int]
     async with generate_async_session(pg_base_config) as session:
         result = await do_check_readings_for_duration(session=session, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
+
+
+@pytest.mark.parametrize(
+    "request_path, expected",
+    [
+        ("/mup/1", True),  # Exact
+        ("/other/endpoint", False),  # Non-matching endpoint
+    ],
+)
+def test_check_all_polls_at_correct_time_path_matching(request_path: str, expected: bool):
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_data=None
+    )
+
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path=request_path,
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "GET"},
+    )
+
+    assert_check_result(result, expected)
+
+
+@pytest.mark.parametrize(
+    "offsets_seconds, description_contains",
+    [
+        ([0, 540], "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
+        ([0, 30, 60, 90, 120], "found 5"),  # Too many: 5 requests in first 3-minute window
+    ],
+)
+def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], description_contains: str):
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_data=None
+    )
+
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/mup/1",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=offset),
+        )
+        for i, offset in enumerate(offsets_seconds)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "GET"},
+    )
+
+    assert_check_result(result, False)
+    assert description_contains in result.description
+
+
+def test_check_all_polls_at_correct_time_filters_by_request_type():
+    """Only requests matching request_type are counted - other methods are ignored."""
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_data=None
+    )
+
+    # Mix of GET and POST requests - only POSTs should count
+    request_history = [
+        generate_class_instance(RequestEntry, seed=1, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time),
+        generate_class_instance(
+            RequestEntry, seed=2, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time + timedelta(minutes=1)
+        ),
+        generate_class_instance(
+            RequestEntry, seed=3, path="/mup/1", method=http.HTTPMethod.POST, timestamp=base_time + timedelta(minutes=9)
+        ),
+    ]
+
+    # only 1 POST exists, so earlier windows will be empty
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "POST"},
+    )
+
+    assert_check_result(result, False)
+
+
+@pytest.mark.parametrize(
+    "request_type, request_method",
+    [
+        ("GET", http.HTTPMethod.GET),
+        ("POST", http.HTTPMethod.POST),
+        ("PUT", http.HTTPMethod.PUT),
+    ],
+)
+def test_check_all_polls_at_correct_time_request_type_variants(request_type: str, request_method: http.HTTPMethod):
+    """Each supported request_type correctly matches the corresponding HTTP method."""
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_data=None
+    )
+
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/mup/1",
+            method=request_method,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": request_type},
+    )
+
+    assert_check_result(result, True)
+
+
+@pytest.mark.parametrize(
+    "params, description_contains",
+    [
+        ({"poll_interval_seconds": 60, "request_type": "GET"}, "No endpoint specified"),
+        ({"endpoint": "/mup/1", "request_type": "GET"}, "No poll_interval_seconds specified"),
+        ({"endpoint": "/mup/1", "poll_interval_seconds": 60}, "No request_type specified"),
+    ],
+)
+def test_check_all_polls_at_correct_time_missing_params(params: dict, description_contains: str):
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        started_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        step_status={},
+        finished_zip_data=None,
+    )
+
+    result = check_all_polls_at_correct_time(active_test_procedure, [], params)
+
+    assert_check_result(result, False)
+    assert description_contains in result.description
+
+
+def test_check_all_polls_at_correct_time_test_not_started_fails():
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=None, step_status={}, finished_zip_data=None
+    )
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        [],
+        {"endpoint": "/mup/1", "poll_interval_seconds": 60, "request_type": "GET"},
+    )
+
+    assert_check_result(result, False)
+    assert "Test has not started" in result.description
