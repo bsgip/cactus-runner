@@ -1,5 +1,5 @@
-from dataclasses import asdict
 import logging
+from dataclasses import asdict
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTimeoutError
 from cactus_schema.runner import (
@@ -171,3 +171,15 @@ class RunnerClient:
         except ConnectionTimeoutError as e:
             logger.debug(e)
             raise RunnerClientException("Unexpected failure while listing request IDs.")
+
+    @staticmethod
+    async def proceed(session: ClientSession) -> ProceedResponse:
+        try:
+            async with session.get(url=uri.Proceed) as response:
+                await ensure_success_response(response)
+                json = await response.text
+                proceed_response = ProceedResponse.from_json(json)
+                return ProceedResponse
+        except ConnectionTimeoutError as e:
+            logger.debug(e)
+            raise RunnerClientException("Unexpected failure while sending proceed request to test runner.")
