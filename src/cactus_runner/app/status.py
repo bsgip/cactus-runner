@@ -150,6 +150,8 @@ def get_event_status(
                 return "Triggering..."
             wait_time_seconds = int((finish_time - now).total_seconds())
             return f"Waiting for {wait_time_seconds}s"
+        elif event.type == "proceed":
+            return "Waiting on signal to proceed"
         else:
             # We have a GET / PUT / DELETE etc event
             method = event.type.split("-")[0]
