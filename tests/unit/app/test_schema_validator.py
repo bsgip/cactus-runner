@@ -4,10 +4,12 @@ import pytest
 from assertical.asserts.type import assert_list_type
 
 from cactus_runner.app.proxy import ProxyResult
-from cactus_runner.app.schema_validator import (
-    validate_proxy_request_schema,
-    validate_xml,
-)
+from cactus_runner.app.schema_validator import validate_proxy_request_schema
+
+
+def make_proxy_result(body: bytes) -> ProxyResult:
+    """Helper to create a ProxyResult with just the body we care about for validation"""
+    return ProxyResult("", "", body, None, {}, mock.MagicMock())
 
 
 @pytest.mark.parametrize(
@@ -63,9 +65,9 @@ from cactus_runner.app.schema_validator import (
 </DERControlBase>""",
     ],
 )
-def test_validate_xml_valid_xml(xml):
-    """Tests validate_xml against various valid CSIP-Aus XML snippets"""
-    result = validate_xml(xml)
+def test_validate_proxy_request_schema_valid_xml(xml: str):
+    """Tests validate_proxy_request_schema against various valid CSIP-Aus XML snippets"""
+    result = validate_proxy_request_schema(make_proxy_result(xml.encode("utf-8")))
     assert isinstance(result, list)
     assert len(result) == 0, "\n".join(result)
 
@@ -73,15 +75,14 @@ def test_validate_xml_valid_xml(xml):
 @pytest.mark.parametrize(
     "xml",
     [
-        "",
         "123451",
         '{"foo": 123}',
         '<ConnectionPoint xmlns="https://csipaus.org/ns"><c',
     ],
 )
-def test_validate_xml_not_xml(xml):
-    """Tests validate_xml can handle a variety of "not xml" strings and fail appropriately"""
-    result = validate_xml(xml)
+def test_validate_proxy_request_schema_not_xml(xml: str):
+    """Tests validate_proxy_request_schema can handle a variety of "not xml" strings and fail appropriately"""
+    result = validate_proxy_request_schema(make_proxy_result(xml.encode("utf-8")))
     assert_list_type(str, result, count=1)  # We expect exactly 1 error if the XML is bad
 
 
@@ -103,46 +104,47 @@ def test_validate_xml_not_xml(xml):
 </DERControlBase>""",  # Element ordering
     ],
 )
-def test_validate_xml_schema_invalid(xml):
-    """Tests validate_xml can handle a variety of xml strings that fail schema validation"""
-    result = validate_xml(xml)
+def test_validate_proxy_request_schema_schema_invalid(xml: str):
+    """Tests validate_proxy_request_schema can handle a variety of xml strings that fail schema validation"""
+    result = validate_proxy_request_schema(make_proxy_result(xml.encode("utf-8")))
     assert_list_type(str, result)
     assert len(result) > 0
 
 
+def test_validate_proxy_request_schema_empty_body():
+    """Tests that an empty body returns no errors"""
+    result = validate_proxy_request_schema(make_proxy_result(bytes()))
+    assert_list_type(str, result, count=0)
+
+
 @pytest.mark.parametrize(
-    "input_encoding, output_encoding, is_valid_encoding",
+    "encoding, xml_declaration, should_pass",
     [
-        ("utf-8", None, True),
-        ("utf-8", "utf-8", True),
+        ("utf-8", None, True),  # lxml defaults to UTF-8
         ("utf-8", "UTF-8", True),
-        ("utf-32", "utf-32", True),
-        ("utf-32", None, False),
-        ("utf-32", "utf-8", False),
-        ("utf-8", "utf-32", False),
+        ("utf-16", "UTF-16", True),
+        ("utf-16", None, True),
+        ("utf-32", "UTF-32", True),
+        ("utf-32", None, True),
+        ("utf-8", "UTF-16", False),  # Mismatched: bytes are UTF-8 but declaration claims UTF-16
     ],
 )
-@mock.patch("cactus_runner.app.schema_validator.validate_xml")
-def test_validate_proxy_request_schema_decoding(
-    mock_validate_xml: mock.MagicMock, input_encoding: str, output_encoding: str | None, is_valid_encoding: bool
-):
-    """Tests the various ways that text decoding might succeed/fail"""
-    body = "abc 123 _=@<>/'\""
-    body_encoded = body.encode(input_encoding)
+def test_validate_proxy_request_schema_encoding(encoding: str, xml_declaration: str | None, should_pass: bool):
+    """Tests that various encodings are handled correctly by lxml's encoding detection"""
 
-    mock_validate_result = mock.MagicMock()
-    mock_validate_xml.return_value = mock_validate_result
+    valid_cp_xml = """<ConnectionPoint xmlns="https://csipaus.org/ns">
+        <connectionPointId>1234567890</connectionPointId>
+    </ConnectionPoint>"""
 
-    result = validate_proxy_request_schema(ProxyResult("", "", body_encoded, output_encoding, {}, mock.MagicMock()))
-
-    if is_valid_encoding:
-        mock_validate_xml.assert_called_once_with(body)
-        assert result is mock_validate_result
+    if xml_declaration:
+        xml = f'<?xml version="1.0" encoding="{xml_declaration}"?>{valid_cp_xml}'
     else:
-        mock_validate_xml.assert_not_called()
-        assert_list_type(str, result, count=1)
+        xml = valid_cp_xml
 
+    body = xml.encode(encoding)
+    result = validate_proxy_request_schema(make_proxy_result(body))
 
-def test_validate_proxy_request_empty_body():
-    result = validate_proxy_request_schema(ProxyResult("", "", bytes(), None, {}, mock.MagicMock()))
-    assert_list_type(str, result, count=0)
+    if should_pass:
+        assert_list_type(str, result, count=0)
+    else:
+        assert len(result) > 0  # Should have parse errors

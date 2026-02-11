@@ -40,38 +40,23 @@ def csip_aus_schema() -> etree.XMLSchema:
     return etree.XMLSchema(schema_root)
 
 
-def validate_xml(xml: str) -> list[str]:
-    """Validates an xml document / snippet as a valid CSIP Aus 1.2 XML snippet. Returns a list of any human
+def validate_proxy_request_schema(proxy_result: ProxyResult) -> list[str]:
+    """Validates proxy_result's request body as CSIP Aus 1.2 XML. Returns a list of any human
     readable schema validation errors. Empty list means that xml is schema valid"""
 
-    try:
-        xml_doc = etree.fromstring(xml)
-    except Exception as exc:
-        preview = xml[:32]
-        logger.error(f"validate_xml: Failure parsing string starting '{preview}'... as XML", exc_info=exc)
-        return [f"The provided body '{preview}'... does NOT parse as XML"]
-
-    schema = csip_aus_schema()
-
-    # Validate
-    is_valid = schema.validate(xml_doc)
-    if is_valid:
-        return []
-    else:
-        return [f"{e.line}: {e.message}" for e in schema.error_log]  # type: ignore
-
-
-def validate_proxy_request_schema(proxy_result: ProxyResult) -> list[str]:
-    """Attempts to apply validate_xml to proxy_result's request body. Will not raise exceptions for decoding request
-    body, these errors will instead be returned as a list of errors (similar to validate_xml)"""
     if len(proxy_result.request_body) == 0:
         return []
 
-    encoding = "UTF-8" if proxy_result.request_encoding is None else proxy_result.request_encoding
     try:
-        xml_string = proxy_result.request_body.decode(encoding=encoding)
+        # Pass bytes directly - lxml handles encoding detection from XML declaration, fallback to UTF8
+        xml_doc = etree.fromstring(proxy_result.request_body)
     except Exception as exc:
-        logger.error(f"Error interpreting request body as '{encoding}' text", exc_info=exc)
-        return [f"Unable to interpret request body as '{encoding}' text"]
+        preview = proxy_result.request_body[:32].decode("utf-8", errors="replace")
+        logger.error(f"Failure parsing request body starting with '{preview}'... as XML", exc_info=exc)
+        return [f"The provided body '{preview}'... does NOT parse as XML"]
 
-    return validate_xml(xml_string)
+    schema = csip_aus_schema()
+    if schema.validate(xml_doc):
+        return []
+
+    return [f"{e.line}: {e.message}" for e in schema.error_log]  # type: ignore
