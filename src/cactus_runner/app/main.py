@@ -146,6 +146,9 @@ def create_app() -> web.Application:
     app.router.add_route("GET", mount + uri.Request, handler.get_request_raw_data_handler)
     app.router.add_route("GET", mount + uri.RequestList, handler.list_request_ids_handler)
 
+    # For manual 'proceed' signal sent from UI
+    app.router.add_route("GET", mount + uri.Proceed, handler.proceed_handler)
+
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
     app.router.add_route("*", mount + "/{proxyPath:.*}", handler.proxied_request_handler)
 
