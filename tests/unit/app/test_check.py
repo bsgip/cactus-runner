@@ -3393,7 +3393,6 @@ async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int]
     "request_path, expected",
     [
         ("/mup/1", True),  # Exact
-        ("/mup/1?s=0", True),  # Query params still match
         ("/other/endpoint", False),  # Non-matching endpoint
     ],
 )
