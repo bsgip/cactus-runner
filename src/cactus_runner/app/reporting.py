@@ -70,6 +70,7 @@ logger = logging.getLogger(__name__)
 WITNESS_TEST_CLASSES: list[str] = ["DER-A", "DER-G", "DER-L"]  # Classes from section 14 of sa-ts-5573-2025
 
 CHART_MARGINS = dict(l=80, r=20, t=40, b=80)
+WARNING_BANNER_COLOR = HexColor(0xFFF3E0)  # Light orange background
 
 
 class ConditionalSpacer(Spacer):
@@ -455,6 +456,31 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
     return table
 
 
+
+
+def generate_set_max_w_warning_banner(stylesheet: StyleSheet) -> list[Flowable]:
+    """Generate a warning banner indicating that setMaxW was varied during the test."""
+    warning_style = TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, -1), WARNING_BANNER_COLOR),
+            ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("BOX", (0, 0), (-1, -1), 1, HexColor(0xE65100)),
+        ]
+    )
+    warning_text = Paragraph(
+        "<font color='#E65100'><b>! Warning:</b></font> setMaxW was varied during this test. "
+        "This unexpected behaviour may affect test assumptions and DERControls."
+    )
+    table = Table([[warning_text]], colWidths=[stylesheet.table_width])
+    table.setStyle(warning_style)
+    return [table, stylesheet.spacer]
+
+
 def generate_criteria_section(
     check_results: dict[str, CheckResult], requires_witness_testing: bool, stylesheet: StyleSheet
 ) -> list[Flowable]:
@@ -649,7 +675,7 @@ def generate_site_der_rating_table(site_der_rating: SiteDERRating, stylesheet: S
     non_null_attributes = get_non_null_attributes(site_der_rating, attributes_to_include)
     null_attributes_paragraph = make_null_attributes_paragraph(attributes_to_include, non_null_attributes)
     table_data = generate_der_table_data(site_der_rating, non_null_attributes)
-    table_data.insert(0, ["DER Rating", "Value"])
+    table_data.insert(0, ["DER Capability", "Value"])
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.5, 0.5]]
     table = Table(table_data, colWidths=column_widths)
     table.setStyle(stylesheet.table)
@@ -1547,6 +1573,7 @@ def generate_page_elements(
     sites: Sequence[Site],
     timeline: Timeline | None,
     stylesheet: StyleSheet,
+    set_max_w_varied: bool = False,
 ) -> list[Flowable]:
     active_test_procedure = runner_state.active_test_procedure
     if active_test_procedure is None:
@@ -1603,6 +1630,10 @@ def generate_page_elements(
         # the appropriate client interactions SHOULD be defined in the runner state.
         logger.error(f"Unable to add 'test procedure overview' to PDF report. Reason={repr(e)}")
 
+    # setMaxW Warning Banner
+    if set_max_w_varied:
+        page_elements.extend(generate_set_max_w_warning_banner(stylesheet=stylesheet))
+
     # Criteria Section
     page_elements.extend(
         generate_criteria_section(
@@ -1615,15 +1646,15 @@ def generate_page_elements(
         generate_timeline_section(timeline=timeline, runner_state=runner_state, sites=sites, stylesheet=stylesheet)
     )
 
-    # Devices Section
-    page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
-
     # Readings Section
     page_elements.extend(
         generate_readings_section(
             runner_state=runner_state, readings=readings, reading_counts=reading_counts, stylesheet=stylesheet
         )
     )
+
+    # Devices Section
+    page_elements.extend(generate_devices_section(sites=sites, stylesheet=stylesheet))
 
     return page_elements
 
@@ -1636,6 +1667,7 @@ def pdf_report_as_bytes(
     sites: Sequence[Site],
     timeline: Timeline | None,
     no_spacers: bool = False,
+    set_max_w_varied: bool = False,
 ) -> bytes:
     stylesheet = get_stylesheet()
     if no_spacers:
@@ -1659,6 +1691,7 @@ def pdf_report_as_bytes(
         sites=sites,
         timeline=timeline,
         stylesheet=stylesheet,
+        set_max_w_varied=set_max_w_varied,
     )
 
     test_procedure_name = runner_state.active_test_procedure.name
