@@ -456,8 +456,6 @@ def generate_criteria_failure_table(check_results: dict[str, CheckResult], style
     return table
 
 
-
-
 def generate_set_max_w_warning_banner(stylesheet: StyleSheet) -> list[Flowable]:
     """Generate a warning banner indicating that setMaxW was varied during the test."""
     warning_style = TableStyle(
