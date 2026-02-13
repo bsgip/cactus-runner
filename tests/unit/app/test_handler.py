@@ -10,6 +10,7 @@ from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
     InitResponseBody,
+    ProceedResponse,
     RequestEntry,
     RunGroup,
     RunnerStatus,
@@ -847,6 +848,94 @@ async def test_proxied_request_handler_logs_error_with_finished_test(mocker):
 
     # Act
     response = await handler.proxied_request_handler(request=request)
+
+    # Assert
+    mock_logger_warning.assert_called_once()
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.GONE
+
+
+@pytest.mark.parametrize("proceed_handled", [True, False])
+@pytest.mark.asyncio
+async def test_proceed_handler(proceed_handled: bool, pg_base_config, mocker):
+    # Arrange
+    request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure.is_finished.return_value = False
+    mock_active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=None,
+        step_status={"1": StepStatus.PENDING},
+    )
+    request.app = {}
+    request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
+    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+
+    handling_listener = generate_class_instance(Listener, actions=[])
+
+    # This trigger is handled by this listener
+    mock_handle_event_trigger = mocker.patch("cactus_runner.app.handler.event.handle_event_trigger")
+    mock_handle_event_trigger.return_value = [handling_listener] if proceed_handled else []
+
+    mock_generate_proceed_trigger = mocker.patch("cactus_runner.app.handler.event.generate_proceed_trigger")
+    mock_trigger = MagicMock()
+    mock_generate_proceed_trigger.return_value = mock_trigger
+
+    num_client_interactions_before = len(request.app[APPKEY_RUNNER_STATE].client_interactions)
+    num_requests_before = len(request.app[APPKEY_RUNNER_STATE].request_history)
+
+    # Act
+    response = await handler.proceed_handler(request=request)
+
+    # Assert
+    #  ... verify we DID NOT update the last client interaction
+    assert len(request.app[APPKEY_RUNNER_STATE].client_interactions) == num_client_interactions_before
+
+    # ... verify we DID NOT update the request history
+    assert len(request.app[APPKEY_RUNNER_STATE].request_history) == num_requests_before
+
+    # ... verify we triggered the proceed handler
+    mock_generate_proceed_trigger.assert_called_once()
+    mock_handle_event_trigger.assert_called_once()
+
+    # ... verify we got the response we expected
+    assert isinstance(response, Response)
+    assert isinstance(response.text, str)
+    proceed_response = ProceedResponse.from_json(response.text)
+    assert isinstance(proceed_response, ProceedResponse)
+    assert proceed_response.handled == proceed_handled
+
+
+@pytest.mark.asyncio
+async def test_proceed_handler_logs_error_with_no_active_test_procedure(mocker):
+    # Arrange
+    request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")
+
+    # Act
+    response = await handler.proceed_handler(request=request)
+
+    # Assert
+    mock_logger_warning.assert_called_once()
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.asyncio
+async def test_proceed_handler_logs_error_with_finished_test(mocker):
+    # Arrange
+    request = MagicMock()
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=bytes([0, 1]),
+        step_status={"1": StepStatus.PENDING},
+    )
+    mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")
+
+    # Act
+    response = await handler.proceed_handler(request=request)
 
     # Assert
     mock_logger_warning.assert_called_once()

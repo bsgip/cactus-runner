@@ -7,6 +7,7 @@ from aiohttp import ConnectionTimeoutError
 from cactus_schema.runner import (
     ClientInteraction,
     InitResponseBody,
+    ProceedResponse,
     RunGroup,
     RunnerStatus,
     RunRequest,
@@ -235,3 +236,32 @@ async def test_last_interaction_connectionerror():
     # Act/Assert
     with pytest.raises(RunnerClientException, match="Unexpected failure while requesting test procedure status."):
         _ = await RunnerClient.last_interaction(session=mock_session)
+
+
+@pytest.mark.asyncio
+async def test_proceed():
+    # Arrange
+    expected_proceed_result = ProceedResponse(handled=True)
+    mock_session = MagicMock()
+    mock_session.get.return_value.__aenter__.return_value.status = 200
+    mock_session.get.return_value.__aenter__.return_value.text.return_value = expected_proceed_result.to_json()
+
+    # Act
+    proceed_result = await RunnerClient.proceed(session=mock_session)
+
+    # Assert
+    mock_session.get_assert_called_once_with(url="/proceed")
+    assert mock_session.get.return_value.__aenter__.return_value.text.call_count == 1
+    assert isinstance(proceed_result, ProceedResponse)
+    assert proceed_result == expected_proceed_result
+
+
+@pytest.mark.asyncio
+async def test_proceed_connectionerror():
+    # Arrange
+    mock_session = MagicMock()
+    mock_session.get.side_effect = ConnectionTimeoutError
+
+    # Act/Assert
+    with pytest.raises(RunnerClientException, match="Unexpected failure while sending proceed request to test runner."):
+        _ = await RunnerClient.proceed(session=mock_session)
