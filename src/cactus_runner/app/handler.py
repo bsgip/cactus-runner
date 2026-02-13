@@ -9,6 +9,7 @@ from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
     InitResponseBody,
+    ProceedResponse,
     RequestData,
     RequestEntry,
     RequestList,

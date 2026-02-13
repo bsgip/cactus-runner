@@ -5,6 +5,7 @@ from aiohttp import ClientResponse, ClientSession, ClientTimeout, ConnectionTime
 from cactus_schema.runner import (
     ClientInteraction,
     InitResponseBody,
+    ProceedResponse,
     RequestData,
     RequestList,
     RunnerStatus,
