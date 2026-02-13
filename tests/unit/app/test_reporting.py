@@ -433,7 +433,7 @@ def test_pdf_report_everything_set():
 
     assert len(report) > 0
 
-    # Optional: Save and open the PDF
+    # # Optional: Save and open the PDF
     # import uuid
     # import tempfile
     # import os

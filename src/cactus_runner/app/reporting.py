@@ -1112,11 +1112,68 @@ def generate_timeline_checklist(timeline: Timeline, runner_state: RunnerState) -
     return fig_to_image(fig=fig, content_width=MAX_CONTENT_WIDTH)
 
 
+def generate_step_completion_table(runner_state: RunnerState, stylesheet: StyleSheet) -> list[Flowable]:
+    """Generate a table summarising the completion status and timing of each test step."""
+    if not (runner_state.active_test_procedure and runner_state.active_test_procedure.step_status):
+        return []
+
+    base_timestamp = runner_state.interaction_timestamp(interaction_type=ClientInteractionType.TEST_PROCEDURE_START)
+
+    table_style = TableStyle(
+        [
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [TABLE_ROW_COLOR, TABLE_ALT_ROW_COLOR]),
+            ("TEXTCOLOR", (0, 0), (-1, 0), TABLE_HEADER_TEXT_COLOR),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, TABLE_LINE_COLOR),
+            ("LINEBELOW", (0, -1), (-1, -1), 1, TABLE_LINE_COLOR),
+            ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+        ]
+    )
+
+    table_data: list[list] = [["Step Name", "Relative Time", "UTC Time", "Status"]]
+
+    for row_index, (step_name, step_info) in enumerate(runner_state.active_test_procedure.step_status.items()):
+        status = step_info.get_step_status()
+
+        if status == StepStatus.RESOLVED:
+            timestamp = step_info.completed_at
+            status_label = "Resolved"
+            status_color = PASS_COLOR
+        elif status == StepStatus.ACTIVE:
+            timestamp = step_info.started_at
+            status_label = "Active"
+            status_color = GENTLE_WARNING_COLOR
+        else:
+            timestamp = None
+            status_label = "Pending"
+            status_color = FAIL_COLOR
+
+        if timestamp is not None and base_timestamp is not None:
+            relative_seconds = (timestamp - base_timestamp).total_seconds()
+            relative_time = duration_to_label(int(relative_seconds))
+            utc_time = timestamp.strftime(stylesheet.date_format)
+        else:
+            relative_time = "-"
+            utc_time = "-"
+
+        table_data.append([step_name, relative_time, utc_time, status_label])
+        table_style.add("TEXTCOLOR", (3, row_index + 1), (3, row_index + 1), status_color)
+
+    column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.35, 0.2, 0.25, 0.2]]
+    table = Table(table_data, colWidths=column_widths)
+    table.setStyle(table_style)
+    return [table]
+
+
 def generate_timeline_section(
     timeline: Timeline | None, runner_state: RunnerState, sites: Sequence[Site], stylesheet: StyleSheet
 ) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph("Timeline", stylesheet.heading))
+
     if timeline is not None:
         elements.append(
             Paragraph(
@@ -1127,6 +1184,7 @@ def generate_timeline_section(
         elements.append(generate_timeline_checklist(timeline=timeline, runner_state=runner_state))
     else:
         elements.append(Paragraph("Timeline chart is unavailable due to a lack of data."))
+    elements.extend(generate_step_completion_table(runner_state=runner_state, stylesheet=stylesheet))
     elements.append(stylesheet.spacer)
     return elements
 
