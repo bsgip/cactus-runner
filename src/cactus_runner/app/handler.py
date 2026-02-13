@@ -538,11 +538,8 @@ async def finalize_handler(request: web.Request) -> web.Response:
         # If we are in a playlist, handle playlist advancement
         playlist = runner_state.playlist
         if playlist is not None:
-            # Save the ZIP to filesystem for this playlist item
-            current_index = runner_state.playlist_index
-            finalize.save_playlist_zip(zip_contents, finalized_test_procedure_name, current_index)
-
             # Check if there are more tests in the playlist
+            current_index = runner_state.playlist_index
             next_index = current_index + 1
             if next_index < len(playlist):
                 next_run_request = playlist[next_index]
