@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
+from envoy.server.model.archive.site import ArchiveSiteDERSetting
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting, timeline
@@ -177,6 +179,7 @@ async def generate_pdf(
     sites,
     timeline,
     errors,
+    set_max_w_varied: bool = False,
 ) -> bytes | None:
     try:
         # Generate the pdf (as bytes)
@@ -187,6 +190,7 @@ async def generate_pdf(
             reading_counts=reading_counts,
             sites=sites,
             timeline=timeline,
+            set_max_w_varied=set_max_w_varied,
         )
     except Exception as exc:
         logger.error("Error generating PDF report.", exc_info=exc)
@@ -206,6 +210,7 @@ async def generate_pdf(
                 sites=sites,
                 timeline=timeline,
                 no_spacers=True,
+                set_max_w_varied=set_max_w_varied,
             )
         except Exception as exc:
             logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
@@ -299,6 +304,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
         reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
+        # Check if setMaxW was varied during the test (any archived DER settings means settings were changed)
+        archive_count = (await session.execute(select(ArchiveSiteDERSetting.archive_id).limit(1))).scalar()
+        set_max_w_varied = archive_count is not None
+
         pdf_data = await generate_pdf(
             runner_state=runner_state,
             check_results=check_results,
@@ -307,6 +316,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             sites=sites,
             timeline=test_timeline,
             errors=errors,
+            set_max_w_varied=set_max_w_varied,
         )
     except Exception as exc:
         logger.error("Failed to generate PDF report", exc_info=exc)

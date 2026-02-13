@@ -320,8 +320,8 @@ def test_pdf_report_everything_set():
         "GET-DER-SETTINGS": StepInfo(
             started_at=now - timedelta(seconds=200), completed_at=now - timedelta(seconds=195)
         ),
-        "GET-DER-STATUS": StepInfo(started_at=now - timedelta(seconds=180), completed_at=now - timedelta(seconds=175)),
-        "PUT-DERP": StepInfo(started_at=now - timedelta(seconds=160), completed_at=now - timedelta(seconds=155)),
+        "GET-DER-STATUS": StepInfo(started_at=now - timedelta(seconds=180)),  # ACTIVE - no completed_at
+        "PUT-DERP": StepInfo(),  # PENDING - not started
     }
 
     active_test = active_test_procedure(
@@ -429,11 +429,12 @@ def test_pdf_report_everything_set():
         sites=site_list,
         timeline=timeline(),
         no_spacers=False,
+        set_max_w_varied=True,
     )
 
     assert len(report) > 0
 
-    # Optional: Save and open the PDF
+    # # Optional: Save and open the PDF
     # import uuid
     # import tempfile
     # import os
