@@ -40,6 +40,9 @@ class EventTriggerType(IntEnum):
     # Raised on a regular interval in response to a period of time elapsing from the last TIME trigger
     TIME = auto()
 
+    # A proceed signal (GET to /proceed) was sent by the UI
+    PROCEED = auto()
+
 
 @dataclass(frozen=True)
 class ClientRequestDetails:
@@ -108,6 +111,10 @@ async def is_listener_triggerable(
         duration_seconds = resolved_params.get("duration_seconds", evaluator.ResolvedParam(0))
 
         return (trigger.time - listener.enabled_time).total_seconds() >= duration_seconds.value
+
+    # If this listener is a proceed event and we have received the appropriate trigger
+    if listener.event.type == "proceed" and trigger.type == EventTriggerType.PROCEED:
+        return True
 
     # This event type / trigger doesn't match
     return False
@@ -198,4 +205,11 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
         time=datetime.now(timezone.utc),
         single_listener=True,
         client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount),
+    )
+
+
+def generate_proceed_trigger() -> EventTrigger:
+    """Generates an EventTrigger representing a proceed signal sent by the UI"""
+    return EventTrigger(
+        type=EventTriggerType.PROCEED, time=datetime.now(timezone.utc), single_listener=True, client_request=None
     )
