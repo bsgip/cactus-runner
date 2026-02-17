@@ -9,6 +9,7 @@ from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
     InitResponseBody,
+    ProceedResponse,
     RequestData,
     RequestEntry,
     RequestList,
@@ -27,7 +28,6 @@ from cactus_runner.app.env import (
     MOUNT_POINT,
     SERVER_URL,
 )
-
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
@@ -538,11 +538,8 @@ async def finalize_handler(request: web.Request) -> web.Response:
         # If we are in a playlist, handle playlist advancement
         playlist = runner_state.playlist
         if playlist is not None:
-            # Save the ZIP to filesystem for this playlist item
-            current_index = runner_state.playlist_index
-            finalize.save_playlist_zip(zip_contents, finalized_test_procedure_name, current_index)
-
             # Check if there are more tests in the playlist
+            current_index = runner_state.playlist_index
             next_index = current_index + 1
             if next_index < len(playlist):
                 next_run_request = playlist[next_index]
@@ -815,3 +812,47 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=request_entry)
 
     return proxy_result.response
+
+
+async def proceed_handler(request: web.Request) -> web.Response:
+    """Handles a proceed (with test) signal
+
+    GET /proceed
+
+    There must be an active test that is not finished for the proceed to be handled.
+
+    This is manual intervention step i.e. not a request sent by the client device.
+    This means the following part of the runner state won't be updated:
+    - client interactions
+    - request history
+
+    Returns:
+        aiohttp.web.Response: With a JSON body containing a ProceedResponse.
+    """
+
+    runner_state: RunnerState = request.app[APPKEY_RUNNER_STATE]
+    active_test_procedure = runner_state.active_test_procedure
+    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+
+    # It shouldn't be possible to send a 'proceed' if there is no active test procedure
+    if active_test_procedure is None:
+        msg = "'Proceed' signal ignored. No active test procedure."  # noqa: E501
+        logger.error(msg)
+        return web.Response(status=http.HTTPStatus.BAD_REQUEST, text=msg)
+
+    if active_test_procedure.is_finished():
+        msg = "'Proceed' signal ignored. Test procedure has been finalised."
+        logger.error(msg)
+        return web.Response(status=http.HTTPStatus.GONE, text=msg)
+
+    async with begin_session() as session:
+        trigger_handled = await event.handle_event_trigger(
+            trigger=event.generate_proceed_trigger(),
+            runner_state=runner_state,
+            session=session,
+            envoy_client=envoy_client,
+        )
+        await session.commit()
+
+    body = ProceedResponse(handled=bool(trigger_handled)).to_json()
+    return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=body)

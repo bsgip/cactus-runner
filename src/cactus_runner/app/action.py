@@ -1,4 +1,5 @@
 import logging
+import math
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -34,6 +35,30 @@ from cactus_runner.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+INT16_MAX = 32767
+
+
+def _effective_pow10_multiplier(requested_multiplier: int, watt_values: list[Decimal | float | None]) -> int:
+    """Compute the effective pow10 multiplier, increasing it if any watt value would overflow Int16.
+
+    This mirrors the server-side logic in DERControlMapper.map_to_active_power - if a value divided by
+    10^multiplier exceeds the Int16 range, the multiplier is automatically increased to fit.
+
+    By pre-computing this in the test runner, the runtime config we send to the server matches
+    what the server would actually use, keeping test expectations aligned with reality.
+    """
+    effective = requested_multiplier
+    for value in watt_values:
+        if value is None or value == 0:
+            continue
+        abs_value = abs(float(value))
+        # Check if the value fits in Int16 at the current effective multiplier
+        if abs_value / 10**effective > INT16_MAX:
+            required = math.ceil(math.log10(abs_value / INT16_MAX))
+            effective = max(effective, required)
+    return effective
 
 
 class UnknownActionError(Exception):
@@ -173,11 +198,6 @@ async def action_create_der_control(
     duration_seconds: int = resolved_parameters["duration_seconds"]
     annotation: str | None = resolved_parameters.get("tag")
 
-    # This is handled by updating the system config - we can't set pow10 mult on individual controls
-    pow_10mult: int | None = resolved_parameters.get("pow_10_multipliers", None)
-    if pow_10mult is not None:
-        await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=pow_10mult))
-
     # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
     primacy: int = resolved_parameters.get("primacy", 0)
     fsa_id: int | None = resolved_parameters.get("fsa_id", None)
@@ -206,6 +226,20 @@ async def action_create_der_control(
     gen_limit_watts: Decimal | None = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts: Decimal | None = resolved_parameters.get("opModLoadLimW", None)
     set_point_percent: Decimal | None = resolved_parameters.get("opModFixedW", None)
+
+    # Update the pow10 multiplier system config - adjusting upward if any watt values would overflow Int16
+    # at the requested multiplier. This mirrors the server's auto-scaling in DERControlMapper.map_to_active_power
+    pow_10mult: int | None = resolved_parameters.get("pow_10_multipliers", None)
+    if pow_10mult is not None:
+        effective_mult = _effective_pow10_multiplier(
+            pow_10mult, [import_limit_watts, export_limit_watts, gen_limit_watts, load_limit_watts]
+        )
+        if effective_mult != pow_10mult:
+            logger.info(
+                f"Adjusting pow10 multiplier from {pow_10mult} to {effective_mult} "
+                f"to fit watt values within Int16 range"
+            )
+        await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=effective_mult))
 
     await envoy_client.create_site_controls(
         site_control_group_id,

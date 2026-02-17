@@ -1,6 +1,5 @@
 import io
 import json
-import shutil
 import zipfile
 from dataclasses import asdict
 from urllib.parse import quote
@@ -12,7 +11,6 @@ from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from pytest_aiohttp.plugin import TestClient
 
-from cactus_runner.app.finalize import PLAYLIST_ZIP_DIR
 from cactus_runner.client import RunnerClient, ensure_success_response
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 
@@ -62,11 +60,7 @@ async def test_playlist_two_tests(cactus_runner_client: TestClient, run_request_
     2. First test runs and finalizes correctly
     3. Second test auto-initializes after first finalize
     4. Second test runs and finalizes correctly
-    5. ZIPs are saved to filesystem for each test
     """
-    # Clear any existing playlist ZIPs
-    if PLAYLIST_ZIP_DIR.exists():
-        shutil.rmtree(PLAYLIST_ZIP_DIR)
 
     # Create two test requests - using ALL-01 (immediate start) for simplicity
     agg_cert = TEST_CERTIFICATE_PEM.decode()
@@ -110,11 +104,6 @@ async def test_playlist_two_tests(cactus_runner_client: TestClient, run_request_
         assert len(zip_data_1) > 0
         verify_zip_contents(zip_data_1, TestProcedureId.ALL_01.value)
 
-        # Verify ZIP was saved to filesystem
-        assert PLAYLIST_ZIP_DIR.exists(), "Playlist ZIP directory should exist"
-        saved_zips = list(PLAYLIST_ZIP_DIR.glob("*.zip"))
-        assert len(saved_zips) >= 1, f"Expected at least 1 saved ZIP, found {len(saved_zips)}"
-
         # Verify second test is now initialized (playlist advanced)
         status = await RunnerClient.status(session)
         assert status.test_procedure_name == TestProcedureId.ALL_01.value
@@ -127,10 +116,6 @@ async def test_playlist_two_tests(cactus_runner_client: TestClient, run_request_
         zip_data_2 = await RunnerClient.finalize(session)
         assert len(zip_data_2) > 0
         verify_zip_contents(zip_data_2, TestProcedureId.ALL_01.value)
-
-        # Verify both ZIPs are saved (first one + second one saved on finalize)
-        saved_zips = list(PLAYLIST_ZIP_DIR.glob("*.zip"))
-        assert len(saved_zips) >= 2, f"Expected at least 2 saved ZIPs, found {len(saved_zips)}"
 
         # Verify no active test after playlist completes
         status = await RunnerClient.status(session)
@@ -179,10 +164,6 @@ async def test_playlist_preserves_site_data(cactus_runner_client: TestClient, ru
     This verifies the partial database reset works correctly - site registration
     from test 1 should still be valid in test 2.
     """
-    # Clear any existing playlist ZIPs
-    if PLAYLIST_ZIP_DIR.exists():
-        shutil.rmtree(PLAYLIST_ZIP_DIR)
-
     agg_cert = TEST_CERTIFICATE_PEM.decode()
     csip_version = CSIPAusVersion.RELEASE_1_2
 
@@ -246,12 +227,7 @@ async def test_playlist_with_start_index(cactus_runner_client: TestClient, run_r
     1. Tests before start_index are skipped
     2. Test at start_index becomes the active test
     3. Remaining tests after start_index execute normally
-    4. ZIP filenames reflect the original playlist position
     """
-    # Clear any existing playlist ZIPs
-    if PLAYLIST_ZIP_DIR.exists():
-        shutil.rmtree(PLAYLIST_ZIP_DIR)
-
     agg_cert = TEST_CERTIFICATE_PEM.decode()
     csip_version = CSIPAusVersion.RELEASE_1_2
 
@@ -300,15 +276,6 @@ async def test_playlist_with_start_index(cactus_runner_client: TestClient, run_r
         status = await RunnerClient.status(session)
         assert status.test_procedure_name == "-"
 
-    # Verify ZIP files were saved with correct indices (2 and 3, not 0 and 1)
-    saved_zips = sorted(PLAYLIST_ZIP_DIR.glob("*.zip"))
-    assert len(saved_zips) >= 2
-
-    # ZIP filenames should include the playlist index (002_ and 003_)
-    zip_names = [z.name for z in saved_zips]
-    assert any("002_" in name for name in zip_names)
-    assert any("003_" in name for name in zip_names)
-
 
 @pytest.mark.anyio
 async def test_playlist_invalid_start_index_rejected(cactus_runner_client: TestClient, run_request_generator):
@@ -338,10 +305,6 @@ async def test_playlist_invalid_start_index_rejected(cactus_runner_client: TestC
 @pytest.mark.anyio
 async def test_playlist_three_tests(cactus_runner_client: TestClient, run_request_generator):
     """Test running a playlist of three tests to verify the loop works correctly."""
-    # Clear any existing playlist ZIPs
-    if PLAYLIST_ZIP_DIR.exists():
-        shutil.rmtree(PLAYLIST_ZIP_DIR)
-
     agg_cert = TEST_CERTIFICATE_PEM.decode()
     csip_version = CSIPAusVersion.RELEASE_1_2
 
@@ -376,10 +339,6 @@ async def test_playlist_three_tests(cactus_runner_client: TestClient, run_reques
         async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(60)) as session:
             zip_data = await RunnerClient.finalize(session)
             assert len(zip_data) > 0
-
-    # Verify all ZIPs saved
-    saved_zips = list(PLAYLIST_ZIP_DIR.glob("*.zip"))
-    assert len(saved_zips) >= 3, f"Expected at least 3 saved ZIPs, found {len(saved_zips)}"
 
     # Verify no active test
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(60)) as session:

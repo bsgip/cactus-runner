@@ -274,6 +274,7 @@ def generate_overview_section(
     client_pen: int,
     duration: timedelta,
     stylesheet: StyleSheet,
+    playlist_info: str | None = None,
 ) -> list[Flowable]:
     elements: list[Flowable] = []
     elements.append(Paragraph(test_procedure_name, style=stylesheet.title))
@@ -306,23 +307,23 @@ def generate_overview_section(
             "PEN",
             str(client_pen) if client_pen else "Not supplied",
             "",
-            "",
-            "",
+            "Playlist" if playlist_info else "",
+            playlist_info or "",
         ],
     ]
     column_widths = [int(fraction * stylesheet.table_width) for fraction in [0.15, 0.4, 0.05, 0.2, 0.2]]
     table = Table(overview_data, colWidths=column_widths)
     tstyle = TableStyle(
         [
-            ("BACKGROUND", (0, 0), (1, 2), OVERVIEW_BACKGROUND),
-            ("BACKGROUND", (3, 0), (4, 2), OVERVIEW_BACKGROUND),
+            ("BACKGROUND", (0, 0), (1, -1), OVERVIEW_BACKGROUND),
+            ("BACKGROUND", (3, 0), (4, -1), OVERVIEW_BACKGROUND),
             ("TEXTCOLOR", (0, 0), (-1, -1), TABLE_TEXT_COLOR),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("FONTNAME", (0, 0), (0, 2), "Helvetica-Bold"),
-            ("FONTNAME", (3, 0), (3, 2), "Helvetica-Bold"),
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
             ("TOPPADDING", (0, 0), (4, 0), 6),
-            ("BOTTOMPADDING", (0, 2), (4, 2), 6),
+            ("BOTTOMPADDING", (0, -1), (4, -1), 6),
         ]
     )
     table.setStyle(tstyle)
@@ -1531,6 +1532,11 @@ def generate_page_elements(
                 client_pen=active_test_procedure.pen,
                 duration=duration,
                 stylesheet=stylesheet,
+                playlist_info=(
+                    f"Test {runner_state.playlist_index + 1} of {len(runner_state.playlist)}"
+                    if runner_state.playlist
+                    else None
+                ),
             )
         )
     except ValueError as e:

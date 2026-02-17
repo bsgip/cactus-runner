@@ -158,7 +158,14 @@ BEGIN
     -- Truncate specific tables (order matters for foreign key dependencies, CASCADE handles this)
     {truncate_statements}
 
-    -- Reset sequences that need epoch time (for new test to get unique IDs)
+    -- Reset sequences for tables that were truncated (to 1, for consistency with reset_db behavior)
+    EXECUTE 'ALTER SEQUENCE site_control_group_site_control_group_id_seq RESTART WITH 1';
+    EXECUTE 'ALTER SEQUENCE calculation_log_calculation_log_id_seq RESTART WITH 1';
+    EXECUTE 'ALTER SEQUENCE subscription_subscription_id_seq RESTART WITH 1';
+    EXECUTE 'ALTER SEQUENCE subscription_condition_subscription_condition_id_seq RESTART WITH 1';
+    EXECUTE 'ALTER SEQUENCE site_log_event_site_log_event_id_seq RESTART WITH 1';
+
+    -- Reset sequences that need epoch time (for new test to get unique IDs across playlist)
     EXECUTE 'ALTER SEQUENCE site_control_group_default_site_control_group_default_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH ' || epoch_time;

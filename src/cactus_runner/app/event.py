@@ -11,6 +11,7 @@ from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.app.uri import does_endpoint_match
 from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ class EventTriggerType(IntEnum):
     # Raised on a regular interval in response to a period of time elapsing from the last TIME trigger
     TIME = auto()
 
+    # A proceed signal (GET to /proceed) was sent by the UI
+    PROCEED = auto()
+
 
 @dataclass(frozen=True)
 class ClientRequestDetails:
@@ -56,40 +60,6 @@ class EventTrigger:
     time: datetime  # When was this event triggered (tz aware)
     single_listener: bool  # If True - this can trigger a maximum of one Listener. False can trigger more than one.
     client_request: ClientRequestDetails | None  # Only specified if type == CLIENT_REQUEST
-
-
-def does_endpoint_match(request: ClientRequestDetails, match: str) -> bool:
-    """Performs all logic for matching an "endpoint" to an incoming request's path.
-
-    '*' can be a "wildcard" character for matching a single component of the path (a path component is part of the path
-    seperated by '/'). It will NOT partially match
-
-    eg:
-    match=/edev/*/derp/1  would match /edev/123/derp/1
-    match=/edev/1*3/derp/1  would NOT match /edev/123/derp/1
-
-    NOTE: This function expects paths WITHOUT any mount point prefix - those should be stripped before calling.
-    """
-
-    # If we don't have a wildcard - do an EXACT match
-    WILDCARD = "*"
-    if WILDCARD not in match:
-        return request.path == match
-
-    # Otherwise we need to do a component by component comparison
-    request_components = list(filter(None, request.path.split("/")))  # Remove empty strings
-    match_components = list(filter(None, match.split("/")))  # Remove empty strings
-
-    # Must have same number of components for a match
-    if len(request_components) != len(match_components):
-        return False
-
-    # Compare each component
-    for request_component, match_component in zip(request_components, match_components):
-        if match_component != WILDCARD and request_component != match_component:
-            return False
-
-    return True
 
 
 async def is_listener_triggerable(
@@ -123,7 +93,7 @@ async def is_listener_triggerable(
         endpoint = resolved_params.get("endpoint", evaluator.ResolvedParam(""))
         serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
 
-        if not does_endpoint_match(trigger.client_request, endpoint.value):
+        if not does_endpoint_match(trigger.client_request.path, endpoint.value):
             return False
 
         # Make sure that we are listening to the correct before/after serving event
@@ -141,6 +111,10 @@ async def is_listener_triggerable(
         duration_seconds = resolved_params.get("duration_seconds", evaluator.ResolvedParam(0))
 
         return (trigger.time - listener.enabled_time).total_seconds() >= duration_seconds.value
+
+    # If this listener is a proceed event and we have received the appropriate trigger
+    if listener.event.type == "proceed" and trigger.type == EventTriggerType.PROCEED:
+        return True
 
     # This event type / trigger doesn't match
     return False
@@ -231,4 +205,11 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
         time=datetime.now(timezone.utc),
         single_listener=True,
         client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount),
+    )
+
+
+def generate_proceed_trigger() -> EventTrigger:
+    """Generates an EventTrigger representing a proceed signal sent by the UI"""
+    return EventTrigger(
+        type=EventTriggerType.PROCEED, time=datetime.now(timezone.utc), single_listener=True, client_request=None
     )
