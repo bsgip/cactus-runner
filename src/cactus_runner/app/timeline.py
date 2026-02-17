@@ -4,6 +4,7 @@ from decimal import Decimal
 from itertools import chain
 from typing import Any, Callable, Sequence, cast
 
+from dataclass_wizard import JSONWizard
 from envoy.server.model.archive import ArchiveBase
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
@@ -25,7 +26,7 @@ from cactus_runner.app.envoy_common import (
 
 
 @dataclass
-class TimelineDataStream:
+class TimelineDataStream(JSONWizard):
 
     label: str  # Descriptive label of this data stream
     offset_watt_values: list[
@@ -36,7 +37,7 @@ class TimelineDataStream:
 
 
 @dataclass
-class Timeline:
+class Timeline(JSONWizard):
     """Represents a series of regular "power" observations aligned on interval_seconds offsets relative to start"""
 
     start: datetime  # The basis time
