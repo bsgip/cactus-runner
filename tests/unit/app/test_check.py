@@ -100,7 +100,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str] = {
     "subscription-contents": "check_subscription_contents",
     "response-contents": "check_response_contents",
     "readings-der-stored-energy": "check_readings_der_stored_energy",
-    "all-polls-at-correct-time": "all_polls_at_correct_time",
+    "all-polls-at-correct-time": "check_all_polls_at_correct_time",
 }
 
 
