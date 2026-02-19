@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 from cactus_schema.runner import (
     CriteriaEntry,
     DataStreamPoint,
+    DERCapabilityInfo,
+    DERSettingsInfo,
+    DERStatusInfo,
     EndDeviceMetadata,
     PreconditionCheckEntry,
     RequestEntry,
@@ -13,7 +16,18 @@ from cactus_schema.runner import (
     TimelineDataStreamEntry,
     TimelineStatus,
 )
-from envoy.server.model.site import Site
+from envoy.server.model.site import Site, SiteDERRating, SiteDERSetting, SiteDERStatus
+from envoy_schema.server.schema.sep2.der import (
+    AlarmStatusType,
+    ConnectStatusType,
+    DERControlType,
+    DERType,
+    DOESupportedMode,
+    InverterStatusType,
+    LocalControlModeStatusType,
+    OperationalModeStatusType,
+    StorageModeStatusType,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
@@ -28,6 +42,80 @@ from cactus_runner.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_value_multiplier(value: int | None, multiplier: int | None) -> int | None:
+    """Resolve a sep2 value/multiplier pair to an integer (value * 10^multiplier)."""
+    if value is None:
+        return None
+    return int(value * (10 ** (multiplier if multiplier is not None else 0)))
+
+
+def _resolve_intflag(bitmap: int | None, flag_type) -> list[str] | None:
+    """Resolve an IntFlag bitmap to a list of active flag names."""
+    if bitmap is None:
+        return None
+    return [flag.name for flag in flag_type if bitmap & flag]
+
+
+def _resolve_intenum(value: int | None, enum_type) -> str | None:
+    """Resolve an IntEnum integer value to its name string."""
+    if value is None:
+        return None
+    try:
+        return enum_type(value).name
+    except ValueError:
+        return None
+
+
+def _build_der_capability(rating: SiteDERRating) -> DERCapabilityInfo:
+    return DERCapabilityInfo(
+        der_type=_resolve_intenum(rating.der_type, DERType),
+        modes_supported=_resolve_intflag(rating.modes_supported, DERControlType),
+        max_w=_resolve_value_multiplier(rating.max_w_value, rating.max_w_multiplier),
+        max_va=_resolve_value_multiplier(rating.max_va_value, rating.max_va_multiplier),
+        max_var=_resolve_value_multiplier(rating.max_var_value, rating.max_var_multiplier),
+        max_var_neg=_resolve_value_multiplier(rating.max_var_neg_value, rating.max_var_neg_multiplier),
+        max_a=_resolve_value_multiplier(rating.max_a_value, rating.max_a_multiplier),
+        max_charge_rate_w=_resolve_value_multiplier(rating.max_charge_rate_w_value, rating.max_charge_rate_w_multiplier),
+        max_discharge_rate_w=_resolve_value_multiplier(
+            rating.max_discharge_rate_w_value, rating.max_discharge_rate_w_multiplier
+        ),
+        max_wh=_resolve_value_multiplier(rating.max_wh_value, rating.max_wh_multiplier),
+        doe_modes_supported=_resolve_intflag(rating.doe_modes_supported, DOESupportedMode),
+    )
+
+
+def _build_der_settings(setting: SiteDERSetting) -> DERSettingsInfo:
+    return DERSettingsInfo(
+        modes_enabled=_resolve_intflag(setting.modes_enabled, DERControlType),
+        max_w=_resolve_value_multiplier(setting.max_w_value, setting.max_w_multiplier),
+        max_va=_resolve_value_multiplier(setting.max_va_value, setting.max_va_multiplier),
+        max_var=_resolve_value_multiplier(setting.max_var_value, setting.max_var_multiplier),
+        max_var_neg=_resolve_value_multiplier(setting.max_var_neg_value, setting.max_var_neg_multiplier),
+        max_charge_rate_w=_resolve_value_multiplier(
+            setting.max_charge_rate_w_value, setting.max_charge_rate_w_multiplier
+        ),
+        max_discharge_rate_w=_resolve_value_multiplier(
+            setting.max_discharge_rate_w_value, setting.max_discharge_rate_w_multiplier
+        ),
+        grad_w=setting.grad_w,
+        doe_modes_enabled=_resolve_intflag(setting.doe_modes_enabled, DOESupportedMode),
+    )
+
+
+def _build_der_status(status: SiteDERStatus) -> DERStatusInfo:
+    return DERStatusInfo(
+        alarm_status=_resolve_intflag(status.alarm_status, AlarmStatusType),
+        generator_connect_status=_resolve_intflag(status.generator_connect_status, ConnectStatusType),
+        storage_connect_status=_resolve_intflag(status.storage_connect_status, ConnectStatusType),
+        inverter_status=_resolve_intenum(status.inverter_status, InverterStatusType),
+        operational_mode_status=_resolve_intenum(status.operational_mode_status, OperationalModeStatusType),
+        storage_mode_status=_resolve_intenum(status.storage_mode_status, StorageModeStatusType),
+        local_control_mode_status=_resolve_intenum(status.local_control_mode_status, LocalControlModeStatusType),
+        manufacturer_status=status.manufacturer_status,
+        state_of_charge_status=status.state_of_charge_status,
+    )
 
 
 def get_runner_status_summary(step_status: dict[str, StepInfo]):
@@ -207,12 +295,19 @@ async def get_active_runner_status(
     try:
         active_site: Site | None = await get_active_site(session, include_der_settings=True)
         if active_site is not None:
-            # Get doe_modes_enabled from the first site_der if available
             doe_modes_enabled = None
+            der_capability = None
+            der_settings = None
+            der_status = None
             if active_site.site_ders:
                 first_site_der = active_site.site_ders[0]
                 if first_site_der.site_der_setting is not None:
                     doe_modes_enabled = first_site_der.site_der_setting.doe_modes_enabled
+                    der_settings = _build_der_settings(first_site_der.site_der_setting)
+                if first_site_der.site_der_rating is not None:
+                    der_capability = _build_der_capability(first_site_der.site_der_rating)
+                if first_site_der.site_der_status is not None:
+                    der_status = _build_der_status(first_site_der.site_der_status)
 
             end_device_metadata = EndDeviceMetadata(
                 edevid=active_site.site_id,
@@ -224,6 +319,9 @@ async def get_active_runner_status(
                 doe_modes_enabled=doe_modes_enabled,
                 device_category=active_site.device_category,
                 timezone_id=active_site.timezone_id,
+                der_capability=der_capability,
+                der_settings=der_settings,
+                der_status=der_status,
             )
     except Exception as exc:
         logger.error("Error getting end device metadata", exc_info=exc)
