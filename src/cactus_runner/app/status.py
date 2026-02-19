@@ -77,7 +77,9 @@ def _build_der_capability(rating: SiteDERRating) -> DERCapabilityInfo:
         max_var=_resolve_value_multiplier(rating.max_var_value, rating.max_var_multiplier),
         max_var_neg=_resolve_value_multiplier(rating.max_var_neg_value, rating.max_var_neg_multiplier),
         max_a=_resolve_value_multiplier(rating.max_a_value, rating.max_a_multiplier),
-        max_charge_rate_w=_resolve_value_multiplier(rating.max_charge_rate_w_value, rating.max_charge_rate_w_multiplier),
+        max_charge_rate_w=_resolve_value_multiplier(
+            rating.max_charge_rate_w_value, rating.max_charge_rate_w_multiplier
+        ),
         max_discharge_rate_w=_resolve_value_multiplier(
             rating.max_discharge_rate_w_value, rating.max_discharge_rate_w_multiplier
         ),
