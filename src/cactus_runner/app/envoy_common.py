@@ -48,7 +48,11 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
     stmt = select(Site).order_by(Site.changed_time.desc()).limit(1)
 
     if include_der_settings:
-        stmt = stmt.options(selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting))
+        stmt = stmt.options(
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_rating),
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
+            selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
+        )
 
     site = (await session.execute(stmt)).scalar_one_or_none()
 
