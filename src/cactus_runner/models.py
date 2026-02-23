@@ -621,7 +621,61 @@ class Site(JSONWizard):
 
 
 @dataclass
-class ReportingData(JSONWizard):
+class ReportingData:
+
+    @staticmethod
+    def v(version: int):
+        if version == 1:
+            return ReportingData_v1
+        raise ValueError(f"Unknown version of ReportingData ({version}).")
+
+    @staticmethod
+    def from_json(version, string, **kwargs) -> Any:
+        return ReportingData.v(version).from_json(string, **kwargs)
+
+
+@dataclass(kw_only=True)
+class ReportingData_Base(JSONWizard):
+    version: int = field(init=False)
+
+    def _classname_to_version(self) -> int:
+        CLASS_NAME_PREFIX = "ReportingData_v"
+        return int(self.__class__.__name__.split(CLASS_NAME_PREFIX)[1])
+
+    def __post_init__(self):
+        # Automatically determine the version from the classname, ReportingData_vXXX
+        self.version = self._classname_to_version()
+
+
+@dataclass(kw_only=True)
+class ReportingData_v1(ReportingData_Base):
+    """Holds all the data required to generate cactus run report.
+
+    This class is serializable with a `to_json()` call. e.g.
+
+    ```py
+    json_str = reportingdata_instance.to_json()
+    ```
+
+    To deserialize, use the general method `ReportingData.from_json` e.g.
+
+    ```py
+    from cactus_runner.models import ReportingData
+    version = 1
+    reportingdata_v1_instance = ReportingData.from_json(version, json_str)
+    ```
+
+    Versioning - a version attribute (int) is automatically added to all subclasses
+    of ReportingDataBase. The version is extracted directly from the classname.
+    For example, ReportingData_v1 has version=1 and ReportingData_v27 has version=27
+
+    ```py
+    >>> reportingdata_v1_instance.version
+    1
+    ```
+
+    """
+
     created_at: datetime
     runner_state: RunnerState
     check_results: dict[str, CheckResult]

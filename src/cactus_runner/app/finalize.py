@@ -238,6 +238,7 @@ async def generate_json_reporting_data(
     sites: list[Site],
     timeline: timeline.Timeline | None,
     errors,
+    version: int = 1,
 ) -> str | None:
     created_at = datetime.now(timezone.utc)
 
@@ -248,7 +249,7 @@ async def generate_json_reporting_data(
             for k, v in reading_counts.items()
         ]
 
-        reporting_data = ReportingData(
+        reporting_data = ReportingData.v(version)(
             created_at=created_at,
             runner_state=runner_state,
             check_results=check_results,

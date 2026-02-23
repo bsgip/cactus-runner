@@ -1,11 +1,26 @@
+import inspect
+import sys
+from dataclasses import dataclass
 from datetime import datetime
 
 from assertical.asserts.generator import assert_class_instance_equality
-from assertical.fake.generator import generate_class_instance
+from assertical.fake.generator import (
+    generate_class_instance,
+)
 from envoy.server.model import SiteReadingType
 from envoy.server.model.site import Site as EnvoySite
 
-from cactus_runner.models import ReadingType, Site, StepInfo, StepStatus
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    CheckResult,
+    ReadingType,
+    ReportingData,
+    ReportingData_Base,
+    ReportingData_v1,
+    Site,
+    StepInfo,
+    StepStatus,
+)
 
 
 def test_step_info():
@@ -53,3 +68,29 @@ def test_site_serialization():
 
     assert Site.from_json(site.to_json()) == site
     assert Site.from_dict(site.to_dict()) == site
+
+
+def test_reporting_data_versions():
+    CLASS_NAME_PREFIX = "ReportingData_v"
+    MODULE = "cactus_runner.models"
+
+    # Determine all the different versions of ReportingData classes we have defined in MODULE
+    reporting_data_classes = [
+        cls
+        for name, cls in inspect.getmembers(sys.modules[MODULE], inspect.isclass)
+        if name.startswith(CLASS_NAME_PREFIX)
+    ]
+
+    # Perform checks on each version of a reporting data class
+    for ReportingDataClass in reporting_data_classes:
+
+        # All reporting classes must be subclasses of ReportingData_Base in order to receive the version attribute
+        assert issubclass(ReportingDataClass, ReportingData_Base)
+
+        # Check we can serialise and deserialise the reporting class
+        expected_reporting_data = generate_class_instance(
+            ReportingData_v1, optional_is_none=True, generate_relationships=True
+        )
+        json = expected_reporting_data.to_json()
+        reporting_data = ReportingData.from_json(expected_reporting_data.version, json)
+        assert_class_instance_equality(ReportingDataClass, reporting_data, expected_reporting_data)

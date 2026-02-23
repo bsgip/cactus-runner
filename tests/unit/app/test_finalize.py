@@ -8,9 +8,12 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
+from assertical.asserts.generator import assert_class_instance_equality
+from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import finalize
+from cactus_runner.app.timeline import Timeline
 from cactus_runner.models import (
     CheckResult,
     ReadingType,
@@ -180,8 +183,9 @@ def test_get_zip_contents_with_errors(mocker):
     assert len(errors) == 2, "This shouldn't have been mutated"
 
 
+@pytest.mark.parametrize("version", [1])
 @pytest.mark.asyncio
-async def test_generate_json_reporting_data():
+async def test_generate_json_reporting_data(version):
     # Arrange
     def check_results(num=3, passed=True, description=None):
         return {
@@ -222,9 +226,15 @@ async def test_generate_json_reporting_data():
         sites=sites,
         timeline=timeline,
         errors=errors,
+        version=version,
     )
-    print(reporting_data_str)
-    reporting_data = ReportingData.from_json(reporting_data_str)
+    reporting_data = ReportingData.from_json(version, reporting_data_str)
 
     # Assert
-    print(reporting_data)
+    assert_nowish(reporting_data.created_at)
+    assert isinstance(reporting_data.runner_state, RunnerState)
+    assert_class_instance_equality(RunnerState, runner_state, reporting_data.runner_state)
+    assert len(checks) == len(reporting_data.check_results)
+    assert len(readings) == len(reporting_data.readings)
+    assert_class_instance_equality(list[Site], sites, reporting_data.sites)
+    assert_class_instance_equality(Timeline, timeline, reporting_data.timeline)
