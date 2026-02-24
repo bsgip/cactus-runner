@@ -42,7 +42,12 @@ from cactus_runner.models import (
     Site,
 )
 
+# Cactus runner supports returning different versions of the reporting data
+# Define the currently preferred reporting data version
+CURRENT_REPORTING_DATA_VERSION: int = 1
+
 GENERATION_ERRORS_FILE_NAME = "generation-errors.txt"
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,7 @@ def get_zip_contents(
     pdf_data: bytes | None,
     errors: list[str],
     filename_infix: str = "",
+    reporting_data_filename_prefix: str | None = "ReportingData",
 ) -> bytes:
     """Returns the contents of the zipped test procedures artifacts in bytes."""
 
@@ -96,8 +102,8 @@ def get_zip_contents(
                 f.write(json_status_summary)
 
         # Create reporting data json file
-        if json_reporting_data is not None:
-            file_path = archive_dir / f"ReportingData{filename_infix}.json"
+        if json_reporting_data is not None and reporting_data_filename_prefix is not None:
+            file_path = archive_dir / f"{reporting_data_filename_prefix}{filename_infix}.json"
             with open(file_path, "w") as f:
                 f.write(json_reporting_data)
 
@@ -366,6 +372,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         serializable_sites = [Site.from_site(s) for s in sites]
 
         # Collect reporting state into json object
+        reporting_data_version = CURRENT_REPORTING_DATA_VERSION
         json_reporting_data = await generate_json_reporting_data(
             runner_state=runner_state,
             check_results=check_results,
@@ -374,12 +381,15 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             sites=serializable_sites,
             timeline=test_timeline,
             errors=errors,
+            version=reporting_data_version,
         )
+        reporting_data_filename_prefix = f"ReportingData_v{reporting_data_version}"
     except Exception as exc:
         logger.error("Failed to generate PDF report", exc_info=exc)
         errors.append(f"Failed to generate PDF report: {exc}")
         pdf_data = None
         json_reporting_data = None
+        reporting_data_filename_prefix = None
 
     generation_timestamp = now.replace(microsecond=0)
 
@@ -394,6 +404,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         ],
         pdf_data=pdf_data,
         filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
+        reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
     )
     return active_test_procedure.finished_zip_data
