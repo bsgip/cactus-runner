@@ -394,6 +394,54 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
             ),
             True,
         ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Wrong type of event
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="unsupported-event-type", parameters={}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # Unrecognized event type
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+            ),
+            True,
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={}),
+                actions=[],
+                enabled_time=None,
+            ),
+            False,  # This listener is NOT enabled
+        ),
     ],
 )
 @patch("cactus_runner.app.event.evaluator.resolve_variable_expressions_from_parameters")
