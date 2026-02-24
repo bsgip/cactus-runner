@@ -673,12 +673,16 @@ class ReportingData_v1(ReportingData_Base):
     >>> reportingdata_v1_instance.version
     1
     ```
-
     """
 
-    created_at: datetime
-    runner_state: RunnerState
-    check_results: dict[str, CheckResult]
-    readings: list[PackedReadings]
-    sites: list[Site]
-    timeline: Timeline | None
+    # The extensive use of type: ignore is required due to a suspected
+    # bug in mypy where it incorrectly thinks the version attribute in
+    # the parent class ReportingData_Base is being assigned a default value
+    # when it is just being set to init=False. This conflicts with the
+    # attributes below which don't set any defaults
+    created_at: datetime  # type: ignore
+    runner_state: RunnerState  # type: ignore
+    check_results: dict[str, CheckResult]  # type: ignore
+    readings: list[PackedReadings]  # type: ignore
+    sites: list[Site]  # type: ignore
+    timeline: Timeline | None  # type: ignore
