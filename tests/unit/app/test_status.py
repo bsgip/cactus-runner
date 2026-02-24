@@ -17,6 +17,8 @@ from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Check
 from freezegun import freeze_time
 
+from envoy.server.model.site import Site, SiteDER, SiteDERRating, SiteDERSetting, SiteDERStatus
+
 from cactus_runner.app import status
 from cactus_runner.app.check import CheckResult
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
@@ -174,20 +176,37 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
 
     mock_get_active_site = mocker.patch("cactus_runner.app.status.get_active_site")
 
-    # Mock site with metadata
-    mock_site_der_setting = Mock(doe_modes_enabled=7)
-    mock_site_der = Mock(site_der_setting=mock_site_der_setting)
-    mock_site = Mock(
-        site_id=42,
-        lfdi="aabbccddeeff00112233445566778899aabbccdd",
-        sfdi=1234567890,
-        nmi="1234567890A",
-        aggregator_id=10,
-        device_category=1,
-        timezone_id="Australia/Sydney",
-        site_ders=[mock_site_der],
+    # Build model instances with specific overrides for fields we assert on
+    site_der_setting = generate_class_instance(
+        SiteDERSetting,
+        seed=401,
+        doe_modes_enabled=7,  # DOESupportedMode: EXPORT_LIMIT_W | IMPORT_LIMIT_W | GENERATION_LIMIT_W
+        modes_enabled=None,
+        max_w_value=5000,
+        max_w_multiplier=0,
+        grad_w=100,
     )
-    mock_get_active_site.return_value = mock_site
+    site_der_rating = generate_class_instance(
+        SiteDERRating,
+        seed=501,
+        der_type=4,  # DERType.PHOTOVOLTAIC_SYSTEM
+        modes_supported=None,
+        max_w_value=6000,
+        max_w_multiplier=0,
+    )
+    site_der_status = generate_class_instance(
+        SiteDERStatus,
+        seed=601,
+        inverter_status=2,  # InverterStatusType.SLEEPING
+        alarm_status=None,
+    )
+    site_der = generate_class_instance(SiteDER, seed=301)
+    site_der.site_der_setting = site_der_setting
+    site_der.site_der_rating = site_der_rating
+    site_der.site_der_status = site_der_status
+    site = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=42)
+    site.site_ders = [site_der]
+    mock_get_active_site.return_value = site
 
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -203,17 +222,39 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     # Act
     runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
 
-    # Assert
+    # Assert - EndDeviceMetadata
     metadata = runner_status.end_device_metadata
     assert metadata.edevid == 42
-    assert metadata.lfdi == "aabbccddeeff00112233445566778899aabbccdd"
-    assert metadata.sfdi == 1234567890
-    assert metadata.nmi == "1234567890A"
-    assert metadata.aggregator_id == 10
+    assert metadata.lfdi == site.lfdi
+    assert metadata.sfdi == site.sfdi
+    assert metadata.nmi == site.nmi
+    assert metadata.aggregator_id == 1
     assert metadata.set_max_w == 5000
     assert metadata.doe_modes_enabled == 7
-    assert metadata.device_category == 1
-    assert metadata.timezone_id == "Australia/Sydney"
+    assert metadata.device_category == site.device_category
+    assert metadata.timezone_id == site.timezone_id
+
+    # DERSettings
+    assert metadata.der_settings is not None
+    assert metadata.der_settings.max_w == 5000
+    assert metadata.der_settings.grad_w == 100
+    assert metadata.der_settings.modes_enabled is None
+    assert metadata.der_settings.doe_modes_enabled == [
+        "OP_MOD_EXPORT_LIMIT_W",
+        "OP_MOD_IMPORT_LIMIT_W",
+        "OP_MOD_GENERATION_LIMIT_W",
+    ]
+
+    # DERCapability
+    assert metadata.der_capability is not None
+    assert metadata.der_capability.der_type == "PHOTOVOLTAIC_SYSTEM"
+    assert metadata.der_capability.max_w == 6000
+    assert metadata.der_capability.modes_supported is None
+
+    # DERStatus
+    assert metadata.der_status is not None
+    assert metadata.der_status.inverter_status == "SLEEPING"
+    assert metadata.der_status.alarm_status is None
 
 
 @pytest.mark.anyio
