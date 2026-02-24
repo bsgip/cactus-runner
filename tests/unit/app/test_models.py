@@ -1,6 +1,5 @@
 import inspect
 import sys
-from dataclasses import dataclass
 from datetime import datetime
 
 from assertical.asserts.generator import assert_class_instance_equality
@@ -11,8 +10,6 @@ from envoy.server.model import SiteReadingType
 from envoy.server.model.site import Site as EnvoySite
 
 from cactus_runner.models import (
-    ActiveTestProcedure,
-    CheckResult,
     ReadingType,
     ReportingData,
     ReportingData_Base,
