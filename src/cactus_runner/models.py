@@ -682,3 +682,4 @@ class ReportingData_v1(ReportingData_Base):
     readings: list[PackedReadings]
     sites: list[Site]
     timeline: Timeline | None
+    set_max_w_varied: bool = False
