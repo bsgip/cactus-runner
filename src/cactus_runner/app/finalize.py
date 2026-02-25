@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import cast
 
+from envoy.server.model.archive.site import ArchiveSiteDERSetting
+from envoy.server.model.site import SiteDERSetting
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting, timeline
@@ -177,6 +180,7 @@ async def generate_pdf(
     sites,
     timeline,
     errors,
+    set_max_w_varied: bool = False,
 ) -> bytes | None:
     try:
         # Generate the pdf (as bytes)
@@ -187,6 +191,7 @@ async def generate_pdf(
             reading_counts=reading_counts,
             sites=sites,
             timeline=timeline,
+            set_max_w_varied=set_max_w_varied,
         )
     except Exception as exc:
         logger.error("Error generating PDF report.", exc_info=exc)
@@ -206,6 +211,7 @@ async def generate_pdf(
                 sites=sites,
                 timeline=timeline,
                 no_spacers=True,
+                set_max_w_varied=set_max_w_varied,
             )
         except Exception as exc:
             logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
@@ -299,6 +305,20 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
         reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
+        # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
+        # than the current SiteDERSetting for the same site_der_id means it changed
+        set_max_w_varied = (
+            await session.execute(
+                select(ArchiveSiteDERSetting.site_der_id)
+                .join(
+                    SiteDERSetting,
+                    (SiteDERSetting.site_der_id == ArchiveSiteDERSetting.site_der_id)  # Same DER
+                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+                )
+                .limit(1)
+            )
+        ).scalar() is not None
+
         pdf_data = await generate_pdf(
             runner_state=runner_state,
             check_results=check_results,
@@ -307,6 +327,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             sites=sites,
             timeline=test_timeline,
             errors=errors,
+            set_max_w_varied=set_max_w_varied,
         )
     except Exception as exc:
         logger.error("Failed to generate PDF report", exc_info=exc)
