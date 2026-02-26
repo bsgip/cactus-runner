@@ -3,10 +3,26 @@ import random
 import string
 import tempfile
 import zipfile
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
+import pandas as pd
 import pytest
+from assertical.asserts.generator import assert_class_instance_equality
+from assertical.asserts.time import assert_nowish
+from assertical.fake.generator import generate_class_instance
 
 from cactus_runner.app import finalize
+from cactus_runner.app.timeline import Timeline
+from cactus_runner.models import (
+    CheckResult,
+    ReadingType,
+    ReportingData,
+    RunnerState,
+    Site,
+)
+
+DT_NOW = datetime.now(timezone.utc)
 
 
 @pytest.mark.parametrize(
@@ -42,6 +58,7 @@ def test_get_zip_contents(mocker):
     subprocess_run_mock = mocker.patch.object(finalize.subprocess, "run")  # prevent db dump
 
     json_status_summary = random_string(length=100)
+    json_reporting_data = random_string(length=100)
     contents_of_logfile1 = bytes(random_string(length=100), encoding="utf-8")
     contents_of_logfile2 = bytes(random_string(length=100), encoding="utf-8")
     pdf_data = bytes(random_string(length=100), encoding="utf-8")  # not legimate pdf data
@@ -61,6 +78,7 @@ def test_get_zip_contents(mocker):
 
         zip_contents = finalize.get_zip_contents(
             json_status_summary=json_status_summary,
+            json_reporting_data=json_reporting_data,
             log_file_paths=[logfile1_name, logfile2_name],
             pdf_data=pdf_data,
             errors=errors,
@@ -142,6 +160,7 @@ def test_get_zip_contents_with_errors(mocker):
 
     zip_contents = finalize.get_zip_contents(
         json_status_summary=None,
+        json_reporting_data=None,
         log_file_paths=["file-that-dne.txt", "file-that-dne-2.txt"],
         pdf_data=None,
         errors=errors,
@@ -162,3 +181,60 @@ def test_get_zip_contents_with_errors(mocker):
     assert errors[0] in zipped_errors
     assert errors[1] in zipped_errors
     assert len(errors) == 2, "This shouldn't have been mutated"
+
+
+@pytest.mark.parametrize("version", [1])
+@pytest.mark.asyncio
+async def test_generate_json_reporting_data(version):
+    # Arrange
+    def check_results(num=3, passed=True, description=None):
+        return {
+            f"check{i}": generate_class_instance(CheckResult, passed=passed, description=description)
+            for i in range(num)
+        }
+
+    def fake_readings(reading_types: list[ReadingType]):
+        NUMBER_OF_READINGS = 5
+        sample_df = pd.DataFrame(
+            {
+                "scaled_value": [Decimal(random.random()) for _ in range(NUMBER_OF_READINGS)],
+                "time_period_start": [DT_NOW + timedelta(seconds=_ * 5) for _ in range(NUMBER_OF_READINGS)],
+            }
+        )
+        return {rt: sample_df for rt in reading_types}
+
+    def fake_reading_counts(reading_types: list[ReadingType]):
+        return {rt: random.randrange(10, 500) for rt in reading_types}
+
+    runner_state = RunnerState()
+    checks = check_results()
+    site_reading_type_counts = 3
+    site_count = 5
+    reading_types = [generate_class_instance(ReadingType) for _ in range(site_reading_type_counts)]
+    readings = fake_readings(reading_types)
+    reading_counts = fake_reading_counts(reading_types)
+    sites = [generate_class_instance(Site) for _ in range(site_count)]
+    timeline = None
+    errors = []
+
+    # Act
+    reporting_data_str = await finalize.generate_json_reporting_data(
+        runner_state=runner_state,
+        check_results=checks,
+        readings=readings,
+        reading_counts=reading_counts,
+        sites=sites,
+        timeline=timeline,
+        errors=errors,
+        version=version,
+    )
+    reporting_data = ReportingData.from_json(version, reporting_data_str)
+
+    # Assert
+    assert_nowish(reporting_data.created_at)
+    assert isinstance(reporting_data.runner_state, RunnerState)
+    assert_class_instance_equality(RunnerState, runner_state, reporting_data.runner_state)
+    assert len(checks) == len(reporting_data.check_results)
+    assert len(readings) == len(reporting_data.readings)
+    assert_class_instance_equality(list[Site], sites, reporting_data.sites)
+    assert_class_instance_equality(Timeline, timeline, reporting_data.timeline)

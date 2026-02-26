@@ -1,11 +1,10 @@
 import http
 import logging
 import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import chain
 from typing import Annotated, Any, Iterable, Optional, Sequence
-from cactus_runner.app.uri import does_endpoint_match
+
 import pydantic
 import pydantic.alias_generators
 import pydantic.fields
@@ -41,7 +40,13 @@ from cactus_runner.app.evaluator import (
     ResolvedParam,
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.models import ActiveTestProcedure, ClientCertificateType, RequestEntry
+from cactus_runner.app.uri import does_endpoint_match
+from cactus_runner.models import (
+    ActiveTestProcedure,
+    CheckResult,
+    ClientCertificateType,
+    RequestEntry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,14 +156,6 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
     vpp_modes_supported: Annotated[
         bool | None, pydantic.Field(alias="vppModesSupported"), SiteReadingTypeProperty("vpp_modes_supported")
     ] = None
-
-
-@dataclass
-class CheckResult:
-    """Represents the results of a running a single check"""
-
-    passed: bool  # True if the check is considered passed or successful. False otherwise
-    description: Optional[str]  # Human readable description of what the check "considered" or wants to elaborate about
 
 
 class SoftChecker:

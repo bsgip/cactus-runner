@@ -14,7 +14,6 @@ from envoy.server.model import (
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
-    SiteReadingType,
 )
 from envoy.server.model.site_reading import SiteReading
 from envoy_schema.server.schema.sep2.types import (
@@ -26,7 +25,6 @@ from envoy_schema.server.schema.sep2.types import (
     UomType,
 )
 
-from cactus_runner.app.check import CheckResult
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.reporting import (
     device_category_to_string,
@@ -39,8 +37,10 @@ from cactus_schema.runner import RunRequest
 
 from cactus_runner.models import (
     ActiveTestProcedure,
+    CheckResult,
     ClientInteraction,
     ClientInteractionType,
+    ReadingType,
     RequestEntry,
     RunnerState,
     StepInfo,
@@ -94,11 +94,11 @@ def readings(num=3):
             "time_period_start": [DT_NOW],
         }
     )
-    return {generate_class_instance(SiteReadingType): sample_df for _ in range(num)}
+    return {generate_class_instance(ReadingType): sample_df for _ in range(num)}
 
 
 def reading_counts(num=3):
-    return {generate_class_instance(SiteReadingType): i for i in range(num)}
+    return {generate_class_instance(ReadingType): i for i in range(num)}
 
 
 def sites(num=2, with_ders=True, optional_is_none=False):
@@ -375,25 +375,25 @@ def test_pdf_report_everything_set():
             "time_period_start": [now - timedelta(minutes=i * 2) for i in range(5)],
         }
     )
-    read = {generate_class_instance(SiteReadingType): sample_df for _ in range(3)}
+    read = {generate_class_instance(ReadingType): sample_df for _ in range(3)}
 
     counts = {
         generate_class_instance(
-            SiteReadingType,
+            ReadingType,
             mrid="longmridfortest",
             uom=UomType.REAL_POWER_WATT,
             kind=KindType.POWER,
             role_flags=ReadingLocation.SITE_READING,
         ): 10,
         generate_class_instance(
-            SiteReadingType,
+            ReadingType,
             uom=UomType.FREQUENCY_HZ,
             data_qualifier=DataQualifierType.AVERAGE,
             kind=KindType.POWER,
             role_flags=ReadingLocation.DEVICE_READING,
         ): 20,
         generate_class_instance(
-            SiteReadingType,
+            ReadingType,
             uom=UomType.VOLTS_SQUARED,
             kind=KindType.CURRENCY,
             data_qualifier=DataQualifierType.AVERAGE,
@@ -459,27 +459,32 @@ def test_pdf_report_everything_set():
 def test_validate_cell_with_int_enums(col_idx, field_name, valid_value, enum_member):
     """Test that validate_cell correctly handles both integer values and enum members"""
     # Test with integer value (.value)
-    reading_type_int = SiteReadingType(
-        role_flags=0,
-        uom=UomType.VOLTAGE.value if field_name == "phase" else UomType.REAL_POWER_WATT.value,
-        data_qualifier=DataQualifierType.AVERAGE.value,
-        kind=KindType.POWER.value,
-        phase=PhaseCode.PHASE_ABC.value,
+    defaults = {
+        "role_flags": 0,
+        "uom": UomType.VOLTAGE.value if field_name == "phase" else UomType.REAL_POWER_WATT.value,
+        "data_qualifier": DataQualifierType.AVERAGE.value,
+        "kind": KindType.POWER.value,
+        "phase": PhaseCode.PHASE_ABC.value,
+    }
+    overrides = {field_name: valid_value}
+    kwargs = defaults | overrides
+    reading_type_int = generate_class_instance(
+        ReadingType,
+        **kwargs,
     )
-    setattr(reading_type_int, field_name, valid_value)
+    # setattr(reading_type_int, field_name, valid_value)
 
     error = validate_cell(reading_type_int, col_idx=col_idx, row_num=1)
     assert error is None, f"Expected no error for int {field_name} value {valid_value}"
 
+    overrides = {field_name: enum_member}
+    kwargs = defaults | overrides
     # Test with enum member (should also work the same)
-    reading_type_enum = SiteReadingType(
-        role_flags=0,
-        uom=UomType.VOLTAGE.value if field_name == "phase" else UomType.REAL_POWER_WATT.value,
-        data_qualifier=DataQualifierType.AVERAGE.value,
-        kind=KindType.POWER.value,
-        phase=PhaseCode.PHASE_ABC.value,
+    reading_type_enum = generate_class_instance(
+        ReadingType,
+        **kwargs,
     )
-    setattr(reading_type_enum, field_name, enum_member)
+    # setattr(reading_type_enum, field_name, enum_member)
 
     error = validate_cell(reading_type_enum, col_idx=col_idx, row_num=1)
     assert error is None, f"Expected no error for enum member {field_name} value {enum_member}"

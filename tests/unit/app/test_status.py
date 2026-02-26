@@ -20,9 +20,8 @@ from freezegun import freeze_time
 from envoy.server.model.site import Site, SiteDER, SiteDERRating, SiteDERSetting, SiteDERStatus
 
 from cactus_runner.app import status
-from cactus_runner.app.check import CheckResult
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
-from cactus_runner.models import ActiveTestProcedure, StepInfo
+from cactus_runner.models import CheckResult, ActiveTestProcedure, StepInfo
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
