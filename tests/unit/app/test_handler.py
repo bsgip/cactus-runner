@@ -1,4 +1,5 @@
 import http
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -729,6 +730,51 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     assert request_entry.status == response.status
     assert request_entry.step_name == handling_listener.step
     assert request_entry.body_xml_errors == expected_validate_result
+
+
+@pytest.mark.asyncio
+async def test_proxied_request_handler_replaces_existing_proxied_request_interaction(mocker):
+
+    # Arrange
+    request = MagicMock()
+    request.path = "/dcap"
+    request.path_qs = "/dcap"
+    request.method = "GET"
+    mock_active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_data=None,
+        step_status={"1": StepStatus.PENDING},
+    )
+    request.app = {}
+    request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
+    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+
+    # Seed a prior PROXIED_REQUEST so the replace branch is exercised
+    prior_interaction = ClientInteraction(
+        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime(2020, 1, 1, tzinfo=timezone.utc)
+    )
+    request.app[APPKEY_RUNNER_STATE].client_interactions.append(prior_interaction)
+    interactions_before = len(request.app[APPKEY_RUNNER_STATE].client_interactions)
+
+    handler.SERVER_URL = ""
+    handler.DEV_SKIP_AUTHORIZATION_CHECK = True
+    mocker.patch("cactus_runner.app.handler.event.handle_event_trigger", return_value=[])
+    mocker.patch("cactus_runner.app.handler.event.generate_client_request_trigger", return_value=MagicMock())
+    mock_proxy_request = mocker.patch("cactus_runner.app.proxy.proxy_request")
+    mock_proxy_request.return_value = mocked_ProxyResult(200)
+    mocker.patch("cactus_runner.app.handler.validate_proxy_request_schema", return_value=[])
+
+    # Act
+    await handler.proxied_request_handler(request=request)
+
+    # Assert - list stays the same length (replace, not append)
+    assert len(request.app[APPKEY_RUNNER_STATE].client_interactions) == interactions_before
+    assert (
+        request.app[APPKEY_RUNNER_STATE].last_client_interaction.interaction_type
+        == ClientInteractionType.PROXIED_REQUEST
+    )
+    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
 
 
 @pytest.mark.asyncio
