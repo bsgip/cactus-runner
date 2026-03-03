@@ -742,10 +742,17 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
             status=http.HTTPStatus.FORBIDDEN, text="Forwarded certificate does not match for registered aggregator"
         )
 
-    # Update last client interaction
-    runner_state.client_interactions.append(
-        ClientInteraction(interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp)
+    # Update last client interaction - replace rather than append to avoid unbounded list growth
+    new_interaction = ClientInteraction(
+        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp
     )
+    if (
+        runner_state.client_interactions
+        and runner_state.client_interactions[-1].interaction_type == ClientInteractionType.PROXIED_REQUEST
+    ):
+        runner_state.client_interactions[-1] = new_interaction
+    else:
+        runner_state.client_interactions.append(new_interaction)
 
     # Determine paths, url and HTTP method
     relative_url = request.path
