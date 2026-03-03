@@ -848,7 +848,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
             call(request, mount_point=handler.MOUNT_POINT, before_serving=False),
         ]
     )
-    mock_handle_event_trigger.call_count == 2
+    assert mock_handle_event_trigger.call_count == 2
 
     #  ... verify we updated the request history
     request_entries = request.app[APPKEY_RUNNER_STATE].request_history
