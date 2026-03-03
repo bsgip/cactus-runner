@@ -733,7 +733,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
 
 
 @pytest.mark.asyncio
-async def test_proxied_request_handler_replaces_existing_proxied_request_interaction(mocker):
+async def test_proxied_request_handler_replaces_existing_proxied_request_interaction(pg_base_config, mocker):
 
     # Arrange
     request = MagicMock()
