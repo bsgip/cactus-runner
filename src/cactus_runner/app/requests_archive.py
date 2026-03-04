@@ -159,6 +159,30 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
         return None, None
 
 
+def prune_old_request_response_pairs(current_request_id: int, max_pairs: int) -> None:
+    """Delete the request/response pair that has rolled out of the window.
+
+    After writing pair N, call with current_request_id=N, max_pairs=MAX_REQUEST_PAIRS.
+    Deletes the pair for request_id = N - max_pairs if it exists, keeping at most
+    max_pairs pairs on disk at any time. No-op when N < max_pairs.
+    """
+    if current_request_id < max_pairs:
+        return
+
+    delete_id = current_request_id - max_pairs
+    storage_dir = REQUEST_DATA_DIR
+    if not storage_dir.exists():
+        return
+
+    prefix = f"{delete_id:03d}-"
+    for ext in ("request", "response"):
+        for file_path in storage_dir.glob(f"{prefix}*.{ext}"):
+            try:
+                file_path.unlink()
+            except Exception as exc:
+                logger.warning(f"Failed to prune {file_path.name}: {exc}")
+
+
 def copy_request_response_files_to_archive(archive_dir: Path) -> None:
     """
     Copy all request/response files from storage to archive directory.

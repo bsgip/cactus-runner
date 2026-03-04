@@ -27,3 +27,6 @@ DEV_SKIP_AUTHORIZATION_CHECK = os.getenv("DEV_SKIP_AUTHORIZATION_CHECK", "false"
 
 # Request header to perform certificate verifications against
 CERT_HEADER = os.getenv("CERT_HEADER", "ssl-client-cert")
+
+# Maximum number of request/response pairs kept on disk at any one time (rolling window)
+MAX_REQUEST_PAIRS = int(os.getenv("MAX_REQUEST_PAIRS", "5000"))

@@ -26,6 +26,7 @@ from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
+    MAX_REQUEST_PAIRS,
     MOUNT_POINT,
     SERVER_URL,
 )
@@ -33,6 +34,7 @@ from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
     get_all_request_ids,
+    prune_old_request_response_pairs,
     read_request_response_files,
     write_request_response_files,
 )
@@ -819,8 +821,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     )
     runner_state.request_history.append(request_entry)
 
-    # Write request/response files to disk
+    # Write request/response files to disk, then prune the oldest pair out of the rolling window
     write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=request_entry)
+    prune_old_request_response_pairs(current_request_id=request_id, max_pairs=MAX_REQUEST_PAIRS)
 
     return proxy_result.response
 
