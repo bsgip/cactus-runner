@@ -1,3 +1,4 @@
+import dataclasses
 import io
 import logging
 import os
@@ -16,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting, timeline
-from cactus_runner.app.env import MAX_LOG_FILE_BYTES
+from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -45,6 +46,7 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
+from cactus_schema.runner.schema import RequestEntry
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version
@@ -62,6 +64,18 @@ class DatabaseDumpError(Exception):
 
 class NoActiveTestProcedure(Exception):
     pass
+
+
+def _cap_request_history(request_history: list[RequestEntry]) -> list[RequestEntry]:
+    """Keeps the last MAX_REQUEST_PAIRS entries so the JSON stays consistent with what
+    is retained on disk.
+    """
+    if len(request_history) <= MAX_REQUEST_PAIRS:
+        return request_history
+    logger.warning(
+        f"request_history has {len(request_history)} entries; keeping last {MAX_REQUEST_PAIRS} for serialization."
+    )
+    return request_history[-MAX_REQUEST_PAIRS:]
 
 
 def get_file_name_no_extension(file_path: str) -> str:
@@ -313,13 +327,15 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
+    capped_request_history = _cap_request_history(runner_state.request_history)
+
     # Collect status summary
     try:
         json_status_summary = (
             await get_active_runner_status(
                 session=session,
                 active_test_procedure=active_test_procedure,
-                request_history=runner_state.request_history,
+                request_history=capped_request_history,
                 last_client_interaction=runner_state.last_client_interaction,
             )
         ).to_json()
@@ -388,8 +404,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             )
         ).scalar() is not None
 
+        capped_runner_state = dataclasses.replace(runner_state, request_history=capped_request_history)
+
         pdf_data = await generate_pdf(
-            runner_state=runner_state,
+            runner_state=capped_runner_state,
             check_results=check_results,
             readings=readings,
             reading_counts=reading_counts,
@@ -407,7 +425,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         # Collect reporting state into json object
         reporting_data_version = CURRENT_REPORTING_DATA_VERSION
         json_reporting_data = await generate_json_reporting_data(
-            runner_state=runner_state,
+            runner_state=capped_runner_state,
             check_results=check_results,
             readings=serializable_readings,
             reading_counts=serializable_reading_counts,
