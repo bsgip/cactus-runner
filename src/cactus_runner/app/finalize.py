@@ -435,4 +435,5 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
     )
-    return active_test_procedure.finished_zip_path
+    active_test_procedure.finished_zip_path = zip_path
+    return zip_path
