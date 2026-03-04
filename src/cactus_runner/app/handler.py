@@ -2,6 +2,7 @@ import http
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import cast
 
 from aiohttp import ContentTypeError, web
@@ -505,14 +506,16 @@ async def finalize_handler(request: web.Request) -> web.Response:
 
     if runner_state.active_test_procedure is not None:
         finalized_test_procedure_name = runner_state.active_test_procedure.name
+        zip_path: Path | None = None
+        zip_error_bytes: bytes | None = None
         async with begin_session() as session:
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
             try:
-                zip_contents = await finalize.finish_active_test(runner_state, session)
+                zip_path = await finalize.finish_active_test(runner_state, session)
             except Exception as exc:
                 logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
-                zip_contents = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
+                zip_error_bytes = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
 
         # Save certificate info before clearing active test (needed for playlist advancement)
         finished_test = runner_state.active_test_procedure
@@ -583,13 +586,14 @@ async def finalize_handler(request: web.Request) -> web.Response:
                     # Clear playlist on error to prevent further issues
                     runner_state.playlist = None
 
-        return web.Response(
-            body=zip_contents,
-            headers={
-                "Content-Type": "application/zip",
-                "Content-Disposition": f'attachment; filename="{zip_filename}"',
-            },
-        )
+        zip_headers = {
+            "Content-Type": "application/zip",
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+        }
+        if zip_path is not None:
+            return web.FileResponse(zip_path, headers=zip_headers)
+        else:
+            return web.Response(body=zip_error_bytes, headers=zip_headers)
     else:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST,

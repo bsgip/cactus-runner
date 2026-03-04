@@ -77,7 +77,8 @@ def get_file_name_no_extension(file_path: str) -> str:
         return ".".join(dot_parts[:-1])
 
 
-def get_zip_contents(
+def write_zip_to_file(
+    output_path: Path,
     json_status_summary: str | None,
     json_reporting_data: str | None,
     log_file_paths: list[str],
@@ -85,8 +86,8 @@ def get_zip_contents(
     errors: list[str],
     filename_infix: str = "",
     reporting_data_filename_prefix: str | None = "ReportingData",
-) -> bytes:
-    """Returns the contents of the zipped test procedures artifacts in bytes."""
+) -> None:
+    """Writes the zipped test procedure artifacts to output_path."""
 
     writeable_errors = errors.copy()
 
@@ -161,16 +162,13 @@ def get_zip_contents(
             with open(file_path, "w") as f:
                 f.write("\n".join(writeable_errors))
 
-        # Create the temporary zip file
+        # Create the temporary zip file then move it to the output path
         ARCHIVE_BASEFILENAME = "finalize"
         ARCHIVE_KIND = "zip"
         shutil.make_archive(str(base_path / ARCHIVE_BASEFILENAME), ARCHIVE_KIND, archive_dir)
 
-        # Read the zip file contents as binary
         archive_path = base_path / f"{ARCHIVE_BASEFILENAME}.{ARCHIVE_KIND}"
-        with open(archive_path, mode="rb") as f:
-            zip_contents = f.read()
-    return zip_contents
+        shutil.move(str(archive_path), str(output_path))
 
 
 def safely_get_error_zip(errors: list[str]) -> bytes:
@@ -280,13 +278,14 @@ async def generate_json_reporting_data(
     return json_reporting_data
 
 
-async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> bytes:
-    """For the specified RunnerState - move the active test into a "Finished" state by calculating the final ZIP
-    contents. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified RunnerState
+async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> Path:
+    """For the specified RunnerState - move the active test into a "Finished" state by writing the final ZIP
+    to a temporary file. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified
+    RunnerState
 
-    If the active test is already finished - this will have no effect and will return the cached finished_zip_data
+    If the active test is already finished - this will have no effect and will return the cached finished_zip_path
 
-    Populates and then returns the finished_zip_data for the active test procedure"""
+    Populates and then returns the finished_zip_path for the active test procedure"""
 
     now = datetime.now(timezone.utc)
     errors: list[str] = []  # For capturing basic error information to encode in the zip to alert about missing content
@@ -299,7 +298,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         logger.info(
             f"finish_active_test_procedure: active test procedure {active_test_procedure.name} is already finished"
         )
-        return cast(bytes, active_test_procedure.finished_zip_data)  # The is_finished() check guarantees it's not None
+        return cast(Path, active_test_procedure.finished_zip_path)  # The is_finished() check guarantees it's not None
 
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
@@ -417,7 +416,12 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
     generation_timestamp = now.replace(microsecond=0)
 
-    active_test_procedure.finished_zip_data = get_zip_contents(
+    fd, zip_path_str = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
+    zip_path = Path(zip_path_str)
+
+    write_zip_to_file(
+        output_path=zip_path,
         json_status_summary=json_status_summary,
         json_reporting_data=json_reporting_data,
         log_file_paths=[
@@ -431,4 +435,4 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
     )
-    return active_test_procedure.finished_zip_data
+    return active_test_procedure.finished_zip_path
