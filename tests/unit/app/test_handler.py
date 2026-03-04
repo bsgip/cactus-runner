@@ -1,10 +1,11 @@
 import http
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from aiohttp import ContentTypeError
-from aiohttp.web import Response
+from aiohttp.web import FileResponse, Response
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
 from cactus_schema.runner import (
@@ -490,16 +491,17 @@ async def test_new_init_handler_immediate_start_failure(start_result: handler.St
 
 
 @pytest.mark.asyncio
-async def test_finalize_handler(mocker):
+async def test_finalize_handler(mocker, tmp_path):
     """
     `mocker` is a fixture provided by the `pytest-mock` plugin
     """
 
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
-    zip_data = bytes([99, 55])
+    zip_path = tmp_path / "test.zip"
+    zip_path.write_bytes(bytes([99, 55]))
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
-    mock_finish_active_test.return_value = zip_data
+    mock_finish_active_test.return_value = zip_path
 
     mock_safely_get_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_get_error_zip")
 
@@ -507,8 +509,7 @@ async def test_finalize_handler(mocker):
 
     response = await handler.finalize_handler(request=request)
 
-    assert isinstance(response, Response)
-    assert response.body == zip_data
+    assert isinstance(response, FileResponse)
     mock_finish_active_test.assert_called_once()
     mock_safely_get_error_zip.assert_not_called()
 
@@ -654,7 +655,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=None,
+        finished_zip_path=None,
         step_status={"1": StepStatus.PENDING},
     )
     request.app = {}
@@ -743,7 +744,7 @@ async def test_proxied_request_handler_replaces_existing_proxied_request_interac
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=None,
+        finished_zip_path=None,
         step_status={"1": StepStatus.PENDING},
     )
     request.app = {}
@@ -788,7 +789,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=None,
+        finished_zip_path=None,
         step_status={"1": StepStatus.PENDING},
     )
     request.app = {}
@@ -887,7 +888,7 @@ async def test_proxied_request_handler_logs_error_with_finished_test(mocker):
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=bytes([0, 1]),
+        finished_zip_path=Path("."),
         step_status={"1": StepStatus.PENDING},
     )
     mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")
@@ -910,7 +911,7 @@ async def test_proceed_handler(proceed_handled: bool, pg_base_config, mocker):
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=None,
+        finished_zip_path=None,
         step_status={"1": StepStatus.PENDING},
     )
     request.app = {}
@@ -975,7 +976,7 @@ async def test_proceed_handler_logs_error_with_finished_test(mocker):
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
-        finished_zip_data=bytes([0, 1]),
+        finished_zip_path=Path("."),
         step_status={"1": StepStatus.PENDING},
     )
     mock_logger_warning = mocker.patch("cactus_runner.app.handler.logger.error")

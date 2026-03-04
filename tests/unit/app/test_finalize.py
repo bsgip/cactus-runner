@@ -43,7 +43,7 @@ def test_get_file_name_no_extension(input, expected):
     assert actual == expected
 
 
-def test_get_zip_contents(mocker):
+def test_write_zip_to_file(mocker, tmp_path):
     """
     NOTE: This test uses a mock to disable the database dump and so doesn't
         verify the 'envoy_db.dump' is written into the zip archive.
@@ -63,6 +63,7 @@ def test_get_zip_contents(mocker):
     contents_of_logfile2 = bytes(random_string(length=100), encoding="utf-8")
     pdf_data = bytes(random_string(length=100), encoding="utf-8")  # not legimate pdf data
     errors = []
+    output_path = tmp_path / "output.zip"
 
     with (
         tempfile.NamedTemporaryFile(delete_on_close=False) as logfile1,
@@ -76,7 +77,8 @@ def test_get_zip_contents(mocker):
         logfile2.write(contents_of_logfile2)
         logfile2.close()
 
-        zip_contents = finalize.get_zip_contents(
+        finalize.write_zip_to_file(
+            output_path=output_path,
             json_status_summary=json_status_summary,
             json_reporting_data=json_reporting_data,
             log_file_paths=[logfile1_name, logfile2_name],
@@ -84,6 +86,7 @@ def test_get_zip_contents(mocker):
             errors=errors,
         )
 
+    zip_contents = output_path.read_bytes()
     zip = zipfile.ZipFile(io.BytesIO(zip_contents))
     filenames = zip.namelist()
 
@@ -146,7 +149,7 @@ def test_safely_get_error_with_error(mocker):
     assert exception_msg in zip_contents.decode(), "Its ugly - but what else can we do?"
 
 
-def test_get_zip_contents_with_errors(mocker):
+def test_write_zip_to_file_with_errors(mocker, tmp_path):
     """
     NOTE: This test uses a mock to disable the database dump and so doesn't
         verify the 'envoy_db.dump' is written into the zip archive.
@@ -157,8 +160,10 @@ def test_get_zip_contents_with_errors(mocker):
     get_postgres_dsn_mock.return_value = expected_postgres_dsn
 
     errors = ["my long error string", "my other error"]
+    output_path = tmp_path / "output.zip"
 
-    zip_contents = finalize.get_zip_contents(
+    finalize.write_zip_to_file(
+        output_path=output_path,
         json_status_summary=None,
         json_reporting_data=None,
         log_file_paths=["file-that-dne.txt", "file-that-dne-2.txt"],
@@ -166,6 +171,7 @@ def test_get_zip_contents_with_errors(mocker):
         errors=errors,
     )
 
+    zip_contents = output_path.read_bytes()
     zip = zipfile.ZipFile(io.BytesIO(zip_contents))
     filenames = zip.namelist()
 

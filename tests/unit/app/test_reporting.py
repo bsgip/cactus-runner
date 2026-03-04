@@ -62,7 +62,7 @@ def active_test_procedure(
         name=test_name,
         definition=definition,
         step_status=step_status or {"1": StepInfo()},
-        finished_zip_data=None,
+        finished_zip_path=None,
         run_id=run_id,
         **kwargs,
     )

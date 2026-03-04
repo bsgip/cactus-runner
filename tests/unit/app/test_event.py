@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from http import HTTPMethod
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -473,7 +474,7 @@ async def test_is_listener_triggerable(
         (RunnerState(None, [], None)),  # This is when we have no active test procedure
         (
             RunnerState(
-                generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=bytes([0, 1])),
+                generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=Path(".")),
                 [generate_class_instance(Listener, actions=[])],
                 None,
             )
@@ -537,7 +538,7 @@ async def test_handle_event_trigger_normal_operation(
     mock_envoy_client = MagicMock()
     input_trigger = generate_class_instance(event.EventTrigger, single_listener=single_listener)
     input_runner_state = RunnerState(
-        generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None, listeners=listeners),
+        generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None, listeners=listeners),
         [],
         None,
     )
