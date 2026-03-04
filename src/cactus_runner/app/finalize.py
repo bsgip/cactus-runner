@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting, timeline
+from cactus_runner.app.env import MAX_LOG_FILE_BYTES
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -111,12 +112,22 @@ def write_zip_to_file(
             with open(file_path, "w") as f:
                 f.write(json_reporting_data)
 
-        # Copy all log files into the archive - preserving the names
+        # Copy log files into the archive (use tail if larger than MAX_LOG_FILE_BYTES)
         for log_file_path in log_file_paths:
             log_file_name = get_file_name_no_extension(log_file_path)
             destination = archive_dir / f"{log_file_name}{filename_infix}.log"  # We are assuming .jsonl
             try:
-                shutil.copyfile(log_file_path, destination)
+                file_size = os.path.getsize(log_file_path)
+                if file_size <= MAX_LOG_FILE_BYTES:
+                    shutil.copyfile(log_file_path, destination)
+                else:
+                    logger.warning(
+                        f"Log file {log_file_path} is {file_size} bytes; "
+                        f"truncating to last {MAX_LOG_FILE_BYTES} bytes in archive."
+                    )
+                    with open(log_file_path, "rb") as src, open(destination, "wb") as dst:
+                        src.seek(file_size - MAX_LOG_FILE_BYTES)
+                        shutil.copyfileobj(src, dst)
             except Exception as exc:
                 logger.error(f"Unable to copy {log_file_path} to {destination}", exc_info=exc)
                 writeable_errors.append(f"Error fetching cactus logs for {log_file_path}: {exc}")

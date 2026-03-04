@@ -30,3 +30,7 @@ CERT_HEADER = os.getenv("CERT_HEADER", "ssl-client-cert")
 
 # Maximum number of request/response pairs kept on disk at any one time (rolling window)
 MAX_REQUEST_PAIRS = int(os.getenv("MAX_REQUEST_PAIRS", "5000"))
+
+# Maximum bytes copied from each log file into the ZIP archive (tail of file).
+# Default 32 MB. Prevents huge log files from bloating the archive on long tests.
+MAX_LOG_FILE_BYTES = int(os.getenv("MAX_LOG_FILE_BYTES", str(32 * 1024 * 1024)))
