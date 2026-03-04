@@ -21,6 +21,7 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
+from cactus_schema.runner.schema import RequestEntry
 
 DT_NOW = datetime.now(timezone.utc)
 
@@ -280,3 +281,18 @@ async def test_generate_json_reporting_data(version):
     assert len(readings) == len(reporting_data.readings)
     assert_class_instance_equality(list[Site], sites, reporting_data.sites)
     assert_class_instance_equality(Timeline, timeline, reporting_data.timeline)
+
+
+def test_cap_request_history_within_limit(mocker):
+    mocker.patch("cactus_runner.app.finalize.MAX_REQUEST_PAIRS", 5)
+    history = [generate_class_instance(RequestEntry, seed=i, request_id=i) for i in range(5)]
+    result = finalize._cap_request_history(history)
+    assert result is history  # unchanged
+
+
+def test_cap_request_history_truncates_to_last_n(mocker):
+    mocker.patch("cactus_runner.app.finalize.MAX_REQUEST_PAIRS", 3)
+    history = [generate_class_instance(RequestEntry, seed=i, request_id=i) for i in range(10)]
+    result = finalize._cap_request_history(history)
+    assert len(result) == 3
+    assert [e.request_id for e in result] == [7, 8, 9]
