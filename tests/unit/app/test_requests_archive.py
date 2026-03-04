@@ -9,6 +9,7 @@ from multidict import CIMultiDict
 
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.requests_archive import (
+    prune_old_request_response_pairs,
     read_request_response_files,
     write_request_response_files,
 )
@@ -144,3 +145,31 @@ def test_write_request_response_files_fails_without_raising_exceptions():
 
     # Just verify it doesn't raise
     write_request_response_files(request_id=103, proxy_result=proxy_result, entry=entry)
+
+
+def test_prune_old_request_response_pairs_deletes_old_pair(proxy_result, entry):
+    max_pairs = 3
+    # Write 4 pairs
+    for i in range(4):
+        write_request_response_files(request_id=200 + i, proxy_result=proxy_result, entry=entry)
+        prune_old_request_response_pairs(current_request_id=200 + i, max_pairs=max_pairs)
+
+    # First pair should have been deleted
+    request_content, response_content = read_request_response_files(200)
+    assert request_content is None
+    assert response_content is None
+
+    # Last three should still exist
+    for i in (201, 202, 203):
+        req, resp = read_request_response_files(i)
+        assert req is not None, f"request {i} should still exist"
+        assert resp is not None, f"response {i} should still exist"
+
+
+def test_prune_old_request_response_pairs_do_n0thing_below_limit(proxy_result, entry):
+    write_request_response_files(request_id=210, proxy_result=proxy_result, entry=entry)
+    prune_old_request_response_pairs(current_request_id=210, max_pairs=5000)
+
+    req, resp = read_request_response_files(210)
+    assert req is not None
+    assert resp is not None
