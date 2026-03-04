@@ -114,6 +114,42 @@ def test_write_zip_to_file(mocker, tmp_path):
     assert len(errors) == 0, "This shouldn't have been mutated"
 
 
+def test_write_zip_to_file_truncates_large_log(mocker, tmp_path):
+    # Arrange
+    mocker.patch("cactus_runner.app.finalize.get_postgres_dsn").return_value = "fake:dsn//value"
+    mocker.patch.object(finalize.subprocess, "run")
+
+    limit = 50
+    mocker.patch("cactus_runner.app.finalize.MAX_LOG_FILE_BYTES", limit)
+
+    prefix_bytes = b"A" * 100  # older content that should be dropped
+    tail_bytes = b"B" * limit  # recent content that should be kept
+    log_content = prefix_bytes + tail_bytes
+
+    logfile = tmp_path / "envoy.server.log"
+    logfile.write_bytes(log_content)
+    output_path = tmp_path / "output.zip"
+
+    # Act
+    finalize.write_zip_to_file(
+        output_path=output_path,
+        json_status_summary=None,
+        json_reporting_data=None,
+        log_file_paths=[str(logfile)],
+        pdf_data=None,
+        errors=[],
+    )
+
+    zip_contents = output_path.read_bytes()
+    zip = zipfile.ZipFile(io.BytesIO(zip_contents))
+    filenames = zip.namelist()
+    log_entry = next(f for f in filenames if "envoy.server" in f)
+    archived = zip.read(log_entry)
+
+    assert archived == tail_bytes
+    assert b"A" not in archived
+
+
 def test_safely_get_error_zip():
     errors = ["my first error", "my second error"]
 
