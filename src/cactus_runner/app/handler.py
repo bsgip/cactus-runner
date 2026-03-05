@@ -485,7 +485,7 @@ async def start_handler(request: web.Request) -> web.Response:
     return web.Response(status=result.status, text=result.content, content_type=result.content_type)
 
 
-async def finalize_handler(request: web.Request) -> web.Response:
+async def finalize_handler(request: web.Request) -> web.Response | web.FileResponse:
     """Handler for finalize requests.
 
     Finalises the test procedure and returns test artifacts in response as a zipped archive.
