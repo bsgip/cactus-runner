@@ -2,6 +2,7 @@ import http
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import cast
 
 from aiohttp import ContentTypeError, web
@@ -25,6 +26,7 @@ from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
+    MAX_REQUEST_PAIRS,
     MOUNT_POINT,
     SERVER_URL,
 )
@@ -32,6 +34,7 @@ from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
     get_all_request_ids,
+    prune_old_request_response_pairs,
     read_request_response_files,
     write_request_response_files,
 )
@@ -482,7 +485,7 @@ async def start_handler(request: web.Request) -> web.Response:
     return web.Response(status=result.status, text=result.content, content_type=result.content_type)
 
 
-async def finalize_handler(request: web.Request) -> web.Response:
+async def finalize_handler(request: web.Request) -> web.Response | web.FileResponse:
     """Handler for finalize requests.
 
     Finalises the test procedure and returns test artifacts in response as a zipped archive.
@@ -505,14 +508,16 @@ async def finalize_handler(request: web.Request) -> web.Response:
 
     if runner_state.active_test_procedure is not None:
         finalized_test_procedure_name = runner_state.active_test_procedure.name
+        zip_path: Path | None = None
+        zip_error_bytes: bytes | None = None
         async with begin_session() as session:
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
             try:
-                zip_contents = await finalize.finish_active_test(runner_state, session)
+                zip_path = await finalize.finish_active_test(runner_state, session)
             except Exception as exc:
                 logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
-                zip_contents = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
+                zip_error_bytes = finalize.safely_get_error_zip([f"Exception generating zip: {exc}"])
 
         # Save certificate info before clearing active test (needed for playlist advancement)
         finished_test = runner_state.active_test_procedure
@@ -583,13 +588,14 @@ async def finalize_handler(request: web.Request) -> web.Response:
                     # Clear playlist on error to prevent further issues
                     runner_state.playlist = None
 
-        return web.Response(
-            body=zip_contents,
-            headers={
-                "Content-Type": "application/zip",
-                "Content-Disposition": f'attachment; filename="{zip_filename}"',
-            },
-        )
+        zip_headers = {
+            "Content-Type": "application/zip",
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+        }
+        if zip_path is not None:
+            return web.FileResponse(zip_path, headers=zip_headers)
+        else:
+            return web.Response(body=zip_error_bytes, headers=zip_headers)
     else:
         return web.Response(
             status=http.HTTPStatus.BAD_REQUEST,
@@ -742,10 +748,17 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
             status=http.HTTPStatus.FORBIDDEN, text="Forwarded certificate does not match for registered aggregator"
         )
 
-    # Update last client interaction
-    runner_state.client_interactions.append(
-        ClientInteraction(interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp)
+    # Update last client interaction - replace rather than append to avoid unbounded list growth
+    new_interaction = ClientInteraction(
+        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=request_timestamp
     )
+    if (
+        runner_state.client_interactions
+        and runner_state.client_interactions[-1].interaction_type == ClientInteractionType.PROXIED_REQUEST
+    ):
+        runner_state.client_interactions[-1] = new_interaction
+    else:
+        runner_state.client_interactions.append(new_interaction)
 
     # Determine paths, url and HTTP method
     relative_url = request.path
@@ -808,8 +821,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     )
     runner_state.request_history.append(request_entry)
 
-    # Write request/response files to disk
+    # Write request/response files to disk, then prune the oldest pair out of the rolling window
     write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=request_entry)
+    prune_old_request_response_pairs(current_request_id=request_id, max_pairs=MAX_REQUEST_PAIRS)
 
     return proxy_result.response
 

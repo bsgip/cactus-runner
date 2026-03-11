@@ -87,7 +87,7 @@ def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
         generate_class_instance(
             ActiveTestProcedure,
             step_status={listener.step: StepInfo() for listener in listeners},
-            finished_zip_data=None,
+            finished_zip_path=None,
             listeners=listeners,
         ),
         [],
@@ -423,7 +423,7 @@ def test_effective_pow10_multiplier(requested_mult, watt_values, expected_mult):
 @pytest.mark.anyio
 async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
-    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
         await session.commit()
@@ -492,7 +492,7 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
 @pytest.mark.anyio
 async def test_action_create_der_control_existing_group(pg_base_config, envoy_admin_client, fsa_id):
     # Arrange
-    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     existing_fsa_id = fsa_id if fsa_id is not None else 21515215
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
@@ -535,7 +535,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
 async def test_action_create_der_control_control_values(pg_base_config, envoy_admin_client, value_seed: int | None):
     """Checks that the various DERControl values are properly set for a few variations"""
     # Arrange
-    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_data=None)
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
         await session.commit()
@@ -594,7 +594,7 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
     """Verifies that creating a DER control with a tag properly annotates it in the active test procedure"""
     # Arrange
     active_test_procedure = generate_class_instance(
-        ActiveTestProcedure, step_status={}, finished_zip_data=None, resource_annotations=ResourceAnnotations()
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
     )
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
@@ -672,7 +672,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         step_status={},
-        finished_zip_data=None,
+        finished_zip_path=None,
         resource_annotations=ResourceAnnotations({existing_derc_tag: existing_derc_id}),
     )
 
@@ -822,7 +822,7 @@ async def test_action_register_aggregator_end_device_device_cert(
         ActiveTestProcedure,
         step_status={},
         client_certificate_type=ClientCertificateType.DEVICE,
-        finished_zip_data=None,
+        finished_zip_path=None,
         client_aggregator_id=agg_id,
     )
     resolved_params = {
@@ -909,7 +909,7 @@ async def test_action_register_aggregator_end_device_agg_cert(
         step_status={},
         client_certificate_type=ClientCertificateType.AGGREGATOR,
         pen=pen,
-        finished_zip_data=None,
+        finished_zip_path=None,
         client_aggregator_id=agg_id,
     )
     resolved_params = {}
@@ -947,7 +947,7 @@ async def test_action_reregister_existing_device(pg_base_config):
         ActiveTestProcedure,
         step_status={},
         client_certificate_type=ClientCertificateType.DEVICE,
-        finished_zip_data=None,
+        finished_zip_path=None,
         client_aggregator_id=0,
     )
     resolved_params = {"nmi": "1234567890"}

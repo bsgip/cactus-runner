@@ -114,15 +114,15 @@ class ActiveTestProcedure:
     user_id: str | None = None
     user_name: str | None = None
     communications_disabled: bool = False
-    finished_zip_data: bytes | None = (
-        None  # Finalised ZIP file. If not None - this test is "done" and shouldn't update any events/state
+    finished_zip_path: Path | None = (
+        None  # Path to finalised ZIP file on disk. If not None this test is "done" and shouldn't update events/state
     )
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to
         accumulate and any client events should be ignored"""
-        return self.finished_zip_data is not None
+        return self.finished_zip_path is not None
 
     def is_started(self) -> bool:
         """True if any listener has been enabled"""

@@ -99,7 +99,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         definition=mock_definition,
         listeners=[],
         started_at=expected_started_at,
-        finished_zip_data=None,
+        finished_zip_path=None,
     )
 
     request_history = Mock()
@@ -215,7 +215,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
         definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
         listeners=[],
         started_at=None,
-        finished_zip_data=None,
+        finished_zip_path=None,
     )
 
     # Act
@@ -273,7 +273,7 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
         definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
         listeners=[],
         started_at=None,
-        finished_zip_data=None,
+        finished_zip_path=None,
     )
 
     runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
@@ -396,7 +396,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
         definition=Mock(criteria=Mock(checks=[]), preconditions=Mock(checks=[])),
         listeners=[],
         started_at=test_started_at,
-        finished_zip_data=None,
+        finished_zip_path=None,
     )
 
     last_client_interaction = Mock()

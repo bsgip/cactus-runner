@@ -74,6 +74,7 @@ docs = ["sphinx"]
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q -v"
+postgresql_exec = "/usr/lib/postgresql/16/bin/pg_ctl"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
 markers = [
