@@ -503,7 +503,7 @@ async def test_finalize_handler(mocker, tmp_path):
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.return_value = zip_path
 
-    mock_safely_get_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_get_error_zip")
+    mock_safely_write_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_write_error_zip")
 
     mocker.patch("cactus_runner.app.handler.begin_session")
 
@@ -511,7 +511,7 @@ async def test_finalize_handler(mocker, tmp_path):
 
     assert isinstance(response, FileResponse)
     mock_finish_active_test.assert_called_once()
-    mock_safely_get_error_zip.assert_not_called()
+    mock_safely_write_error_zip.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -522,21 +522,21 @@ async def test_finalize_handler_finish_error(mocker):
 
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
-    safe_error_data = bytes([0, 4, 1, 1])
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.side_effect = Exception("mock exception")
 
-    mock_safely_get_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_get_error_zip")
-    mock_safely_get_error_zip.return_value = safe_error_data
+    fake_error_path = MagicMock(spec=Path)
+    mock_safely_write_error_zip = mocker.patch(
+        "cactus_runner.app.handler.finalize.safely_write_error_zip", return_value=fake_error_path
+    )
 
     mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
 
-    assert isinstance(response, Response)
-    assert response.body == safe_error_data
+    assert isinstance(response, FileResponse)
     mock_finish_active_test.assert_called_once()
-    mock_safely_get_error_zip.assert_called_once()
+    mock_safely_write_error_zip.assert_called_once()
 
 
 @pytest.mark.asyncio
