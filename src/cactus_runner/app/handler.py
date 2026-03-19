@@ -104,9 +104,8 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
                 )
 
     # We cannot start another test procedure if one is already running.
-    # If there are active listeners then the test procedure must have already been started.
-    listener_state = [listener.enabled_time for listener in active_test_procedure.listeners]
-    if any(listener_state):
+    # Check started_at since all listeners may have been removed after test completion
+    if active_test_procedure.started_at is not None:
         return StartResult(
             False,
             http.HTTPStatus.CONFLICT,
