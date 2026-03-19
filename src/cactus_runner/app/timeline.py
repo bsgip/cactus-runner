@@ -187,7 +187,7 @@ def generate_offset_watt_values(
 async def generate_readings_data_stream(
     session: AsyncSession, label: str, location: ReadingLocation, start: datetime, end: datetime, interval_seconds: int
 ) -> TimelineDataStream:
-    srts = await get_csip_aus_site_reading_types(
+    srts, _ = await get_csip_aus_site_reading_types(
         session, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
     )
 
