@@ -64,7 +64,7 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
     return site
 
 
-async def get_csip_aus_site_reading_types(
+async def get_csip_aus_site_reading_types_partitioned(
     session: AsyncSession,
     uom: UomType,
     location: ReadingLocation,
@@ -113,6 +113,18 @@ async def get_csip_aus_site_reading_types(
     correct = [srt for srt in all_types if srt.role_flags == location]
     incorrect_roleflags = [srt for srt in all_types if srt.role_flags != location]
     return correct, incorrect_roleflags
+
+
+async def get_csip_aus_site_reading_types(
+    session: AsyncSession,
+    uom: UomType,
+    location: ReadingLocation,
+    kind: KindType,
+    qualifier: DataQualifierType = DataQualifierType.AVERAGE,
+) -> Sequence[SiteReadingType]:
+    """Returns only the correctly-flagged SiteReadingTypes for the active site matching the given uom/kind/qualifier."""
+    correct, _ = await get_csip_aus_site_reading_types_partitioned(session, uom, location, kind, qualifier)
+    return correct
 
 
 async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadingType) -> Sequence[SiteReading]:

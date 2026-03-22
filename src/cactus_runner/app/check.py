@@ -33,7 +33,7 @@ from sqlalchemy.orm import aliased
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
-    get_csip_aus_site_reading_types,
+    get_csip_aus_site_reading_types_partitioned,
     get_site_readings,
 )
 from cactus_runner.app.evaluator import (
@@ -890,7 +890,7 @@ async def do_check_site_readings_and_params(
     check_duration: bool = True,
 ) -> CheckResult:
 
-    site_reading_types, incorrect_roleflags = await get_csip_aus_site_reading_types(
+    site_reading_types, incorrect_roleflags = await get_csip_aus_site_reading_types_partitioned(
         session, uom, reading_location, kind, data_qualifier
     )
 

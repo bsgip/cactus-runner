@@ -91,7 +91,7 @@ async def get_readings(
 
     for reading_specifier in reading_specifiers:
         # There maybe more than one reading type per reading specifier, for example, for different phases
-        reading_types, _ = await get_csip_aus_site_reading_types(
+        reading_types = await get_csip_aus_site_reading_types(
             session=session,
             uom=reading_specifier.uom,
             location=reading_specifier.location,
