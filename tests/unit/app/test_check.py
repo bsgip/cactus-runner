@@ -1954,7 +1954,9 @@ async def test_do_check_site_readings_and_params(
 
     # Assert
     assert_mock_session(mock_session)
-    mock_get_csip_aus_site_reading_types_partitioned.assert_called_once_with(mock_session, uom, reading_location, kind, qualifier)
+    mock_get_csip_aus_site_reading_types_partitioned.assert_called_once_with(
+        mock_session, uom, reading_location, kind, qualifier
+    )
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:
