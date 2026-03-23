@@ -1915,7 +1915,7 @@ async def test_do_check_reading_type_mrids_match_pen(
         ),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types_partitioned")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
@@ -1926,7 +1926,7 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
-    mock_get_csip_aus_site_reading_types: mock.MagicMock,
+    mock_get_csip_aus_site_reading_types_partitioned: mock.MagicMock,
     resolved_parameters: dict[str, Any],
     uom: UomType,
     reading_location: ReadingLocation,
@@ -1941,7 +1941,7 @@ async def test_do_check_site_readings_and_params(
     # Arrange
     mock_session = create_mock_session()
     expected_result = generate_class_instance(CheckResult)
-    mock_get_csip_aus_site_reading_types.return_value = site_reading_types
+    mock_get_csip_aus_site_reading_types_partitioned.return_value = (site_reading_types, [])
     mock_do_check_readings_for_types.return_value = expected_result
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
@@ -1954,7 +1954,9 @@ async def test_do_check_site_readings_and_params(
 
     # Assert
     assert_mock_session(mock_session)
-    mock_get_csip_aus_site_reading_types.assert_called_once_with(mock_session, uom, reading_location, kind, qualifier)
+    mock_get_csip_aus_site_reading_types_partitioned.assert_called_once_with(
+        mock_session, uom, reading_location, kind, qualifier
+    )
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:

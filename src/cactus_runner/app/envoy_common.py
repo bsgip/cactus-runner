@@ -64,19 +64,15 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
     return site
 
 
-async def get_csip_aus_site_reading_types(
+async def get_csip_aus_site_reading_types_partitioned(
     session: AsyncSession,
     uom: UomType,
     location: ReadingLocation,
     kind: KindType,
     qualifier: DataQualifierType = DataQualifierType.AVERAGE,
-) -> Sequence[SiteReadingType]:
-    """Finds all SiteReadingTypes (MirrorUsagePoints) for the active site that matches the CSIP-Aus requirements for
-    sending/receiving the specified uom at the specified location (defined in CSIP-Aus - Annex A - Reporting DER Data).
-
-    SiteReadingTypes that DON'T meet the minimum CSIP-Aus specifications will NOT be returned by this function.
-
-    location will filter the returned roleFlags according to CSIP-Aus differentiation of site and sub meters
+) -> tuple[Sequence[SiteReadingType], Sequence[SiteReadingType]]:
+    """Finds all SiteReadingTypes (MirrorUsagePoints) for the active site matching the given uom/kind/qualifier,
+    partitioned by whether their roleFlags match the expected location (defined in CSIP-Aus - Annex A).
 
     uom will filter the returned unit of measure. CSIP-Aus defines the following UOMs
 
@@ -96,17 +92,16 @@ async def get_csip_aus_site_reading_types(
     DataQualifierType.INSTANTANEOUS = OPTIONAL (for 1.3 storage extensions)
 
 
-    Returns the list of all SiteReadingType's that meet this criteria. Expect multiple if multiple phases or
-    accumulation behaviors are being reported."""
+    Returns (correct, incorrect_roleflags) where correct contains SiteReadingTypes with the expected roleFlags
+    and incorrect_roleflags contains those with any other roleFlags value."""
     site = await get_active_site(session)
     if not site:
-        return []
+        return [], []
 
     response = await session.execute(
         select(SiteReadingType)
         .where(
             (SiteReadingType.site_id == site.site_id)
-            & (SiteReadingType.role_flags == location)
             & (SiteReadingType.uom == uom)
             & (SiteReadingType.kind == kind)
             & (SiteReadingType.data_qualifier == qualifier)
@@ -114,7 +109,22 @@ async def get_csip_aus_site_reading_types(
         .order_by(SiteReadingType.created_time.asc())
     )
 
-    return response.scalars().all()
+    all_types = response.scalars().all()
+    correct = [srt for srt in all_types if srt.role_flags == location]
+    incorrect_roleflags = [srt for srt in all_types if srt.role_flags != location]
+    return correct, incorrect_roleflags
+
+
+async def get_csip_aus_site_reading_types(
+    session: AsyncSession,
+    uom: UomType,
+    location: ReadingLocation,
+    kind: KindType,
+    qualifier: DataQualifierType = DataQualifierType.AVERAGE,
+) -> Sequence[SiteReadingType]:
+    """Returns only the correctly-flagged SiteReadingTypes for the active site matching the given uom/kind/qualifier."""
+    correct, _ = await get_csip_aus_site_reading_types_partitioned(session, uom, location, kind, qualifier)
+    return correct
 
 
 async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadingType) -> Sequence[SiteReading]:
