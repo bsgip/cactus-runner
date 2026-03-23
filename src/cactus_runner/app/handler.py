@@ -624,8 +624,6 @@ async def status_handler(request: web.Request) -> web.Response:
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
 
-    logger.info("Test procedure status requested.")
-
     if active_test_procedure is not None:
         async with begin_session() as session:
             runner_status = await status.get_active_runner_status(
@@ -635,10 +633,6 @@ async def status_handler(request: web.Request) -> web.Response:
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
                 crop_minutes=15,
             )
-        logger.info(
-            f"Status of test procedure '{runner_status.test_procedure_name}': {runner_status.step_status}",
-            extra={"test_procedure": runner_status.test_procedure_name},
-        )
 
     else:
         runner_status = status.get_runner_status(

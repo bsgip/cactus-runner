@@ -164,6 +164,7 @@ def write_zip_to_file(
             dump_file,
             "--data-only",
             "--inserts",
+            "--column-inserts",
             "--no-password",
         ]
         try:
