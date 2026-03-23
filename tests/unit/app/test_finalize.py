@@ -151,16 +151,13 @@ def test_write_zip_to_file_truncates_large_log(mocker, tmp_path):
     assert b"A" not in archived
 
 
-def test_safely_get_error_zip():
+def test_safely_write_error_zip():
     errors = ["my first error", "my second error"]
 
-    # Act
-    zip_contents = finalize.safely_get_error_zip(errors)
+    dest = finalize.safely_write_error_zip(errors)
 
-    # Assert
-    assert isinstance(zip_contents, bytes)
-    assert len(zip_contents) > 0
-    zip = zipfile.ZipFile(io.BytesIO(zip_contents))
+    assert dest.exists()
+    zip = zipfile.ZipFile(dest)
     filenames = zip.namelist()
     assert len(filenames) == 1, "There should only be a single filename"
 
@@ -169,21 +166,18 @@ def test_safely_get_error_zip():
         assert e in unzipped_errors
 
 
-def test_safely_get_error_with_error(mocker):
-    """If we hit an error generating the zip file - return a plaintext stream of bytes as a failover"""
+def test_safely_write_error_zip_with_error(mocker):
+    """If we hit an error generating the zip file - write plaintext bytes to dest_path as a failover"""
     errors = ["my first error", "my second error"]
 
     zipfile_mock = mocker.patch("cactus_runner.app.finalize.zipfile.ZipFile")
     exception_msg = "mock exception 123 abc"
     zipfile_mock.side_effect = Exception(exception_msg)
 
-    # Act
-    zip_contents = finalize.safely_get_error_zip(errors)
+    dest = finalize.safely_write_error_zip(errors)
 
-    # Assert
-    assert isinstance(zip_contents, bytes)
-    assert len(zip_contents) > 0
-    assert exception_msg in zip_contents.decode(), "Its ugly - but what else can we do?"
+    assert dest.exists()
+    assert exception_msg in dest.read_bytes().decode(), "Its ugly - but what else can we do?"
 
 
 def test_write_zip_to_file_with_errors(mocker, tmp_path):

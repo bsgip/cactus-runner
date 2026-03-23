@@ -1,5 +1,4 @@
 import dataclasses
-import io
 import logging
 import os
 import shutil
@@ -106,13 +105,8 @@ def write_zip_to_file(
 
     writeable_errors = errors.copy()
 
-    # Work in a temporary directory
     with tempfile.TemporaryDirectory() as tempdirname:
-        base_path = Path(tempdirname)
-
-        # All the test procedure artifacts should be placed in `archive_dir` to be archived
-        archive_dir = base_path / "archive"
-        os.mkdir(archive_dir)
+        archive_dir = Path(tempdirname)
 
         # Create test summary json file
         if json_status_summary is not None:
@@ -187,33 +181,26 @@ def write_zip_to_file(
             with open(file_path, "w") as f:
                 f.write("\n".join(writeable_errors))
 
-        # Create the temporary zip file then move it to the output path
-        ARCHIVE_BASEFILENAME = "finalize"
-        ARCHIVE_KIND = "zip"
-        shutil.make_archive(str(base_path / ARCHIVE_BASEFILENAME), ARCHIVE_KIND, archive_dir)
-
-        archive_path = base_path / f"{ARCHIVE_BASEFILENAME}.{ARCHIVE_KIND}"
-        shutil.move(str(archive_path), str(output_path))
+        shutil.make_archive(str(output_path.with_suffix("")), "zip", archive_dir)
 
 
-def safely_get_error_zip(errors: list[str]) -> bytes:
-    """Generates a ZIP file containing a single text file with the specified errors being encoded. Use this as a
-    last result failover if unable to generate the output data.
+def safely_write_error_zip(errors: list[str]) -> Path:
+    """Writes a ZIP file containing a single text file with the specified errors to a temporary path and returns it.
+    Use this as a last result failover if unable to generate the output data.
 
-    In the event that this fails - no exception will be raised - instead a plaintext error message will encode"""
+    In the event that this fails - no exception will be raised - instead a plaintext error message will be written"""
+    fd, path_str = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
+    dest_path = Path(path_str)
     try:
-        zip_buffer = io.BytesIO()
-
-        # Create a new zip file in write mode
-        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+        with zipfile.ZipFile(dest_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             zip_file.writestr("errors.txt", "\n".join(errors))
-
-        return zip_buffer.getvalue()
     except Exception as exc:
-        # What else can we do here? It'd still be good to have a "corrupt" ZIP file that can be passed back to us
-        # for analysis
         logger.error("Failure to safely generate an error zip.", exc_info=exc)
-        return f"Complete failure to generate output zip with data {errors}\nException to follow\n{exc}".encode()
+        dest_path.write_bytes(
+            f"Complete failure to generate output zip with data {errors}\nException to follow\n{exc}".encode()
+        )
+    return dest_path
 
 
 async def generate_pdf(
