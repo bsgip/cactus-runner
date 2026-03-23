@@ -1405,7 +1405,11 @@ async def run_check(
     if check_result is None:
         raise UnknownCheckError(f"Unrecognised check '{check.type}'. This is a problem with the test definition")
 
-    logger.info(f"run_check: {check.type} {resolved_parameters} returned {check_result}")
+    if check.type != "all-steps-complete":
+        if check_result.passed is False or check_result.description is not None:
+            logger.info(f"run_check: {check.type} {resolved_parameters} returned {check_result}")
+        else:
+            logger.debug(f"run_check: {check.type} {resolved_parameters} returned {check_result}")
     return check_result
 
 
