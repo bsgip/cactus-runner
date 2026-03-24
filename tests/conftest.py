@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 import unittest.mock as mock
@@ -38,9 +39,17 @@ from cactus_runner.app.envoy_admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
+from cactus_runner.app import handler
 from cactus_runner.app.main import create_app
 from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
 from tests.adapter import HttpxClientSessionAdapter
+
+
+@pytest.fixture(autouse=True)
+def reset_proxy_lock():
+    """Reset the module-level proxy lock before each test to prevent stale asyncio state
+    from leaking between tests that each spin up a fresh app with its own event loop."""
+    handler._proxy_lock = asyncio.Lock()
 
 
 def execute_test_sql_file(cfg: Connection, path_to_sql_file: str) -> None:
