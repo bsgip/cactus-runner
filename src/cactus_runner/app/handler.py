@@ -1,3 +1,4 @@
+import asyncio
 import http
 import logging
 from dataclasses import dataclass
@@ -53,6 +54,10 @@ from cactus_runner.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Serialises the full before-event/proxy/after-event block so concurrent device requests
+# cannot interleave: each request's envoy DB commit is visible before the next request fires.
+_proxy_lock = asyncio.Lock()
 
 
 @dataclass
@@ -763,32 +768,36 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
-    # Fire "before request" event trigger
+    # Fire "before request" event trigger, proxy, then fire "after request" event trigger.
+    # The lock serialises this entire block so concurrent device requests cannot interleave.
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-    async with begin_session() as session:
-        trigger_handled = await event.handle_event_trigger(
-            trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
-            runner_state=runner_state,
-            session=session,
-            envoy_client=envoy_client,
-        )
-        await session.commit()
-
-    # Proxy the request to the utility server
-    proxy_result = await proxy.proxy_request(
-        request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
-    )
-
-    # Fire "after request" event trigger (only if an event didn't handle the before event)
-    if not trigger_handled:
+    async with _proxy_lock:
         async with begin_session() as session:
             trigger_handled = await event.handle_event_trigger(
-                trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=False),
+                trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
                 runner_state=runner_state,
                 session=session,
                 envoy_client=envoy_client,
             )
             await session.commit()
+
+        # Proxy the request to the utility server
+        proxy_result = await proxy.proxy_request(
+            request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
+        )
+
+        # Fire "after request" event trigger (only if an event didn't handle the before event)
+        if not trigger_handled:
+            async with begin_session() as session:
+                trigger_handled = await event.handle_event_trigger(
+                    trigger=event.generate_client_request_trigger(
+                        request, mount_point=MOUNT_POINT, before_serving=False
+                    ),
+                    runner_state=runner_state,
+                    session=session,
+                    envoy_client=envoy_client,
+                )
+                await session.commit()
 
     # There will only ever be a maximum of 1 entry in this list
     # The request events will only trigger a max of one listener
