@@ -1971,6 +1971,79 @@ async def test_do_check_site_readings_and_params(
 
 
 @pytest.mark.parametrize(
+    "incorrect_roleflags, site_reading_types, expected_passed",
+    [
+        # only incorrect roleflags, no correct readings: fail
+        (
+            [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01)],
+            [],
+            False,
+        ),
+        # multiple incorrect roleflags, no correct readings: fail
+        (
+            [
+                generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01),
+                generate_class_instance(SiteReadingType, seed=2, site_reading_type_id=2, role_flags=0x02),
+            ],
+            [],
+            False,
+        ),
+        # incorrect roleflags alongside correct readings: roleflag check skipped, passes
+        (
+            [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01)],
+            [generate_class_instance(SiteReadingType, seed=2, site_reading_type_id=2)],
+            True,
+        ),
+    ],
+)
+@mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types_partitioned")
+@mock.patch("cactus_runner.app.check.do_check_readings_for_types")
+@mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
+@mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
+@mock.patch("cactus_runner.app.check.do_check_readings_for_duration")
+@pytest.mark.anyio
+async def test_do_check_site_readings_and_params_roleflags(
+    mock_do_check_readings_for_duration: mock.MagicMock,
+    mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
+    mock_do_check_readings_on_minute_boundary: mock.MagicMock,
+    mock_do_check_readings_for_types: mock.MagicMock,
+    mock_get_csip_aus_site_reading_types_partitioned: mock.MagicMock,
+    incorrect_roleflags: list[SiteReadingType],
+    site_reading_types: list[SiteReadingType],
+    expected_passed: bool,
+):
+    """Tests roleflag handling: fails when only incorrect roleflags are returned, passes when correct
+    site_reading_types are also present."""
+    # Arrange
+    mock_session = create_mock_session()
+    mock_get_csip_aus_site_reading_types_partitioned.return_value = (site_reading_types, incorrect_roleflags)
+    mock_do_check_readings_for_types.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
+    mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
+
+    # Act
+    result = await do_check_site_readings_and_params(
+        mock_session,
+        {},
+        pen=12345,
+        uom=UomType.REAL_POWER_WATT,
+        reading_location=ReadingLocation.SITE_READING,
+        data_qualifier=DataQualifierType.AVERAGE,
+    )
+
+    # Assert
+    assert_check_result(result, expected_passed)
+    if site_reading_types:
+        mock_do_check_readings_for_types.assert_called_once()
+    else:
+        mock_do_check_readings_for_types.assert_not_called()
+        assert result.description is not None
+        if incorrect_roleflags:
+            assert "roleFlags" in result.description
+
+
+@pytest.mark.parametrize(
     "check, apply_function_name",
     [(Check(type=check_type, parameters={}), handler_fn) for check_type, handler_fn in CHECK_TYPE_TO_HANDLER.items()],
 )
