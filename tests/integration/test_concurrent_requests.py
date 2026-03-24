@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 from urllib.parse import quote
 
 import pytest
@@ -15,7 +14,6 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from envoy_schema.server.schema.sep2.der import ConnectStatusTypeValue, DERStatus
 from envoy_schema.server.schema.sep2.end_device import EndDeviceRequest
 from pytest_aiohttp.plugin import TestClient
 
