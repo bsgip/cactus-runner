@@ -1,4 +1,3 @@
-import asyncio
 import http
 import logging
 from dataclasses import dataclass
