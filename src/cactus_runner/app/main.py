@@ -35,6 +35,7 @@ from cactus_runner.app.shared import (
     APPKEY_INITIALISED_CERTS,
     APPKEY_PERIOD_SEC,
     APPKEY_PERIODIC_TASK,
+    APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
 from cactus_runner.models import InitialisedCertificates, RunnerState
@@ -165,6 +166,8 @@ def create_app() -> web.Application:
     # App events
     app.on_startup.append(app_on_startup_handler)  # type: ignore # Something has broken with type defs
     app.on_cleanup.append(app_on_cleanup_handler)  # type: ignore # Something has broken with type defs
+
+    app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     DEFAULT_PERIOD_SEC = 10  # seconds
     app[APPKEY_PERIOD_SEC] = DEFAULT_PERIOD_SEC  # Frequency of periodic task

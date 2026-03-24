@@ -43,6 +43,7 @@ from cactus_runner.app.schema_validator import validate_proxy_request_schema
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_INITIALISED_CERTS,
+    APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
 from cactus_runner.models import (
@@ -54,10 +55,6 @@ from cactus_runner.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Serialises the full before-event/proxy/after-event block so concurrent device requests
-# cannot interleave: each request's envoy DB commit is visible before the next request fires.
-_proxy_lock = asyncio.Lock()
 
 
 @dataclass
@@ -771,7 +768,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     # Fire "before request" event trigger, proxy, then fire "after request" event trigger.
     # The lock serialises this entire block so concurrent device requests cannot interleave.
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-    async with _proxy_lock:
+    async with request.app[APPKEY_PROXY_LOCK]:
         async with begin_session() as session:
             trigger_handled = await event.handle_event_trigger(
                 trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
