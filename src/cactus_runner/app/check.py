@@ -895,7 +895,7 @@ async def do_check_site_readings_and_params(
     )
 
     check_results: list[CheckResult] = []
-    if incorrect_roleflags:
+    if incorrect_roleflags and not site_reading_types:
         actual_flags = ", ".join(f"0x{srt.role_flags:02X}" for srt in incorrect_roleflags)
         check_results.append(
             CheckResult(
