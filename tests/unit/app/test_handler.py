@@ -1,3 +1,4 @@
+import asyncio
 import http
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,7 +30,7 @@ from cactus_test_definitions.client.test_procedures import get_yaml_contents
 
 from cactus_runner.app import action, handler
 from cactus_runner.app.proxy import ProxyResult
-from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_RUNNER_STATE
+from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_PROXY_LOCK, APPKEY_RUNNER_STATE
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
@@ -661,6 +662,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
     request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     handling_listener = generate_class_instance(Listener, actions=[])
 
@@ -750,6 +752,7 @@ async def test_proxied_request_handler_replaces_existing_proxied_request_interac
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
     request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     # Seed a prior PROXIED_REQUEST so the replace branch is exercised
     prior_interaction = ClientInteraction(
@@ -795,6 +798,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
     request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
     handling_listener = generate_class_instance(Listener, actions=[])
 
     handler.SERVER_URL = ""  # Override the server url
