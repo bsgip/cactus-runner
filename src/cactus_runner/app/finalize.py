@@ -271,6 +271,7 @@ async def generate_json_reporting_data(
         packed_readings = [
             PackedReadings(reading_type=k, readings_as_json=readings[k].to_json(), reading_counts=v)
             for k, v in reading_counts.items()
+            if k in readings
         ]
 
         reporting_data = ReportingData.v(version)(
