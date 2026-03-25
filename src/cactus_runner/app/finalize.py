@@ -10,17 +10,18 @@ from pathlib import Path
 from typing import cast
 
 import pandas as pd
+from cactus_schema.runner.schema import RequestEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.site import SiteDERSetting
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, reporting, timeline
-from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
 )
+from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
 from cactus_runner.app.envoy_common import (
     get_reading_counts_grouped_by_reading_type,
     get_sites,
@@ -45,7 +46,6 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
-from cactus_schema.runner.schema import RequestEntry
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version
@@ -269,9 +269,10 @@ async def generate_json_reporting_data(
     try:
         # Repack readings into something serializable
         packed_readings = [
-            PackedReadings(reading_type=k, readings_as_json=readings[k].to_json(), reading_counts=v)
+            PackedReadings(
+                reading_type=k, readings_as_json=readings[k].to_json() if k in readings else None, reading_counts=v
+            )
             for k, v in reading_counts.items()
-            if k in readings
         ]
 
         reporting_data = ReportingData.v(version)(
