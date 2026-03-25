@@ -3578,9 +3578,7 @@ def test_check_all_polls_at_correct_time_filters_by_request_type():
         ("PUT", http.HTTPMethod.PUT),
     ],
 )
-def test_check_all_polls_at_correct_time_request_type_variants(
-    request_type_str: str, request_method: http.HTTPMethod
-):
+def test_check_all_polls_at_correct_time_request_type_variants(request_type_str: str, request_method: http.HTTPMethod):
     """Each supported request_type_str correctly matches the corresponding HTTP method."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     poll_interval = 60
