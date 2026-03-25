@@ -3498,7 +3498,7 @@ def test_check_all_polls_at_correct_time_path_matching(request_path: str, expect
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "GET"},
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, expected)
@@ -3533,7 +3533,7 @@ def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], 
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "GET"},
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, False)
@@ -3541,7 +3541,7 @@ def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], 
 
 
 def test_check_all_polls_at_correct_time_filters_by_request_type():
-    """Only requests matching request_type are counted - other methods are ignored."""
+    """Only requests matching request_type_str are counted - other methods are ignored."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     poll_interval = 60
 
@@ -3564,22 +3564,24 @@ def test_check_all_polls_at_correct_time_filters_by_request_type():
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": "POST"},
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
     )
 
     assert_check_result(result, False)
 
 
 @pytest.mark.parametrize(
-    "request_type, request_method",
+    "request_type_str, request_method",
     [
         ("GET", http.HTTPMethod.GET),
         ("POST", http.HTTPMethod.POST),
         ("PUT", http.HTTPMethod.PUT),
     ],
 )
-def test_check_all_polls_at_correct_time_request_type_variants(request_type: str, request_method: http.HTTPMethod):
-    """Each supported request_type correctly matches the corresponding HTTP method."""
+def test_check_all_polls_at_correct_time_request_type_variants(
+    request_type_str: str, request_method: http.HTTPMethod
+):
+    """Each supported request_type_str correctly matches the corresponding HTTP method."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     poll_interval = 60
 
@@ -3601,18 +3603,100 @@ def test_check_all_polls_at_correct_time_request_type_variants(request_type: str
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type": request_type},
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": request_type_str},
     )
 
     assert_check_result(result, True)
 
 
+def test_check_all_polls_at_correct_time_wildcard_checks_each_path_independently():
+    """With a wildcard endpoint, each distinct concrete path is validated independently.
+
+    Two MUPs (/mup/2 and /mup/3) both posting at 60s are each valid individually even
+    though their combined count per window would exceed the maximum.
+    """
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # Two MUPs each posting every 60 seconds
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i * 2 + mup_idx,
+            path=f"/mup/{mup_idx + 2}",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+        for mup_idx in range(2)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/*", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
+    )
+
+    assert_check_result(result, True)
+
+
+def test_check_all_polls_at_correct_time_wildcard_fails_when_one_path_misses_polls():
+    """With a wildcard endpoint, a single path missing polls causes an overall failure."""
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # /mup/2 polls correctly; /mup/3 has a long gap (misses a window)
+    good_requests = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/mup/2",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+    bad_requests = [
+        generate_class_instance(
+            RequestEntry,
+            seed=100,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time,
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=101,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=540),  # 9 minutes later — empty windows in between
+        ),
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        good_requests + bad_requests,
+        {"endpoint": "/mup/*", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
+    )
+
+    assert_check_result(result, False)
+    assert "/mup/3" in result.description
+
+
 @pytest.mark.parametrize(
     "params, description_contains",
     [
-        ({"poll_interval_seconds": 60, "request_type": "GET"}, "No endpoint specified"),
-        ({"endpoint": "/mup/1", "request_type": "GET"}, "No poll_interval_seconds specified"),
-        ({"endpoint": "/mup/1", "poll_interval_seconds": 60}, "No request_type specified"),
+        ({"poll_interval_seconds": 60, "request_type_str": "GET"}, "No endpoint specified"),
+        ({"endpoint": "/mup/1", "request_type_str": "GET"}, "No poll_interval_seconds specified"),
+        ({"endpoint": "/mup/1", "poll_interval_seconds": 60}, "No request_type_str specified"),
     ],
 )
 def test_check_all_polls_at_correct_time_missing_params(params: dict, description_contains: str):
@@ -3637,7 +3721,7 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         [],
-        {"endpoint": "/mup/1", "poll_interval_seconds": 60, "request_type": "GET"},
+        {"endpoint": "/mup/1", "poll_interval_seconds": 60, "request_type_str": "GET"},
     )
 
     assert_check_result(result, False)
