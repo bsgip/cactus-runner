@@ -1241,6 +1241,47 @@ async def check_response_contents(
     return CheckResult(True, f"At least one DERControl response{context_description} of type {rt_string} was found")
 
 
+def _check_poll_timing_for_path(
+    path_requests: list[RequestEntry],
+    poll_interval_seconds: int,
+    test_started_at: datetime,
+) -> CheckResult:
+    """Checks that requests in path_requests occur at the expected frequency using a window-based approach.
+
+    For each window of 3x the poll interval, expects at least 2 requests and no more than 4.
+    """
+    sorted_requests = sorted(path_requests, key=lambda r: r.timestamp)
+    last_request_time = sorted_requests[-1].timestamp
+
+    # Window of 3x poll interval: 2 interior polls always land in the window,
+    # 2 boundary polls may drift in/out with ±50% jitter, giving a range of 2-4.
+    window_seconds = poll_interval_seconds * 3
+    min_polls_per_window = 2
+    max_polls_per_window = 4
+
+    checker = SoftChecker()
+
+    window_start = test_started_at
+    window_number = 0
+
+    while window_start < last_request_time:
+        window_end = window_start + timedelta(seconds=window_seconds)
+        window_number += 1
+
+        requests_in_window = [r for r in sorted_requests if window_start <= r.timestamp < window_end]
+        request_count = len(requests_in_window)
+
+        if request_count < min_polls_per_window or request_count > max_polls_per_window:
+            checker.add(
+                f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
+                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {request_count}",
+            )
+
+        window_start = window_end
+
+    return checker.finalize()
+
+
 def check_all_polls_at_correct_time(
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
@@ -1249,16 +1290,19 @@ def check_all_polls_at_correct_time(
     """
     Validates that requests to a specific endpoint occur at the expected frequency throughout the test.
     Uses a window-based approach with 50% leeway - for each window of 3x the poll interval, checks that there is
-    at least 1 request and fewer than 4 requests.
+    at least 2 requests and no more than 4 requests.
+
+    If the endpoint contains a wildcard ('*'), each distinct concrete path matching the pattern is checked
+    independently, so multi-MUP clients (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
 
     Parameters:
-        endpoint: e.g., "/mup/1"
+        endpoint: e.g., "/mup/*" or "/dcap"
         poll_interval_seconds
-        request_type: "GET", "POST", or "PUT"
+        request_type_str: "GET", "POST", or "PUT"
     """
     endpoint: str = resolved_parameters.get("endpoint", "")
     poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 0)
-    request_type_str: str = resolved_parameters.get("request_type", "")
+    request_type_str: str = resolved_parameters.get("request_type_str", "")
 
     if not endpoint:
         return CheckResult(False, "No endpoint specified for poll timing check")
@@ -1267,13 +1311,13 @@ def check_all_polls_at_correct_time(
         return CheckResult(False, "No poll_interval_seconds specified for poll timing check")
 
     if not request_type_str:
-        return CheckResult(False, "No request_type specified for poll timing check")
+        return CheckResult(False, "No request_type_str specified for poll timing check")
 
     request_type_str = request_type_str.upper()
     try:
         request_type = http.HTTPMethod(request_type_str)
     except ValueError:
-        return CheckResult(False, f"Invalid request_type '{request_type_str}' - must be GET, POST, or PUT")
+        return CheckResult(False, f"Invalid request_type_str '{request_type_str}' - must be GET, POST, or PUT")
 
     # Get test start time
     test_started_at = active_test_procedure.started_at
@@ -1288,39 +1332,23 @@ def check_all_polls_at_correct_time(
     if not endpoint_requests:
         return CheckResult(False, f"No {request_type_str} requests found for endpoint '{endpoint}'")
 
-    # Sort by timestamp
-    endpoint_requests.sort(key=lambda r: r.timestamp)
-    last_request_time = endpoint_requests[-1].timestamp
+    # If endpoint contains a wildcard, check each concrete path independently so that
+    # multiple streams (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
+    WILDCARD = "*"
+    if WILDCARD in endpoint:
+        unique_paths = sorted(set(r.path for r in endpoint_requests))
+        checker = SoftChecker()
+        for path in unique_paths:
+            path_requests = [r for r in endpoint_requests if r.path == path]
+            path_result = _check_poll_timing_for_path(path_requests, poll_interval_seconds, test_started_at)
+            if not path_result.passed and path_result.description:
+                checker.add(f"{path}: {path_result.description}")
+        result = checker.finalize()
+        if result.passed:
+            return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
+        return result
 
-    # Window of 3x poll interval: 2 interior polls always land in the window,
-    # 2 boundary polls may drift in/out with ±50% jitter, giving a range of 2-4.
-    window_seconds = poll_interval_seconds * 3
-    min_polls_per_window = 2
-    max_polls_per_window = 4
-
-    checker = SoftChecker()
-
-    # Iterate through windows from test start (doesnt count in precondition phase)
-    window_start = test_started_at
-    window_number = 0
-
-    while window_start < last_request_time:
-        window_end = window_start + timedelta(seconds=window_seconds)
-        window_number += 1
-
-        # Count requests in this window
-        requests_in_window = [r for r in endpoint_requests if window_start <= r.timestamp < window_end]
-        request_count = len(requests_in_window)
-
-        if request_count < min_polls_per_window or request_count > max_polls_per_window:
-            checker.add(
-                f"Between {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {request_count}",
-            )
-
-        window_start = window_end
-
-    result = checker.finalize()
+    result = _check_poll_timing_for_path(endpoint_requests, poll_interval_seconds, test_started_at)
     if result.passed:
         return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
     return result
