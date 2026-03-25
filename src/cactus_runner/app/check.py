@@ -1332,23 +1332,17 @@ def check_all_polls_at_correct_time(
     if not endpoint_requests:
         return CheckResult(False, f"No {request_type_str} requests found for endpoint '{endpoint}'")
 
-    # If endpoint contains a wildcard, check each concrete path independently so that
-    # multiple streams (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
-    WILDCARD = "*"
-    if WILDCARD in endpoint:
-        unique_paths = sorted(set(r.path for r in endpoint_requests))
-        checker = SoftChecker()
-        for path in unique_paths:
-            path_requests = [r for r in endpoint_requests if r.path == path]
-            path_result = _check_poll_timing_for_path(path_requests, poll_interval_seconds, test_started_at)
-            if not path_result.passed and path_result.description:
-                checker.add(f"{path}: {path_result.description}")
-        result = checker.finalize()
-        if result.passed:
-            return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
-        return result
+    # Group by concrete path and check each independently.
+    # does_endpoint_match already handles wildcard filtering above, so with an exact endpoint
+    # there is always one group; with a wildcard there may be many (e.g. /mup/2 and /mup/3).
+    checker = SoftChecker()
+    for path in sorted(set(r.path for r in endpoint_requests)):
+        path_requests = [r for r in endpoint_requests if r.path == path]
+        path_result = _check_poll_timing_for_path(path_requests, poll_interval_seconds, test_started_at)
+        if not path_result.passed and path_result.description:
+            checker.add(f"{path}: {path_result.description}")
 
-    result = _check_poll_timing_for_path(endpoint_requests, poll_interval_seconds, test_started_at)
+    result = checker.finalize()
     if result.passed:
         return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
     return result
