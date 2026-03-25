@@ -130,7 +130,7 @@ def merge_readings(
         # Here we choose the first SiteReadingType in the group.
         primary_key: SiteReadingType = group[0]
         merged = pd.concat([readings[reading_type] for reading_type in group])
-        sorted = merged.sort_values(by=["time_period_start"])
+        sorted = merged.sort_values(by=["time_period_start"]).reset_index(drop=True)
         merged_readings[primary_key] = sorted
 
     return merged_readings

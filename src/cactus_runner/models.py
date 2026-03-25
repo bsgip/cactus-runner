@@ -264,7 +264,7 @@ class ReadingType(JSONWizard):
 @dataclass
 class PackedReadings(JSONWizard):
     reading_type: ReadingType
-    readings_as_json: str
+    readings_as_json: str | None
     reading_counts: int
 
 
