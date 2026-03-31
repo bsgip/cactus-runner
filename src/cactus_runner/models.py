@@ -27,6 +27,7 @@ from envoy_schema.server.schema.sep2.der import (
     AlarmStatusType,
     ConnectStatusType,
     DERControlType,
+    DERType,
     DOESupportedMode,
     InverterStatusType,
     LocalControlModeStatusType,
@@ -320,6 +321,7 @@ class SiteDERRating(JSONWizard):
     under_excited_w_multiplier: int | None
     v_nom_value: int | None
     v_nom_multiplier: int | None
+    der_type: DERType
     doe_modes_supported: DOESupportedMode | None
 
     @classmethod
@@ -376,6 +378,7 @@ class SiteDERRating(JSONWizard):
             under_excited_w_multiplier=rating.under_excited_w_multiplier,
             v_nom_value=rating.v_nom_value,
             v_nom_multiplier=rating.v_nom_multiplier,
+            der_type=rating.der_type,
             doe_modes_supported=rating.doe_modes_supported,
         )
 
