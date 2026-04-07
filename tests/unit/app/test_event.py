@@ -49,6 +49,7 @@ def test_generate_client_request_trigger(
     mock_request = MagicMock()
     mock_request.method = request_method
     mock_request.path = request_path
+    mock_request.query = {}
 
     trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving)
     assert isinstance(trigger, event.EventTrigger)
@@ -65,6 +66,7 @@ def test_generate_client_request_trigger(
     assert trigger.client_request.method == request_method
     assert isinstance(trigger.client_request.path, str)
     assert trigger.client_request.path == request_path
+    assert trigger.client_request.query_start is None
 
 
 @pytest.mark.parametrize(
@@ -109,6 +111,7 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
     mock_request = MagicMock()
     mock_request.method = "GET"
     mock_request.path = request_path
+    mock_request.query = {}
 
     trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving=True)
 
@@ -116,6 +119,29 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
     assert trigger.client_request.path == expected_path
     # Ensure path always has leading slash
     assert trigger.client_request.path.startswith("/")
+
+
+@pytest.mark.parametrize(
+    "query, expected_query_start",
+    [
+        ({}, None),  # No s param
+        ({"s": "0"}, 0),  # Explicit first page
+        ({"s": "1"}, 1),  # Second page
+        ({"s": "4"}, 4),  # Later page
+        ({"s": "abc"}, None),  # Invalid
+        ({"s": "0", "l": "2"}, 0),  # s with other params
+        ({"s": "4", "l": "2"}, 4),  # Paginated with limit
+    ],
+)
+def test_generate_client_request_trigger_query_start(query: dict, expected_query_start: int | None):
+    mock_request = MagicMock()
+    mock_request.method = "GET"
+    mock_request.path = "/edev/1/derp"
+    mock_request.query = query
+
+    trigger = event.generate_client_request_trigger(mock_request, mount_point="", before_serving=True)
+
+    assert trigger.client_request.query_start == expected_query_start
 
 
 @pytest.mark.parametrize(
