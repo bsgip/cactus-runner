@@ -50,6 +50,7 @@ class ClientRequestDetails:
 
     method: HTTPMethod  # The HTTP method being used in the request
     path: str  # The requested path (no query params)
+    query_start: int | None = None  # Value of the `s` (start index) query param; None if absent
 
 
 @dataclass(frozen=True)
@@ -199,12 +200,20 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
         if not path_without_mount or not path_without_mount.startswith("/"):
             path_without_mount = "/" + path_without_mount
 
+    s_str = request.query.get("s")
+    query_start: int | None = None
+    if s_str is not None:
+        try:
+            query_start = int(s_str)
+        except ValueError:
+            pass
+
     trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
     return EventTrigger(
         type=trigger_type,
         time=datetime.now(timezone.utc),
         single_listener=True,
-        client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount),
+        client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount, query_start),
     )
 
 
