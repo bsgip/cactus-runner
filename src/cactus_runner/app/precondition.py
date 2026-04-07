@@ -159,13 +159,17 @@ BEGIN
     {truncate_statements}
 
     -- Reset sequences for tables that were truncated (to 1, for consistency with reset_db behavior)
-    EXECUTE 'ALTER SEQUENCE site_control_group_site_control_group_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE calculation_log_calculation_log_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE subscription_subscription_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE subscription_condition_subscription_condition_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE site_log_event_site_log_event_id_seq RESTART WITH 1';
 
     -- Reset sequences that need epoch time (for new test to get unique IDs across playlist)
+    -- site_control_group must use epoch time: the archive_dynamic_operating_envelope table retains
+    -- deleted DERControls with their site_control_group_id, and select_active_does_include_deleted
+    -- queries both live and archive tables. Restarting at 1 causes the next test's DERPrograms to
+    -- reuse IDs from the prior test's archived controls, making those stale controls visible again.
+    EXECUTE 'ALTER SEQUENCE site_control_group_site_control_group_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE site_control_group_default_site_control_group_default_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE dynamic_operating_envelope_dynamic_operating_envelope_id_seq RESTART WITH ' || epoch_time;
     EXECUTE 'ALTER SEQUENCE tariff_generated_rate_tariff_generated_rate_id_seq RESTART WITH ' || epoch_time;
