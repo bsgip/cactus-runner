@@ -146,9 +146,11 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
     # Step 2: Truncate specific tables (not site/aggregator/certificate)
     # Tables to delete - these will not notify the client, keeping state clean for the next test
     tables_to_truncate = [
-        # Archive tables
+        # Site readings (live + archive — reading types are preserved as they belong to the site registration)
+        "site_reading",
         "archive_site_reading",
         "archive_site_reading_type",
+        # Archive tables
         "archive_subscription",
         "archive_subscription_condition",
         # Calculation logs
@@ -184,6 +186,7 @@ BEGIN
     {truncate_statements}
 
     -- Reset sequences for tables that were truncated (to 1, for consistency with reset_db behavior)
+    EXECUTE 'ALTER SEQUENCE site_reading_site_reading_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE site_control_group_site_control_group_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE calculation_log_calculation_log_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE site_log_event_site_log_event_id_seq RESTART WITH 1';
