@@ -16,7 +16,7 @@ from envoy.server.model.site import SiteDERSetting
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import check, reporting, timeline
+from cactus_runner.app import check, power_limit_chart, reporting, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -100,6 +100,7 @@ def write_zip_to_file(
     errors: list[str],
     filename_infix: str = "",
     reporting_data_filename_prefix: str | None = "ReportingData",
+    power_limit_chart_html: str | None = None,
 ) -> None:
     """Writes the zipped test procedure artifacts to output_path."""
 
@@ -145,6 +146,12 @@ def write_zip_to_file(
             file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
             with open(file_path, "wb") as f:
                 f.write(pdf_data)
+
+        # Write power limit chart HTML
+        if power_limit_chart_html is not None:
+            file_path = archive_dir / f"PowerLimitChart{filename_infix}.html"
+            with open(file_path, "w") as f:
+                f.write(power_limit_chart_html)
 
         # Copy request/response files from storage to archive
         copy_request_response_files_to_archive(archive_dir=archive_dir)
@@ -374,6 +381,20 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             errors.append(f"Failed to generate test timeline: {exc}")
             test_timeline = None
 
+    # Generate power limit chart
+    power_limit_chart_html: str | None = None
+    if active_test_procedure.started_at is not None:
+        try:
+            power_limit_chart_html = await power_limit_chart.generate_power_limit_chart_html(
+                session=session,
+                test_start=active_test_procedure.started_at,
+                test_end=now,
+                request_history=runner_state.request_history,
+            )
+        except Exception as exc:
+            logger.error("Error generating power limit chart.", exc_info=exc)
+            errors.append(f"Failed to generate power limit chart: {exc}")
+
         # Fetch raw DB data and create PDF
     try:
         sites = await get_sites(session)
@@ -453,6 +474,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
         reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
+        power_limit_chart_html=power_limit_chart_html,
     )
     active_test_procedure.finished_zip_path = zip_path
     return zip_path
