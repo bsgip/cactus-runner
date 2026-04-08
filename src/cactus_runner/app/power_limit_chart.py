@@ -275,13 +275,22 @@ def _compute_disconnect_intervals(
     enriched: list[_EnrichedControl],
     test_end: datetime,
 ) -> list[tuple[datetime, datetime]]:
-    """Returns intervals during which the device is effectively disconnected
-    (opModConnect=False active), including the 1-minute grace period after reconnect."""
-    connected_events: list[tuple[datetime, bool]] = [
-        (ctrl.effective_start, ctrl.set_connected)  # type: ignore[arg-type]
-        for ctrl in enriched
-        if ctrl.set_connected is not None
-    ]
+    """Returns intervals during which the device active power is forced to 0,
+    including the 1-minute grace period after reconnect.
+
+    Reconnection is triggered by either:
+    - An opModConnect=True active control (at its effective_start), or
+    - The opModConnect=False control expiring (at its effective_end).
+    """
+    # False controls contribute two events: disconnect at effective_start, reconnect at effective_end.
+    # True controls contribute one event: reconnect at effective_start.
+    connected_events: list[tuple[datetime, bool]] = []
+    for ctrl in enriched:
+        if ctrl.set_connected is False:
+            connected_events.append((ctrl.effective_start, False))
+            connected_events.append((ctrl.effective_end, True))  # expiry = reconnect
+        elif ctrl.set_connected is True:
+            connected_events.append((ctrl.effective_start, True))
     connected_events.sort(key=lambda e: e[0])
 
     disconnect_intervals: list[tuple[datetime, datetime]] = []
@@ -356,21 +365,19 @@ def _get_effective_upper_at(
     sorted_groups: list[SiteControlGroup],
     enriched: list[_EnrichedControl],
     defaults_by_group: dict[int, list[_DefaultLike]],
-    is_disconnected: bool,
 ) -> tuple[float | None, object | None]:
     """Returns (effective_limit_watts, source) for the upper bound (export/gen) at time T.
     Returns (None, None) if unconstrained."""
     for group in sorted_groups:
         gid = group.site_control_group_id
 
-        if not is_disconnected:
-            ctrl = _find_active_control_at(T, gid, enriched)
-            if ctrl is not None:
-                limit = _min_notnone(ctrl.export_limit, ctrl.gen_limit)
-                if limit is not None:
-                    return limit, ctrl
-                # Active control for this group but no export/gen limit set → skip to next group
-                continue
+        ctrl = _find_active_control_at(T, gid, enriched)
+        if ctrl is not None:
+            limit = _min_notnone(ctrl.export_limit, ctrl.gen_limit)
+            if limit is not None:
+                return limit, ctrl
+            # Active control for this group but no export/gen limit set → skip to next group
+            continue
 
         default = _find_active_default_at(T, gid, defaults_by_group)
         if default is not None:
@@ -391,20 +398,18 @@ def _get_effective_lower_at(
     sorted_groups: list[SiteControlGroup],
     enriched: list[_EnrichedControl],
     defaults_by_group: dict[int, list[_DefaultLike]],
-    is_disconnected: bool,
 ) -> tuple[float | None, object | None]:
     """Returns (effective_limit_watts, source) for the lower bound (import/load) at time T.
     Returns a positive magnitude value - caller negates it for display."""
     for group in sorted_groups:
         gid = group.site_control_group_id
 
-        if not is_disconnected:
-            ctrl = _find_active_control_at(T, gid, enriched)
-            if ctrl is not None:
-                limit = _min_notnone(ctrl.import_limit, ctrl.load_limit)
-                if limit is not None:
-                    return limit, ctrl
-                continue
+        ctrl = _find_active_control_at(T, gid, enriched)
+        if ctrl is not None:
+            limit = _min_notnone(ctrl.import_limit, ctrl.load_limit)
+            if limit is not None:
+                return limit, ctrl
+            continue
 
         default = _find_active_default_at(T, gid, defaults_by_group)
         if default is not None:
@@ -515,11 +520,14 @@ def _build_limit_events(
     for T in event_times:
         is_disconnected = any(ds <= T < de for ds, de in disconnect_intervals)
 
-        if is_upper:
-            raw, source = _get_effective_upper_at(T, sorted_groups, enriched, defaults_by_group, is_disconnected)
+        if is_disconnected:
+            target = 0.0
+            source = None
+        elif is_upper:
+            raw, source = _get_effective_upper_at(T, sorted_groups, enriched, defaults_by_group)
             target = raw if raw is not None else set_max_w
         else:
-            raw, source = _get_effective_lower_at(T, sorted_groups, enriched, defaults_by_group, is_disconnected)
+            raw, source = _get_effective_lower_at(T, sorted_groups, enriched, defaults_by_group)
             target = -(raw if raw is not None else set_max_w)
 
         if prev_target is None or abs(target - prev_target) > 0.1:

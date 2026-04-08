@@ -275,20 +275,20 @@ async def test_chart_ramptms_and_defaults(pg_base_config):
 @pytest.mark.anyio
 async def test_chart_op_mod_connect(pg_base_config):
     """
-    Demonstrates opModConnect=False disconnect and 1-minute grace after reconnect.
+    Demonstrates opModConnect=False disconnect (power=0) and 1-minute grace after explicit
+    True-control reconnect.
 
     Program 1:
       - Default export=7000W
       - T+5m: export control 5000W begins (spanning full test)
-      - T+10m: opModConnect=False → device reverts to default (7000W)
-      - T+20m: opModConnect=True → 1-minute grace period (still on default)
-      - T+21m: grace ends → resumes 5000W export control
+      - T+10m: opModConnect=False (duration 5min, expires T+15m) → power forced to 0
+      - T+15m: False control expires → reconnect triggered, 1-min grace (power still 0)
+      - T+16m: grace ends → resumes 5000W export control
+      - T+20m: opModConnect=True (already reconnected, no effect here)
 
     Expected visual:
-      - Upper trace: 5000W from T+5m
-      - Jump to 7000W (default) at T+10m
-      - Stay at 7000W until T+21m
-      - Drop back to 5000W at T+21m
+      - Upper trace: 5000W from T+5m, drops to 0 at T+10m, ramps back to 5000W at T+16m
+      - Lower trace: flat at -10000W (no import limit set)
     """
     test_end = T0 + timedelta(minutes=35)
     created_times: dict[str, datetime] = {}
@@ -337,6 +337,72 @@ async def test_chart_op_mod_connect(pg_base_config):
     out = _out("scenario_D_op_mod_connect.html")
     out.write_text(html)
     print(f"\n  ✓ Scenario D → {out}")
+
+
+# ─── Scenario D2: opModConnect — expiry-triggered reconnect, no True control ──
+
+
+@pytest.mark.anyio
+async def test_chart_op_mod_connect_expiry(pg_base_config):
+    """
+    opModConnect=False control expires with no subsequent True control.
+    Reconnection is triggered purely by expiry.
+
+    Program 1:
+      - Default export=7000W
+      - T+5m: export control 5000W begins (spanning full test)
+      - T+10m: opModConnect=False (duration 5min, expires T+15m) → power forced to 0
+      - T+15m: False control expires → reconnect triggered, 1-min grace (power still 0)
+      - T+16m: grace ends → resumes 5000W export control
+
+    Expected visual:
+      - Upper trace: 5000W from T+5m, drops to 0 at T+10m, ramps back to 5000W at T+16m
+      - No True control — reconnect is entirely expiry-driven
+    """
+    test_end = T0 + timedelta(minutes=35)
+    created_times: dict[str, datetime] = {}
+
+    async with generate_async_session(pg_base_config) as session:
+        site = _make_der_site(aggregator_id=1)
+        session.add(site)
+        grp1 = generate_class_instance(SiteControlGroup, seed=1, site_control_group_id=1, primacy=1)
+        session.add(grp1)
+
+        session.add(generate_class_instance(
+            SiteControlGroupDefault,
+            seed=1,
+            site_control_group=grp1,
+            import_limit_active_watts=None,
+            export_limit_active_watts=Decimal("7000"),
+            generation_limit_active_watts=None,
+            load_limit_active_watts=None,
+            ramp_rate_percent_per_second=None,
+            changed_time=T0 - timedelta(minutes=1),
+        ))
+
+        ctrls = {
+            "export":     _make_doe(site, grp1, offset_minutes=5,  duration_minutes=25,
+                                    export_limit=Decimal("5000"), seed=10),
+            "disconnect": _make_doe(site, grp1, offset_minutes=10, duration_minutes=5,
+                                    set_connected=False, seed=20),
+        }
+        session.add_all(ctrls.values())
+        await session.flush()
+        created_times = {k: v.created_time for k, v in ctrls.items()}
+        await session.commit()
+
+    polls = [
+        _poll(1, created_times["export"]     + timedelta(seconds=60), req_id=1),
+        _poll(1, created_times["disconnect"] + timedelta(seconds=60), req_id=2),
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        html = await generate_power_limit_chart_html(session, T0, test_end, polls)
+
+    assert html is not None
+    out = _out("scenario_D2_op_mod_connect_expiry.html")
+    out.write_text(html)
+    print(f"\n  ✓ Scenario D2 → {out}")
 
 
 # ─── Scenario E: GEN-10-like — two programs, late polls, defaults ─────────────
