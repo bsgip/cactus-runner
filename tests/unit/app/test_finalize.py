@@ -111,7 +111,7 @@ def test_write_zip_to_file(mocker, tmp_path):
         zip.read(get_filename(prefix=finalize.get_file_name_no_extension(logfile2_name), filenames=filenames))
         == contents_of_logfile2
     )
-    subprocess_run_mock.assert_called_once()
+    assert subprocess_run_mock.call_count == 2, "Expected two pg_dump calls (schema + data)"
     assert len(errors) == 0, "This shouldn't have been mutated"
 
 
