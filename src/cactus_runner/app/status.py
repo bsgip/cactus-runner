@@ -127,12 +127,16 @@ def get_runner_status_summary(step_status: dict[str, StepInfo]):
 
 
 async def get_criteria_summary(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, fail_message: str | None
 ) -> list[CriteriaEntry]:
-    if not active_test_procedure.definition.criteria or not active_test_procedure.definition.criteria.checks:
-        return []
 
     criteria: list[CriteriaEntry] = []
+    if fail_message is not None:
+        criteria.append(CriteriaEntry(False, "fail-message", fail_message))
+
+    if not active_test_procedure.definition.criteria or not active_test_procedure.definition.criteria.checks:
+        return criteria
+
     for check in active_test_procedure.definition.criteria.checks:
         try:
             check_result = await run_check(check, active_test_procedure, session)
@@ -293,6 +297,7 @@ async def get_active_runner_status(
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
+    fail_message: str | None,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
     now = datetime.now(timezone.utc)
@@ -345,7 +350,7 @@ async def get_active_runner_status(
         log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
-        criteria=await get_criteria_summary(session, active_test_procedure),
+        criteria=await get_criteria_summary(session, active_test_procedure, fail_message),
         precondition_checks=await get_precondition_checks_summary(session, active_test_procedure),
         instructions=await get_current_instructions(active_test_procedure),
         status_summary=get_runner_status_summary(step_status=active_test_procedure.step_status),

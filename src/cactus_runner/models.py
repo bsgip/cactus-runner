@@ -185,6 +185,11 @@ class RunnerState:
     playlist_index: int = 0  # Current position (0-based index into playlist)
     completed_playlist_items: list[PlaylistItem] = field(default_factory=list)  # Completed tests with ZIP paths
 
+    # Only set if this test has been explicitly failed by an action
+    # a non empty value here implies that the test is FAILED despite what anything else says
+    # eg: The client resolves a endpoint that the test procedure is explicitly marking as a failure
+    fail_message: str | None = None
+
     @property
     def last_client_interaction(self) -> ClientInteraction:
         return self.client_interactions[-1]

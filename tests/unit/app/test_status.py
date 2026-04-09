@@ -15,13 +15,18 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Check
+from envoy.server.model.site import (
+    Site,
+    SiteDER,
+    SiteDERRating,
+    SiteDERSetting,
+    SiteDERStatus,
+)
 from freezegun import freeze_time
-
-from envoy.server.model.site import Site, SiteDER, SiteDERRating, SiteDERSetting, SiteDERStatus
 
 from cactus_runner.app import status
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
-from cactus_runner.models import CheckResult, ActiveTestProcedure, StepInfo
+from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))
@@ -47,17 +52,20 @@ BASIS = datetime(2023, 5, 7, tzinfo=timezone.utc)
 
 
 @pytest.mark.parametrize(
-    "resolve_max_w_result, timeline_streams_result, expected_max_w",
+    "resolve_max_w_result, timeline_streams_result, expected_max_w, fail_message",
     [
-        (123.45, [generate_class_instance(TimelineDataStreamEntry)], 123),
-        (123.45, Exception, None),
-        (Exception, [generate_class_instance(TimelineDataStreamEntry)], None),
-        (Exception, Exception, None),
+        (123.45, [generate_class_instance(TimelineDataStreamEntry)], 123, None),
+        (123.45, [generate_class_instance(TimelineDataStreamEntry)], 123, "This test has been failed"),
+        (123.45, Exception, None, None),
+        (Exception, [generate_class_instance(TimelineDataStreamEntry)], None, None),
+        (Exception, Exception, None, None),
     ],
 )
 @freeze_time(BASIS)
 @pytest.mark.anyio
-async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_streams_result, expected_max_w):
+async def test_get_active_runner_status(
+    mocker, resolve_max_w_result, timeline_streams_result, expected_max_w, fail_message
+):
     # Arrange
     mock_session = create_mock_session()
     mock_run_check = mocker.patch("cactus_runner.app.status.run_check")
@@ -111,6 +119,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
+        fail_message=fail_message,
     )
 
     # Assert
@@ -122,12 +131,20 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     assert runner_status.status_summary == expected_status_summary
     assert isinstance(runner_status.csip_aus_version, str)
     assert runner_status.csip_aus_version == expected_csip_aus_version
-    assert runner_status.criteria == [CriteriaEntry(True, "check-1", "Details on Check 1")]
     if expected_max_w is None:
         assert runner_status.timeline is None or runner_status.timeline.set_max_w is None
     else:
         assert runner_status.timeline.set_max_w == expected_max_w
     assert runner_status.end_device_metadata is None
+
+    # If we have a fail_message - the criteria will have an extra entry
+    if fail_message is None:
+        assert runner_status.criteria == [CriteriaEntry(True, "check-1", "Details on Check 1")]
+    else:
+        assert len(runner_status.criteria) == 2
+        assert not runner_status.criteria[0].success
+        assert not runner_status.criteria[0].details == fail_message
+        assert runner_status.criteria[1] == CriteriaEntry(True, "check-1", "Details on Check 1")
 
     # If we have timeline data - ensure it's set as expected. Otherwise it should not be there at all
     if not isinstance(timeline_streams_result, type):
@@ -159,6 +176,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
+        fail_message=None,
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
     assert_mock_session(mock_session)
@@ -219,7 +237,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     )
 
     # Act
-    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock(), None)
 
     # Assert - EndDeviceMetadata
     metadata = runner_status.end_device_metadata
@@ -276,7 +294,7 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
         finished_zip_path=None,
     )
 
-    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock(), None)
 
     assert runner_status.end_device_metadata is None
 
@@ -407,6 +425,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
+        fail_message=None,
         crop_minutes=15,
     )
 

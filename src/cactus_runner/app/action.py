@@ -127,7 +127,12 @@ async def action_remove_steps(
         active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=timezone.utc)
 
 
-async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
+async def action_finish_test(resolved_parameters: dict[str, Any], runner_state: RunnerState, session: AsyncSession):
+
+    fail_message: str | None = resolved_parameters.get("fail_message", None)
+    if fail_message:
+        runner_state.fail_message = fail_message
+
     await finish_active_test(runner_state, session)
 
 
@@ -430,7 +435,7 @@ async def apply_action(
                 await action_remove_steps(active_test_procedure, resolved_parameters)
                 return
             case "finish-test":
-                await action_finish_test(runner_state, session)
+                await action_finish_test(resolved_parameters, runner_state, session)
                 return
             case "set-default-der-control":
                 await action_set_default_der_control(resolved_parameters, session, envoy_client)

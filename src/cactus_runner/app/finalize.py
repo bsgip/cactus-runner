@@ -293,7 +293,7 @@ async def generate_json_reporting_data(
     return json_reporting_data
 
 
-async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> Path:
+async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> Path:  # noqa: C901
     """For the specified RunnerState - move the active test into a "Finished" state by writing the final ZIP
     to a temporary file. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified
     RunnerState
@@ -327,6 +327,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure=active_test_procedure,
                 request_history=capped_request_history,
                 last_client_interaction=runner_state.last_client_interaction,
+                fail_message=runner_state.fail_message,
             )
         ).to_json()
     except Exception as exc:
@@ -358,6 +359,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     else:
         xsd_check = CheckResult(True, "No XSD errors detected in any requests.")
     check_results["all-requests-xsd-valid"] = xsd_check
+
+    # Add a "virtual" check covering the "fail message" that test procedures can raise
+    if runner_state.fail_message:
+        check_results["fail-message"] = CheckResult(False, runner_state.fail_message)
 
     # Figure out the testing timeline
     test_timeline: timeline.Timeline | None = None

@@ -531,6 +531,7 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
         client_certificate_type = finished_test.client_certificate_type
 
         # Clear the active test procedure and request history
+        runner_state.fail_message = None
         runner_state.active_test_procedure = None
         runner_state.request_history.clear()
 
@@ -629,22 +630,21 @@ async def status_handler(request: web.Request) -> web.Response:
         aiohttp.web.Response: The body (json) contains the status of the runner.
         This will be cropped to the last 15 mins of requests and timeline data to ensure UI does not slow down.
     """
-    active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    runner_state = request.app[APPKEY_RUNNER_STATE]
 
-    if active_test_procedure is not None:
+    if runner_state.active_test_procedure is not None:
         async with begin_session() as session:
             runner_status = await status.get_active_runner_status(
                 session=session,
-                active_test_procedure=active_test_procedure,
-                request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-                last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+                active_test_procedure=runner_state.active_test_procedure,
+                request_history=runner_state.request_history,
+                last_client_interaction=runner_state.last_client_interaction,
+                fail_message=runner_state.fail_message,
                 crop_minutes=15,
             )
 
     else:
-        runner_status = status.get_runner_status(
-            last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction
-        )
+        runner_status = status.get_runner_status(last_client_interaction=runner_state.last_client_interaction)
         logger.warning("Status of non-existent test procedure requested.")
 
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=runner_status.to_json())
