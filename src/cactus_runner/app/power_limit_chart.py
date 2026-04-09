@@ -65,6 +65,16 @@ _DERC_PATH_RE = re.compile(r"/edev/\d+/derp/(\d+)/derc")
 # Type alias for default control models (active or archived)
 _DefaultLike = SiteControlGroupDefault | ArchiveSiteControlGroupDefault
 
+# Cycling colour palette for step-name bands (semi-transparent fills)
+_STEP_PALETTE = [
+    "rgba(130,179,255,0.45)",
+    "rgba(130,220,170,0.45)",
+    "rgba(255,210,120,0.45)",
+    "rgba(255,140,170,0.45)",
+    "rgba(200,140,255,0.45)",
+    "rgba(120,220,220,0.45)",
+]
+
 
 # ─── Internal data types ──────────────────────────────────────────────────────
 
@@ -119,6 +129,15 @@ class _LimitEvent:
     source: object | None  # _EnrichedControl | _DefaultLike | None (unconstrained)
 
 
+@dataclass
+class _ReceiptMarker:
+    """Records when the device received a DERControl."""
+
+    time: datetime
+    group_id: int
+    is_subscribed: bool  # True = notification delivered; False = polled
+
+
 # ─── DB queries ───────────────────────────────────────────────────────────────
 
 
@@ -148,6 +167,60 @@ async def _get_subscribed_group_ids(session: AsyncSession) -> set[int]:
         )
     )
     return {sub.resource_id for sub in result.scalars().all()}
+
+
+# ─── Step-interval and receipt-marker helpers ─────────────────────────────────
+
+
+def _compute_step_intervals(
+    request_history: list[RequestEntry],
+    test_start: datetime,
+    test_end: datetime,
+) -> list[tuple[str, datetime, datetime]]:
+    """Return (step_name, start, end) intervals derived from sequential step_name changes.
+
+    Each step is active from its first request until the first request of the next step.
+    Blank step names are skipped. Steps may repeat."""
+    sorted_reqs = sorted(request_history, key=lambda r: r.timestamp)
+    intervals: list[tuple[str, datetime, datetime]] = []
+    current: str | None = None
+    step_start: datetime = test_start
+
+    for req in sorted_reqs:
+        name = (req.step_name or "").strip()
+        if not name:
+            continue
+        if name != current:
+            if current is not None:
+                intervals.append((current, step_start, req.timestamp))
+            current = name
+            step_start = req.timestamp
+
+    if current is not None:
+        intervals.append((current, step_start, test_end))
+
+    return intervals
+
+
+def _build_receipt_markers(
+    enriched: list[_EnrichedControl],
+    subscribed_group_ids: set[int],
+) -> list[_ReceiptMarker]:
+    """One marker per unique (group, receipt_time) pair in enriched controls."""
+    seen: set[tuple[int, datetime]] = set()
+    markers: list[_ReceiptMarker] = []
+    for ctrl in enriched:
+        key = (ctrl.site_control_group_id, ctrl.receipt_time)
+        if key not in seen:
+            seen.add(key)
+            markers.append(
+                _ReceiptMarker(
+                    time=ctrl.receipt_time,
+                    group_id=ctrl.site_control_group_id,
+                    is_subscribed=ctrl.site_control_group_id in subscribed_group_ids,
+                )
+            )
+    return sorted(markers, key=lambda m: m.time)
 
 
 # ─── Receipt time computation ─────────────────────────────────────────────────
@@ -471,6 +544,27 @@ def _compute_ramp_seconds(
     return _rate_based_duration(_AS4777_WGRA_HUNDREDTHS, delta_w, set_max_w)
 
 
+def _ramp_description(source: object | None, der_grad_w: int, ramp_secs: float) -> str:
+    """Human-readable string describing which ramp rule was applied."""
+    dur = f"{ramp_secs:.0f}s"
+    if isinstance(source, _EnrichedControl):
+        if source.ramp_time_seconds and source.ramp_time_seconds > 0:
+            return f"rampTms={source.ramp_time_seconds:.0f}s"
+        if der_grad_w > 0:
+            return f"setGradW={der_grad_w} ({dur})"
+        return "AS4777 soft-start (15s)"
+    if source is not None:
+        default_grad = getattr(source, "ramp_rate_percent_per_second", None)
+        if default_grad and default_grad > 0:
+            return f"Default setGradW={default_grad} ({dur})"
+        if der_grad_w > 0:
+            return f"setGradW={der_grad_w} ({dur})"
+        return f"AS4777 wGra ({dur})"
+    if der_grad_w > 0:
+        return f"setGradW={der_grad_w} ({dur})"
+    return f"AS4777 wGra ({dur})"
+
+
 # ─── Event collection ─────────────────────────────────────────────────────────
 
 
@@ -547,9 +641,13 @@ def _build_trace(
     initial_value: float,
     der_grad_w: int,
     set_max_w: float,
-) -> list[tuple[datetime, float]]:
-    """Convert limit events into a piecewise-linear (time, watts) trace with ramps."""
-    points: list[tuple[datetime, float]] = [(test_start, initial_value)]
+) -> list[tuple[datetime, float, str]]:
+    """Convert limit events into a piecewise-linear trace with ramps.
+
+    Returns a list of (time, watts, hover_text) tuples. hover_text is non-empty only
+    at ramp-start points and describes the ramp rule applied (e.g. 'rampTms=120s').
+    """
+    points: list[tuple[datetime, float, str]] = [(test_start, initial_value, "")]
 
     # Track the current ramp: from (ramp_start_t, ramp_start_v) to (ramp_end_t, ramp_end_v)
     ramp_start_t = test_start
@@ -577,12 +675,14 @@ def _build_trace(
 
         delta_w = abs(ev.target - current_v)
         ramp_secs = _compute_ramp_seconds(ev.source, der_grad_w, delta_w, set_max_w)
+        desc = _ramp_description(ev.source, der_grad_w, ramp_secs)
+        hover = f"<br>→ {ev.target:.0f} W  ({desc})"
 
-        points.append((ev.time, current_v))
+        points.append((ev.time, current_v, hover))
 
         ramp_end_dt = ev.time + timedelta(seconds=ramp_secs)
         if ramp_end_dt <= test_end:
-            points.append((ramp_end_dt, ev.target))
+            points.append((ramp_end_dt, ev.target, ""))
         else:
             # Ramp extends past test end - clip and interpolate
             if ramp_secs > 0.0:
@@ -591,7 +691,7 @@ def _build_trace(
                 v_at_end = current_v + frac * (ev.target - current_v)
             else:
                 v_at_end = ev.target
-            points.append((test_end, v_at_end))
+            points.append((test_end, v_at_end, ""))
 
         ramp_start_t = ev.time
         ramp_start_v = current_v
@@ -606,7 +706,7 @@ def _build_trace(
         else:
             frac = (test_end - ramp_start_t).total_seconds() / ramp_duration_secs
             v_final = ramp_start_v + frac * (ramp_end_v - ramp_start_v)
-        points.append((test_end, v_final))
+        points.append((test_end, v_final, ""))
 
     return points
 
@@ -637,11 +737,13 @@ def _choose_tick_interval_seconds(duration_secs: float) -> int:
 
 
 def _render_html_chart(
-    upper_trace: list[tuple[datetime, float]],
-    lower_trace: list[tuple[datetime, float]],
+    upper_trace: list[tuple[datetime, float, str]],
+    lower_trace: list[tuple[datetime, float, str]],
     test_start: datetime,
     test_end: datetime,
     set_max_w: float,
+    step_intervals: list[tuple[str, datetime, datetime]],
+    receipt_markers: list[_ReceiptMarker],
 ) -> str:
     duration_secs = (test_end - test_start).total_seconds()
     tick_interval = _choose_tick_interval_seconds(duration_secs)
@@ -661,31 +763,38 @@ def _render_html_chart(
     def to_rel(t: datetime) -> float:
         return (t - test_start).total_seconds()
 
+    y_max = set_max_w * 1.1
+    y_min = -set_max_w * 1.1
+    has_steps = bool(step_intervals)
+    bottom_margin = 175 if has_steps else 105
+
     fig = go.Figure()
 
+    # ── Main limit traces ────────────────────────────────────────────────────
     fig.add_trace(
         go.Scatter(
-            x=[to_rel(t) for t, _ in upper_trace],
-            y=[v for _, v in upper_trace],
+            x=[to_rel(t) for t, _, _ in upper_trace],
+            y=[v for _, v, _ in upper_trace],
             mode="lines",
             name="Upper limit (Export / Gen)",
             line=dict(color="#e74c3c", width=2),
-            hovertemplate="%{y:.0f} W<extra>Upper</extra>",
+            customdata=[[h] for _, _, h in upper_trace],
+            hovertemplate="%{y:.0f} W%{customdata[0]}<extra>Upper</extra>",
         )
     )
-
     fig.add_trace(
         go.Scatter(
-            x=[to_rel(t) for t, _ in lower_trace],
-            y=[v for _, v in lower_trace],
+            x=[to_rel(t) for t, _, _ in lower_trace],
+            y=[v for _, v, _ in lower_trace],
             mode="lines",
             name="Lower limit (Import / Load)",
             line=dict(color="#3498db", width=2),
-            hovertemplate="%{y:.0f} W<extra>Lower</extra>",
+            customdata=[[h] for _, _, h in lower_trace],
+            hovertemplate="%{y:.0f} W%{customdata[0]}<extra>Lower</extra>",
         )
     )
 
-    # Reference lines
+    # ── Reference lines ──────────────────────────────────────────────────────
     fig.add_hline(y=0, line_color="black", line_width=1, line_dash="dash", opacity=0.4)
     fig.add_hline(
         y=set_max_w,
@@ -704,7 +813,7 @@ def _render_html_chart(
         annotation_position="bottom right",
     )
 
-    # Invisible scatter on secondary x-axis (top) to render the AEDT tick labels
+    # ── Invisible secondary x-axis trace for AEDT tick labels ────────────────
     fig.add_trace(
         go.Scatter(
             x=tick_vals,
@@ -715,9 +824,103 @@ def _render_html_chart(
         )
     )
 
+    # ── Control receipt markers ──────────────────────────────────────────────
+    # Vertical lines (shapes) — one per unique receipt event
+    for m in receipt_markers:
+        color = "#27ae60" if m.is_subscribed else "#e67e22"
+        fig.add_shape(
+            type="line",
+            xref="x", yref="paper",
+            x0=to_rel(m.time), x1=to_rel(m.time),
+            y0=0.02, y1=0.98,
+            line=dict(color=color, width=1.5, dash="dot"),
+            opacity=0.55,
+        )
+
+    # Hover markers for receipt times (triangle markers + legend dummy traces)
+    has_subs = any(m.is_subscribed for m in receipt_markers)
+    has_polls = any(not m.is_subscribed for m in receipt_markers)
+    if has_subs:
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None],
+                mode="lines",
+                line=dict(color="#27ae60", width=1.5, dash="dot"),
+                name="Notif receipt",
+            )
+        )
+    if has_polls:
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None],
+                mode="lines",
+                line=dict(color="#e67e22", width=1.5, dash="dot"),
+                name="Poll receipt",
+            )
+        )
+    if receipt_markers:
+        fig.add_trace(
+            go.Scatter(
+                x=[to_rel(m.time) for m in receipt_markers],
+                y=[set_max_w * 0.55] * len(receipt_markers),
+                mode="markers",
+                marker=dict(
+                    symbol="triangle-down",
+                    size=9,
+                    color=["#27ae60" if m.is_subscribed else "#e67e22" for m in receipt_markers],
+                    opacity=0.85,
+                ),
+                customdata=[["Notification" if m.is_subscribed else "Poll", m.group_id] for m in receipt_markers],
+                hovertemplate="%{customdata[0]} receipt — Group %{customdata[1]}<extra>Receipt</extra>",
+                showlegend=False,
+            )
+        )
+
+    # ── Step name strips at the bottom (paper coordinates) ───────────────────
+    if has_steps:
+        # "Steps" axis label, left of the strip
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=-0.04, y=-0.27,
+            text="<b>Steps</b>",
+            showarrow=False,
+            font=dict(size=9, color="#555"),
+            xanchor="right",
+            yanchor="middle",
+        )
+        for i, (name, start, end) in enumerate(step_intervals):
+            color = _STEP_PALETTE[i % len(_STEP_PALETTE)]
+            x0 = to_rel(max(start, test_start))
+            x1 = to_rel(min(end, test_end))
+            if x1 <= x0:
+                continue
+            fig.add_shape(
+                type="rect",
+                xref="x", yref="paper",
+                x0=x0, x1=x1,
+                y0=-0.36, y1=-0.18,
+                fillcolor=color,
+                line=dict(color="rgba(0,0,0,0.18)", width=0.5),
+                layer="below",
+            )
+            interval_secs = x1 - x0
+            if interval_secs >= 20:
+                label = name if len(name) <= 20 else name[:18] + "…"
+                fig.add_annotation(
+                    xref="x", yref="paper",
+                    x=(x0 + x1) / 2,
+                    y=-0.27,
+                    text=label,
+                    showarrow=False,
+                    font=dict(size=8),
+                    xanchor="center",
+                    yanchor="middle",
+                )
+
+    # ── Layout ───────────────────────────────────────────────────────────────
     fig.update_layout(
         title=dict(text="Expected Device Power Limits", font=dict(size=16)),
-        height=620,
+        height=650,
         xaxis=dict(
             title="",
             tickmode="array",
@@ -740,6 +943,7 @@ def _render_html_chart(
         ),
         yaxis=dict(
             title="Active Power (W)",
+            range=[y_min, y_max],
             showgrid=True,
             gridcolor="rgba(0,0,0,0.08)",
             zeroline=False,
@@ -747,8 +951,35 @@ def _render_html_chart(
         legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="right", x=1),
         plot_bgcolor="white",
         paper_bgcolor="white",
-        margin=dict(t=120, b=100, l=80, r=120),
+        margin=dict(t=120, b=bottom_margin, l=80, r=120),
         hovermode="x unified",
+        # ── Export / Import view toggle ──────────────────────────────────────
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                x=0.0,
+                y=-0.08 if not has_steps else -0.12,
+                xanchor="left",
+                yanchor="top",
+                buttons=[
+                    dict(
+                        label="Export view",
+                        method="relayout",
+                        args=[{"yaxis.range": [y_min, y_max], "yaxis.autorange": False}],
+                    ),
+                    dict(
+                        label="Import view",
+                        method="relayout",
+                        args=[{"yaxis.range": [y_max, y_min], "yaxis.autorange": False}],
+                    ),
+                ],
+                font=dict(size=11),
+                bgcolor="white",
+                bordercolor="#bbb",
+                borderwidth=1,
+            )
+        ],
     )
 
     return fig.to_html(full_html=True, include_plotlyjs=True)
@@ -809,4 +1040,9 @@ async def generate_power_limit_chart_html(
     upper_trace = _build_trace(upper_events, test_start, test_end, set_max_w, der_grad_w, set_max_w)
     lower_trace = _build_trace(lower_events, test_start, test_end, -set_max_w, der_grad_w, set_max_w)
 
-    return _render_html_chart(upper_trace, lower_trace, test_start, test_end, set_max_w)
+    step_intervals = _compute_step_intervals(request_history, test_start, test_end)
+    receipt_markers = _build_receipt_markers(enriched, subscribed_group_ids)
+
+    return _render_html_chart(
+        upper_trace, lower_trace, test_start, test_end, set_max_w, step_intervals, receipt_markers
+    )

@@ -32,7 +32,7 @@ def _out(name: str) -> Path:
     return OUTPUT_DIR / name
 
 
-def _poll(group_id: int, when: datetime, req_id: int = 0) -> RequestEntry:
+def _poll(group_id: int, when: datetime, req_id: int = 0, step_name: str = "") -> RequestEntry:
     """Construct a fake DERControl list poll request."""
     return RequestEntry(
         url=f"https://envoy.example.com/edev/1/derp/{group_id}/derc",
@@ -40,7 +40,7 @@ def _poll(group_id: int, when: datetime, req_id: int = 0) -> RequestEntry:
         method=HTTPMethod.GET,
         status=HTTPStatus.OK,
         timestamp=when,
-        step_name="",
+        step_name=step_name,
         body_xml_errors=[],
         request_id=req_id,
     )
@@ -405,75 +405,91 @@ async def test_chart_op_mod_connect_expiry(pg_base_config):
     print(f"\n  ✓ Scenario D2 → {out}")
 
 
-# ─── Scenario E: GEN-10-like — two programs, late polls, defaults ─────────────
+# ─── Scenario E: GEN-10 DERC4/5/6 — opModConnect + primacy + supersede ────────
 
 
 @pytest.mark.anyio
-async def test_chart_gen10_like(pg_base_config):
+async def test_chart_gen10_derc456(pg_base_config):
     """
-    Approximates the GEN-10 test structure with two programs and 5-minute polling.
+    Approximates the GEN-10 DERC4/5/6 phase (primacy validation for generators).
 
-      - Program 1 (primacy 1): import curtailment controls (utility)
-      - Program 2 (primacy 2): export limit controls (operator)
-      - Both have default controls
-      - Device polls every 5 minutes per program
+    Two groups mirror GEN-10's FSA1 (primacy 1) and FSA2 (primacy 2):
+
+      DERC4 — group 1, primacy 1, T+0 to T+5m:
+        opModConnect=False + genLim=0.  Device is disconnected (power→0) from its
+        receipt at T+1m until 1-min after expiry at T+6m.
+
+      DERC5 — group 2, primacy 2, T+0 to T+8m:
+        opModExpLimW=200% (20000 W — shown above setMaxW reference line).
+        Effective once DERC4 grace ends at T+6m; group 1 has no export default
+        so group 2's control wins.
+
+      DERC6 — group 2, primacy 2, T+8m to T+13m:
+        opModExpLimW=50% (5000 W).  Received at T+9m (non-overlapping with DERC5,
+        no supersede record needed).  Upper trace ramps from 20000→10000→5000 W.
+
+    Device is polled (no subscriptions). grad_w=200 keeps ramps short enough to
+    see clearly on a 20-minute chart.
 
     Expected visual:
-      - Upper trace: export limits from program 2, possibly with visible late-poll delay
-      - Lower trace: import limits from program 1
-      - Controls take effect visibly after the poll, not at their start_time
+      Upper trace:
+        T+0→T+1m    unconstrained (10000 W)
+        T+1m        DERC4 received → ramp down to 0 W (50 s, AS4777 wGra)
+        T+1m→T+6m   0 W (disconnected + grace)
+        T+6m        grace ends → ramp up to 20000 W (DERC5, 100 s)
+        T+8m        DERC5 expires → ramp to 10000 W (unconstrained, 50 s)
+        T+9m        DERC6 received → ramp down to 5000 W (25 s)
+        T+13m       DERC6 expires → ramp back to 10000 W (25 s)
+      Lower trace: flat at −10000 W (no import controls or defaults)
+      Step strips: GET-DERC-4 / GET-DERC-5 / WAIT-OBSERVE-DERC-5 /
+                   GET-DERC-6 / WAIT-OBSERVE-DERC-6 / WAIT-OBSERVE-DERP-1-6-DEFAULTS
+      Orange receipt markers at T+1m (grp 1), T+1m30s (grp 2), T+9m (grp 2).
     """
-    test_end = T0 + timedelta(minutes=60)
-    created_times: dict[str, datetime] = {}
+    test_end = T0 + timedelta(minutes=20)
 
     async with generate_async_session(pg_base_config) as session:
-        site = _make_der_site(aggregator_id=1)
+        site = _make_der_site(aggregator_id=1, max_w=10000, grad_w=200)
         session.add(site)
+        # Group 1 = FSA1 / DERP1, high priority. No export default → group 2 can win after DERC4.
         grp1 = generate_class_instance(SiteControlGroup, seed=1, site_control_group_id=1, primacy=1)
+        # Group 2 = FSA2 / DERP6, lower priority, holds the export controls.
         grp2 = generate_class_instance(SiteControlGroup, seed=2, site_control_group_id=2, primacy=2)
         session.add_all([grp1, grp2])
 
-        session.add(generate_class_instance(
-            SiteControlGroupDefault, seed=1, site_control_group=grp1,
-            import_limit_active_watts=Decimal("0"), export_limit_active_watts=None,
-            generation_limit_active_watts=None, load_limit_active_watts=None,
-            ramp_rate_percent_per_second=None, changed_time=T0 - timedelta(minutes=2),
-        ))
-        session.add(generate_class_instance(
-            SiteControlGroupDefault, seed=2, site_control_group=grp2,
-            import_limit_active_watts=None, export_limit_active_watts=Decimal("10000"),
-            generation_limit_active_watts=None, load_limit_active_watts=None,
-            ramp_rate_percent_per_second=None, changed_time=T0 - timedelta(minutes=2),
-        ))
-
-        ctrls = {
-            "imp1": _make_doe(site, grp1, offset_minutes=5,  duration_minutes=14, import_limit=Decimal("5000"), seed=11),
-            "imp2": _make_doe(site, grp1, offset_minutes=20, duration_minutes=14, import_limit=Decimal("0"),    seed=12),
-            "imp3": _make_doe(site, grp1, offset_minutes=35, duration_minutes=20, import_limit=Decimal("3000"), seed=13),
-            "exp1": _make_doe(site, grp2, offset_minutes=8,  duration_minutes=12, export_limit=Decimal("7000"), seed=21),
-            "exp2": _make_doe(site, grp2, offset_minutes=22, duration_minutes=13, export_limit=Decimal("3000"), seed=22),
-            "exp3": _make_doe(site, grp2, offset_minutes=38, duration_minutes=17, export_limit=Decimal("6000"), seed=23),
-        }
-        session.add_all(ctrls.values())
+        # DERC4: opModConnect=False + genLim=0 on group 1 (5 min)
+        derc4 = _make_doe(site, grp1, offset_minutes=0, duration_minutes=5,
+                          gen_limit=Decimal("0"), set_connected=False, seed=40)
+        # DERC5: export 200% on group 2 (8 min — ends just before DERC6 starts)
+        derc5 = _make_doe(site, grp2, offset_minutes=0, duration_minutes=8,
+                          export_limit=Decimal("20000"), seed=50)
+        # DERC6: export 50% on group 2 (5 min — non-overlapping with DERC5)
+        derc6 = _make_doe(site, grp2, offset_minutes=8, duration_minutes=5,
+                          export_limit=Decimal("5000"), seed=60)
+        session.add_all([derc4, derc5, derc6])
         await session.flush()
-        created_times = {k: v.created_time for k, v in ctrls.items()}
+        ct4, ct5, ct6 = derc4.created_time, derc5.created_time, derc6.created_time
         await session.commit()
 
-    # 5-minute polling interval
     polls = [
-        _poll(1, created_times["imp1"] + timedelta(minutes=5), req_id=1),
-        _poll(1, created_times["imp2"] + timedelta(minutes=5), req_id=2),
-        _poll(1, created_times["imp3"] + timedelta(minutes=5), req_id=3),
-        _poll(2, created_times["exp1"] + timedelta(minutes=5), req_id=10),
-        _poll(2, created_times["exp2"] + timedelta(minutes=5), req_id=11),
-        _poll(2, created_times["exp3"] + timedelta(minutes=5), req_id=12),
+        # T+1m: device polls /derp/1/derc — DERC4 received (triggers disconnect)
+        _poll(1, ct4 + timedelta(minutes=1, seconds=30),  req_id=1, step_name="GET-DERC-4"),
+        # T+1m30s: device polls /derp/2/derc — DERC5 received (masked by disconnect until T+6m)
+        _poll(2, ct5 + timedelta(minutes=2),              req_id=2, step_name="GET-DERC-5"),
+        # T+7m: re-poll during wait step — device should now be following DERC5 (200%)
+        _poll(2, T0 + timedelta(minutes=7),               req_id=3, step_name="WAIT-OBSERVE-DERC-5"),
+        # T+9m: device polls /derp/2/derc — DERC6 received (DERC5 already expired at T+8m)
+        _poll(2, ct6 + timedelta(minutes=1, seconds=30),  req_id=4, step_name="GET-DERC-6"),
+        # T+11m: re-poll during wait step — device should be following DERC6 (50%)
+        _poll(2, T0 + timedelta(minutes=11),              req_id=5, step_name="WAIT-OBSERVE-DERC-6"),
+        # T+15m: poll after DERC6 expires — device returns to unconstrained
+        _poll(1, T0 + timedelta(minutes=15),              req_id=6, step_name="WAIT-OBSERVE-DERP-1-6-DEFAULTS"),
     ]
 
     async with generate_async_session(pg_base_config) as session:
         html = await generate_power_limit_chart_html(session, T0, test_end, polls)
 
     assert html is not None
-    out = _out("scenario_E_gen10_like.html")
+    out = _out("scenario_E_gen10_derc456.html")
     out.write_text(html)
     print(f"\n  ✓ Scenario E → {out}")
     print(f"\n  Open all charts: ls {OUTPUT_DIR}/")
