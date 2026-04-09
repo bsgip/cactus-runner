@@ -128,7 +128,6 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
         ({"s": "0"}, 0),  # Explicit first page
         ({"s": "1"}, 1),  # Second page
         ({"s": "4"}, 4),  # Later page
-        ({"s": "abc"}, None),  # Invalid
         ({"s": "0", "l": "2"}, 0),  # s with other params
         ({"s": "4", "l": "2"}, 4),  # Paginated with limit
     ],

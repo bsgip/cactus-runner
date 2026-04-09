@@ -204,13 +204,10 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
         if not path_without_mount or not path_without_mount.startswith("/"):
             path_without_mount = "/" + path_without_mount
 
-    s_str = request.query.get("s")
+    s_str = request.query.get("s", None)
     query_start: int | None = None
     if s_str is not None:
-        try:
-            query_start = int(s_str)
-        except ValueError:
-            pass
+        query_start = int(s_str)
 
     trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
     return EventTrigger(
