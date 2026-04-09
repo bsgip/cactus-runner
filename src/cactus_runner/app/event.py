@@ -97,6 +97,10 @@ async def is_listener_triggerable(
         if not does_endpoint_match(trigger.client_request.path, endpoint.value):
             return False
 
+        # Only match on first page (s=0) or un-paginated (s absent) requests
+        if trigger.client_request.query_start is not None and trigger.client_request.query_start != 0:
+            return False
+
         # Make sure that we are listening to the correct before/after serving event
         if serve_request_first.value:
             return trigger.type == EventTriggerType.CLIENT_REQUEST_AFTER
