@@ -469,6 +469,66 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             ),
             False,  # This listener is NOT enabled
         ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=0),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,  # s=0 (first page) should trigger
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=1),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # s=1 (second page) should NOT trigger
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=5),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            False,  # s=5 (paginated) should NOT trigger
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                False,
+                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=None),
+            ),
+            Listener(
+                step="step",
+                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+            ),
+            True,  # No s param should trigger (same as first page)
+        ),
     ],
 )
 @patch("cactus_runner.app.event.evaluator.resolve_variable_expressions_from_parameters")
