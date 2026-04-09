@@ -115,6 +115,10 @@ class _EnrichedControl:
         return self.doe.set_connected
 
     @property
+    def set_energized(self) -> bool | None:
+        return self.doe.set_energized
+
+    @property
     def ramp_time_seconds(self) -> float | None:
         v = self.doe.ramp_time_seconds
         return float(v) if v is not None else None
@@ -355,14 +359,15 @@ def _compute_disconnect_intervals(
     - An opModConnect=True active control (at its effective_start), or
     - The opModConnect=False control expiring (at its effective_end).
     """
-    # False controls contribute two events: disconnect at effective_start, reconnect at effective_end.
+    # False controls (set_connected=False OR set_energized=False) contribute two events:
+    # disconnect at effective_start, reconnect at effective_end.
     # True controls contribute one event: reconnect at effective_start.
     connected_events: list[tuple[datetime, bool]] = []
     for ctrl in enriched:
-        if ctrl.set_connected is False:
+        if ctrl.set_connected is False or ctrl.set_energized is False:
             connected_events.append((ctrl.effective_start, False))
             connected_events.append((ctrl.effective_end, True))  # expiry = reconnect
-        elif ctrl.set_connected is True:
+        elif ctrl.set_connected is True or ctrl.set_energized is True:
             connected_events.append((ctrl.effective_start, True))
     connected_events.sort(key=lambda e: e[0])
 
@@ -766,7 +771,7 @@ def _render_html_chart(
     y_max = set_max_w * 1.1
     y_min = -set_max_w * 1.1
     has_steps = bool(step_intervals)
-    bottom_margin = 175 if has_steps else 105
+    bottom_margin = 230 if has_steps else 130
 
     fig = go.Figure()
 
@@ -881,7 +886,7 @@ def _render_html_chart(
         # "Steps" axis label, left of the strip
         fig.add_annotation(
             xref="paper", yref="paper",
-            x=-0.04, y=-0.27,
+            x=-0.04, y=-0.32,
             text="<b>Steps</b>",
             showarrow=False,
             font=dict(size=9, color="#555"),
@@ -898,7 +903,7 @@ def _render_html_chart(
                 type="rect",
                 xref="x", yref="paper",
                 x0=x0, x1=x1,
-                y0=-0.36, y1=-0.18,
+                y0=-0.42, y1=-0.22,
                 fillcolor=color,
                 line=dict(color="rgba(0,0,0,0.18)", width=0.5),
                 layer="below",
@@ -909,7 +914,7 @@ def _render_html_chart(
                 fig.add_annotation(
                     xref="x", yref="paper",
                     x=(x0 + x1) / 2,
-                    y=-0.27,
+                    y=-0.32,
                     text=label,
                     showarrow=False,
                     font=dict(size=8),
@@ -948,10 +953,10 @@ def _render_html_chart(
             gridcolor="rgba(0,0,0,0.08)",
             zeroline=False,
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.16, xanchor="right", x=1),
         plot_bgcolor="white",
         paper_bgcolor="white",
-        margin=dict(t=120, b=bottom_margin, l=80, r=120),
+        margin=dict(t=150, b=bottom_margin, l=80, r=120),
         hovermode="x unified",
         # ── Export / Import view toggle ──────────────────────────────────────
         updatemenus=[
@@ -959,7 +964,7 @@ def _render_html_chart(
                 type="buttons",
                 direction="left",
                 x=0.0,
-                y=-0.08 if not has_steps else -0.12,
+                y=-0.12 if not has_steps else -0.50,
                 xanchor="left",
                 yanchor="top",
                 buttons=[
@@ -982,7 +987,17 @@ def _render_html_chart(
         ],
     )
 
-    return fig.to_html(full_html=True, include_plotlyjs=True)
+    html = fig.to_html(full_html=True, include_plotlyjs=True)
+    disclaimer = (
+        '<div style="max-width:900px;margin:8px auto 24px;padding:6px 14px;'
+        "border:1px solid #d0a800;border-radius:4px;background:#fffbe6;"
+        'font-size:12px;color:#555;font-family:sans-serif;">'
+        "<b>Disclaimer:</b> This report represents a best guess for what site active power should "
+        "look like based on DERControls and their primacy, it should not be used where it conflicts "
+        "with the test definitions or TS5573 standards."
+        "</div>"
+    )
+    return html.replace("</body>", disclaimer + "</body>")
 
 
 # ─── Public entry point ───────────────────────────────────────────────────────

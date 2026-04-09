@@ -58,6 +58,7 @@ def _make_doe(
     load_limit: Decimal | None = None,
     ramp_time_seconds: Decimal | None = None,
     set_connected: bool | None = None,
+    set_energized: bool | None = None,
     seed: int = 1,
 ) -> DynamicOperatingEnvelope:
     start = T0 + timedelta(minutes=offset_minutes)
@@ -81,7 +82,7 @@ def _make_doe(
         ramp_time_seconds=ramp_time_seconds,
         set_connected=set_connected,
         superseded=False,
-        set_energized=None,
+        set_energized=set_energized,
         set_point_percentage=None,
         randomize_start_seconds=None,
     )
@@ -492,4 +493,74 @@ async def test_chart_gen10_derc456(pg_base_config):
     out = _out("scenario_E_gen10_derc456.html")
     out.write_text(html)
     print(f"\n  ✓ Scenario E → {out}")
+
+
+# ─── Scenario F: opModEnergise — de-energise and re-energise grace period ─────
+
+
+@pytest.mark.anyio
+async def test_chart_op_mod_energise(pg_base_config):
+    """
+    Demonstrates opModEnergise=False de-energise (power=0) and 1-minute grace after
+    explicit True-control re-energise, mirroring the opModConnect behaviour.
+
+    Program 1:
+      - Default export=7000W
+      - T+5m: export control 5000W begins (spanning full test)
+      - T+10m: opModEnergise=False (duration 5min, expires T+15m) → power forced to 0
+      - T+15m: False control expires → re-energise triggered, 1-min grace (power still 0)
+      - T+16m: grace ends → resumes 5000W export control
+      - T+20m: opModEnergise=True (already re-energised, no effect here)
+
+    Expected visual:
+      - Upper trace: 5000W from T+5m, drops to 0 at T+10m, ramps back to 5000W at T+16m
+      - Lower trace: flat at -10000W (no import limit set)
+    """
+    test_end = T0 + timedelta(minutes=35)
+    created_times: dict[str, datetime] = {}
+
+    async with generate_async_session(pg_base_config) as session:
+        site = _make_der_site(aggregator_id=1)
+        session.add(site)
+        grp1 = generate_class_instance(SiteControlGroup, seed=1, site_control_group_id=1, primacy=1)
+        session.add(grp1)
+
+        session.add(generate_class_instance(
+            SiteControlGroupDefault,
+            seed=1,
+            site_control_group=grp1,
+            import_limit_active_watts=None,
+            export_limit_active_watts=Decimal("7000"),
+            generation_limit_active_watts=None,
+            load_limit_active_watts=None,
+            ramp_rate_percent_per_second=None,
+            changed_time=T0 - timedelta(minutes=1),
+        ))
+
+        ctrls = {
+            "export":       _make_doe(site, grp1, offset_minutes=5,  duration_minutes=25,
+                                      export_limit=Decimal("5000"), seed=10),
+            "de-energise":  _make_doe(site, grp1, offset_minutes=10, duration_minutes=5,
+                                      set_energized=False, seed=20),
+            "re-energise":  _make_doe(site, grp1, offset_minutes=20, duration_minutes=5,
+                                      set_energized=True,  seed=30),
+        }
+        session.add_all(ctrls.values())
+        await session.flush()
+        created_times = {k: v.created_time for k, v in ctrls.items()}
+        await session.commit()
+
+    polls = [
+        _poll(1, created_times["export"]      + timedelta(seconds=60), req_id=1),
+        _poll(1, created_times["de-energise"] + timedelta(seconds=60), req_id=2),
+        _poll(1, created_times["re-energise"] + timedelta(seconds=60), req_id=3),
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        html = await generate_power_limit_chart_html(session, T0, test_end, polls)
+
+    assert html is not None
+    out = _out("scenario_F_op_mod_energise.html")
+    out.write_text(html)
+    print(f"\n  ✓ Scenario F → {out}")
     print(f"\n  Open all charts: ls {OUTPUT_DIR}/")
