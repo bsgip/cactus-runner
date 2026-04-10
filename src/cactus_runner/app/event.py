@@ -50,6 +50,7 @@ class ClientRequestDetails:
 
     method: HTTPMethod  # The HTTP method being used in the request
     path: str  # The requested path (no query params)
+    query_start: int | None = None  # Value of the `s` (start index) query param; None if absent
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,10 @@ async def is_listener_triggerable(
         serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
 
         if not does_endpoint_match(trigger.client_request.path, endpoint.value):
+            return False
+
+        # Only match on first page (s=0) or un-paginated (s absent) requests
+        if trigger.client_request.query_start is not None and trigger.client_request.query_start != 0:
             return False
 
         # Make sure that we are listening to the correct before/after serving event
@@ -199,12 +204,17 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
         if not path_without_mount or not path_without_mount.startswith("/"):
             path_without_mount = "/" + path_without_mount
 
+    s_str = request.query.get("s", None)
+    query_start: int | None = None
+    if s_str is not None:
+        query_start = int(s_str)
+
     trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
     return EventTrigger(
         type=trigger_type,
         time=datetime.now(timezone.utc),
         single_listener=True,
-        client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount),
+        client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount, query_start),
     )
 
 

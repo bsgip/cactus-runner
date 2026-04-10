@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,11 +10,14 @@ from envoy.server.model.aggregator import (
     AggregatorDomain,
 )
 from envoy.server.model.base import Certificate
-from sqlalchemy import insert, text
+from envoy.server.model.subscription import Subscription
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from cactus_runner.app.database import begin_session, open_connection
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+
+PLAYLIST_NOTIFICATION_WAIT_SECONDS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +109,8 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
     - certificate
     - site, site_der, site_der_rating, site_der_setting, site_der_availability, site_der_status
     - runtime_server_config
+    - subscription, subscription_condition (kept so devices don't need to re-register, and so
+      cancellation notifications can be delivered before the archive is cleared)
 
     And truncates test-specific transactional data.
 
@@ -114,6 +120,13 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
     """
     logger.info("Performing playlist database reset (partial)")
 
+    # Check for active subscriptions before the admin API call. If any exist, we sleep briefly
+    # afterwards so the async notification pipeline (check_db_change_or_delete to transmit_notification)
+    # has time to deliver cancellation notifications to clients before subscriptions are cleared.
+    async with begin_session() as session:
+        subscription_count = (await session.execute(select(func.count()).select_from(Subscription))).scalar_one()
+    has_subscriptions = subscription_count > 0
+
     # Step 1: Call DELETE /site-control-groups admin endpoint
     # This properly archives DOEs and sends notifications to subscribed clients
     try:
@@ -122,12 +135,22 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
     except Exception as exc:
         logger.warning(f"Failed to delete site control groups via admin API: {exc}")
 
+    if has_subscriptions:
+        logger.debug(
+            "Waiting %ss for notification pipeline to deliver cancellations to %d subscriber(s)",
+            PLAYLIST_NOTIFICATION_WAIT_SECONDS,
+            subscription_count,
+        )
+        await asyncio.sleep(PLAYLIST_NOTIFICATION_WAIT_SECONDS)
+
     # Step 2: Truncate specific tables (not site/aggregator/certificate)
     # Tables to delete - these will not notify the client, keeping state clean for the next test
     tables_to_truncate = [
-        # Archive tables
+        # Site readings (live + archive — reading types are preserved as they belong to the site registration)
+        "site_reading",
         "archive_site_reading",
         "archive_site_reading_type",
+        # Archive tables
         "archive_subscription",
         "archive_subscription_condition",
         # Calculation logs
@@ -138,9 +161,13 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
         "calculation_log_variable_value",
         # Subscriptions and notifications
         "transmit_notification_log",
-        "subscription_condition",
-        "subscription",
-        # DOE/Control (after the admin API call)
+        # DOE/Control archives (after the admin API call)
+        # archive_dynamic_operating_envelope must be truncated here: select_active_does_include_deleted queries BOTH
+        # the live table and the archive (to surface cancellations via the change-feed). The admin API call moves
+        # deleted DERControls into this archive with their original site_control_group_id intact. Because the
+        # site_control_group sequence restarts at 1, the next test's DERPrograms reuse the same IDs, causing those
+        # archived controls to appear in DERControlList responses for the new test.
+        "archive_dynamic_operating_envelope",
         "dynamic_operating_envelope_response",
         # Site events
         "site_log_event",
@@ -159,11 +186,11 @@ BEGIN
     {truncate_statements}
 
     -- Reset sequences for tables that were truncated (to 1, for consistency with reset_db behavior)
+    EXECUTE 'ALTER SEQUENCE site_reading_site_reading_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE site_control_group_site_control_group_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE calculation_log_calculation_log_id_seq RESTART WITH 1';
-    EXECUTE 'ALTER SEQUENCE subscription_subscription_id_seq RESTART WITH 1';
-    EXECUTE 'ALTER SEQUENCE subscription_condition_subscription_condition_id_seq RESTART WITH 1';
     EXECUTE 'ALTER SEQUENCE site_log_event_site_log_event_id_seq RESTART WITH 1';
+    -- Note: subscription/subscription_condition sequences are NOT reset - those tables are kept intact.
 
     -- Reset sequences that need epoch time (for new test to get unique IDs across playlist)
     EXECUTE 'ALTER SEQUENCE site_control_group_default_site_control_group_default_id_seq RESTART WITH ' || epoch_time;
