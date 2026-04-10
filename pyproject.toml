@@ -74,9 +74,10 @@ postgresql_exec = "/usr/lib/postgresql/16/bin/pg_ctl"
 testpaths = ["tests"]
 asyncio_default_fixture_loop_scope = "session"
 filterwarnings = [
-  # cactus_schema contains dataclasses named Test* (e.g. TestDefinition, TestUser) that pytest
-  # mistakenly tries to collect as test classes. Scoped to cactus_schema to avoid masking our own issues.
-  "ignore::pytest.PytestCollectionWarning:cactus_schema",
+  # cactus_schema contains dataclasses named Test* (e.g. TestDefinition, TestUser, TestConfig,
+  # TestCertificates) that pytest mistakenly tries to collect as test classes. Matched by message
+  # rather than module because pytest raises PytestCollectionWarning internally, not from cactus_schema.
+  "ignore:cannot collect test class 'Test(Definition|User|Config|Certificates)':pytest.PytestCollectionWarning",
 ]
 markers = [
   "slow: Metadata to say this is a test that takes a (relatively) long time to execute",
