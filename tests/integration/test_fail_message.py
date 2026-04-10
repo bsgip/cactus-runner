@@ -44,7 +44,7 @@ def generate_fail_message_tp() -> TestProcedure:
         description="",
         category="",
         classes=[],
-        target_versions=[CSIPAusVersion.RELEASE_1_3],
+        target_versions=["v1.3"],
         preconditions=Preconditions(immediate_start=True),
         criteria=Criteria([Check("all-steps-complete", {"ignored_steps": ["STEP-2"]})]),
         steps={
@@ -61,15 +61,17 @@ def generate_fail_message_tp() -> TestProcedure:
 
 
 @pytest.mark.parametrize(
-    "certificate_type, csip_aus_version",
-    [("aggregator_certificate", CSIPAusVersion.BETA_1_3_STORAGE), ("device_certificate", CSIPAusVersion.RELEASE_1_2)],
+    "n_dcap_requests, expected_success",
+    [
+        (0, False),  # Need one request to pass
+        (1, True),
+        (2, False),
+    ],
 )
 @pytest.mark.slow
 @pytest.mark.anyio
-async def test_fail_message(
-    cactus_runner_client: TestClient, certificate_type: str, csip_aus_version: CSIPAusVersion, run_request_generator
-):
-    """This is a full integration test of the entire ALL-01 workflow"""
+async def test_fail_message_with_fail(cactus_runner_client: TestClient, n_dcap_requests: int, expected_success: bool):
+    """This runs a fake test that will fail a client that request dcap twice - will fail by requesting twice"""
 
     # Init
     tp = generate_fail_message_tp()
@@ -90,11 +92,9 @@ async def test_fail_message(
     # Test Start
     #
 
-    result = await cactus_runner_client.get("/dcap", headers={"ssl-client-cert": URI_ENCODED_CERT})
-    await assert_success_response(result)
-
-    result = await cactus_runner_client.get("/dcap", headers={"ssl-client-cert": URI_ENCODED_CERT})
-    await assert_success_response(result)
+    for _ in range(n_dcap_requests):
+        result = await cactus_runner_client.get("/dcap", headers={"ssl-client-cert": URI_ENCODED_CERT})
+        await assert_success_response(result)
 
     #
     # Finalize
@@ -119,18 +119,9 @@ async def test_fail_message(
     summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))
     assert len(summary_data) > 0
     summary = RunnerStatus.from_json(summary_data.decode())
-    assert summary.csip_aus_version == csip_aus_version.value
-    for step, resolved in summary.step_status.items():
-        assert resolved.started_at is not None, step
-        assert resolved.completed_at is not None, step
+    assert len(summary.criteria) > 0, ",".join([f"{c.type}: {c.success} {c.details}" for c in summary.criteria])
+    assert all([c.success for c in summary.criteria]) == expected_success
 
     # Ensure PDF generated ok
     pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))
     assert len(pdf_data) > 1024
-
-    # Check that requests are saved in the zip
-    request_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".request")]
-    response_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".response")]
-
-    assert len(request_files) > 3, f"found {len(request_files)}"  # made 4 requests
-    assert len(response_files) > 3, f"found {len(response_files)}"
