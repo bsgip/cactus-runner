@@ -121,4 +121,3 @@ async def test_all_07_full(cactus_runner_client: TestClient, run_request_generat
     for step, resolved in summary.step_status.items():
         assert resolved.started_at is not None, step
         assert resolved.completed_at is not None, step
-

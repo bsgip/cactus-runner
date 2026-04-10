@@ -135,4 +135,3 @@ async def test_all_01_with_readings(
     for step, resolved in summary.step_status.items():
         assert resolved.started_at is not None, step
         assert resolved.completed_at is not None, step
-
