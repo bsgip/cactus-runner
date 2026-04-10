@@ -16,7 +16,7 @@ from envoy.server.model.site import SiteDERSetting
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app import check, reporting, timeline
+from cactus_runner.app import check, timeline
 from cactus_runner.app.database import (
     DatabaseNotInitialisedError,
     get_postgres_dsn,
@@ -96,7 +96,6 @@ def write_zip_to_file(
     json_status_summary: str | None,
     json_reporting_data: str | None,
     log_file_paths: list[str],
-    pdf_data: bytes | None,
     errors: list[str],
     filename_infix: str = "",
     reporting_data_filename_prefix: str | None = "ReportingData",
@@ -140,12 +139,6 @@ def write_zip_to_file(
                 logger.error(f"Unable to copy {log_file_path} to {destination}", exc_info=exc)
                 writeable_errors.append(f"Error fetching cactus logs for {log_file_path}: {exc}")
 
-        # Write pdf report
-        if pdf_data is not None:
-            file_path = archive_dir / f"CactusTestProcedureReport{filename_infix}.pdf"
-            with open(file_path, "wb") as f:
-                f.write(pdf_data)
-
         # Copy request/response files from storage to archive
         copy_request_response_files_to_archive(archive_dir=archive_dir)
 
@@ -176,7 +169,7 @@ def write_zip_to_file(
             )
             writeable_errors.append(f"Error generating database dump: {exc}")
 
-        # If we have some errors in generating PDF/other outputs - log them in the zip
+        # If we have some errors generating outputs - log them in the zip
         if writeable_errors:
             file_path = archive_dir / GENERATION_ERRORS_FILE_NAME
             with open(file_path, "w") as f:
@@ -202,55 +195,6 @@ def safely_write_error_zip(errors: list[str]) -> Path:
             f"Complete failure to generate output zip with data {errors}\nException to follow\n{exc}".encode()
         )
     return dest_path
-
-
-async def generate_pdf(
-    runner_state,
-    check_results,
-    readings,
-    reading_counts,
-    sites,
-    timeline,
-    errors,
-    set_max_w_varied: bool = False,
-) -> bytes | None:
-    try:
-        # Generate the pdf (as bytes)
-        pdf_data = reporting.pdf_report_as_bytes(
-            runner_state=runner_state,
-            check_results=check_results,
-            readings=readings,
-            reading_counts=reading_counts,
-            sites=sites,
-            timeline=timeline,
-            set_max_w_varied=set_max_w_varied,
-        )
-    except Exception as exc:
-        logger.error("Error generating PDF report.", exc_info=exc)
-        errors.append(f"Error generating PDF report: {exc}")
-        pdf_data = None
-
-    # Try generating the report a second time this time without any spacers
-    # which seem to be the source of pdf layout issues.
-    if pdf_data is None:
-        try:
-            # Generate the pdf (as bytes) this time excluding any spacers
-            pdf_data = reporting.pdf_report_as_bytes(
-                runner_state=runner_state,
-                check_results=check_results,
-                readings=readings,
-                reading_counts=reading_counts,
-                sites=sites,
-                timeline=timeline,
-                no_spacers=True,
-                set_max_w_varied=set_max_w_varied,
-            )
-        except Exception as exc:
-            logger.error("Error generating PDF report without Spacers. Omitting report from final zip.", exc_info=exc)
-            errors.append(f"Error generating PDF report: {exc}")
-            pdf_data = None
-
-    return pdf_data
 
 
 async def generate_json_reporting_data(
@@ -374,7 +318,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             errors.append(f"Failed to generate test timeline: {exc}")
             test_timeline = None
 
-        # Fetch raw DB data and create PDF
+    # Fetch raw DB data
     try:
         sites = await get_sites(session)
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
@@ -396,17 +340,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
 
         capped_runner_state = dataclasses.replace(runner_state, request_history=capped_request_history)
 
-        pdf_data = await generate_pdf(
-            runner_state=capped_runner_state,
-            check_results=check_results,
-            readings=readings,
-            reading_counts=reading_counts,
-            sites=sites,
-            timeline=test_timeline,
-            errors=errors,
-            set_max_w_varied=set_max_w_varied,
-        )
-
         # Convert to serialisable types
         serializable_readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
         serializable_reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
@@ -427,9 +360,8 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         )
         reporting_data_filename_prefix = f"ReportingData_v{reporting_data_version}"
     except Exception as exc:
-        logger.error("Failed to generate PDF report", exc_info=exc)
-        errors.append(f"Failed to generate PDF report: {exc}")
-        pdf_data = None
+        logger.error("Failed to generate reporting data", exc_info=exc)
+        errors.append(f"Failed to generate reporting data: {exc}")
         json_reporting_data = None
         reporting_data_filename_prefix = None
 
@@ -449,7 +381,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             LOG_FILE_ENVOY_NOTIFICATION,
             LOG_FILE_CACTUS_RUNNER,
         ],
-        pdf_data=pdf_data,
         filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
         reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
