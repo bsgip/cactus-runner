@@ -29,6 +29,7 @@ from cactus_runner.app.readings import (
     scale_readings,
 )
 
+
 @pytest.mark.asyncio
 async def test_get_readings(pg_base_config):
     # Arrange
@@ -628,5 +629,3 @@ def test_group_reading_types(reading_types, expected_group_indexes):
     assert len(groups) == len(expected_groups)
     for expected_group in expected_groups:
         assert expected_group in groups
-
-
