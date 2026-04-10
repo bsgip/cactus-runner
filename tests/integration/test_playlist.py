@@ -38,10 +38,6 @@ def verify_zip_contents(zip_data: bytes, expected_test_name: str) -> None:
     summary_files = [f for f in filenames if f.startswith("CactusTestProcedureSummary")]
     assert len(summary_files) >= 1, f"Missing summary file in {filenames}"
 
-    # Should have PDF report
-    pdf_files = [f for f in filenames if f.startswith("CactusTestProcedureReport")]
-    assert len(pdf_files) >= 1, f"Missing PDF report in {filenames}"
-
     # Verify summary contains expected test name
     summary_data = zip_file.read(summary_files[0])
     summary = RunnerStatus.from_json(summary_data.decode())

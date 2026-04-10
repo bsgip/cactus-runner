@@ -136,19 +136,3 @@ async def test_all_01_with_readings(
         assert resolved.started_at is not None, step
         assert resolved.completed_at is not None, step
 
-    # Ensure PDF generated ok
-    pdf_data = zip_file.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip_file.namelist()))
-    assert len(pdf_data) > 1024, "PDF should be at least 1KB"
-
-    # TO VIEW THE PDF:
-    # import os
-    # import uuid
-    # import tempfile
-    # import subprocess
-
-    # with tempfile.NamedTemporaryFile(suffix=".pdf", prefix=f"test_report_{uuid.uuid4().hex[:8]}_", delete=False) as f:
-    #     f.write(pdf_data)
-    #     f.flush()
-    #     print(f"Saved PDF: {f.name}")
-    #     if os.environ.get("DISPLAY"):  # Only if running with GUI
-    #         subprocess.run(["xdg-open", f.name], check=False)

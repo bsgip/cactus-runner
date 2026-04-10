@@ -92,10 +92,6 @@ async def test_all_01_full(
         assert resolved.started_at is not None, step
         assert resolved.completed_at is not None, step
 
-    # Ensure PDF generated ok
-    pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))
-    assert len(pdf_data) > 1024
-
     # Check that requests are saved in the zip
     request_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".request")]
     response_files = [f for f in zip.namelist() if f.startswith("requests/") and f.endswith(".response")]

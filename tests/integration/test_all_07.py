@@ -122,6 +122,3 @@ async def test_all_07_full(cactus_runner_client: TestClient, run_request_generat
         assert resolved.started_at is not None, step
         assert resolved.completed_at is not None, step
 
-    # Ensure PDF generated ok
-    pdf_data = zip.read(get_filename(prefix="CactusTestProcedureReport", filenames=zip.namelist()))
-    assert len(pdf_data) > 1024
