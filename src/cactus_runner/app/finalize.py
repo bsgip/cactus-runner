@@ -142,32 +142,27 @@ def write_zip_to_file(
         # Copy request/response files from storage to archive
         copy_request_response_files_to_archive(archive_dir=archive_dir)
 
-        # Create db dump
+        # Create db dumps (schema + data)
         try:
             connection_string = get_postgres_dsn().replace("+psycopg", "")
         except DatabaseNotInitialisedError:
             raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
-        dump_file = str(archive_dir / f"EnvoyDB{filename_infix}.dump")
         exectuable_name = "pg_dump"
-        # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
-        command = [
-            exectuable_name,
-            f"--dbname={connection_string}",
-            "-f",
-            dump_file,
-            "--data-only",
-            "--inserts",
-            "--column-inserts",
-            "--no-password",
-        ]
-        try:
-            subprocess.run(command)  # nosec B603
-        except FileNotFoundError as exc:
-            logger.error(
-                f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?",  # noqa: E501
-                exc_info=exc,
-            )
-            writeable_errors.append(f"Error generating database dump: {exc}")
+        for dump_args, dump_filename in [
+            (["--schema-only", "--no-owner", "--no-privileges"], f"EnvoyDBSchema{filename_infix}.dump"),
+            (["--data-only", "--inserts", "--column-inserts"], f"EnvoyDB{filename_infix}.dump"),
+        ]:
+            dump_file = str(archive_dir / dump_filename)
+            # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
+            command = [exectuable_name, f"--dbname={connection_string}", "-f", dump_file, "--no-password"] + dump_args
+            try:
+                subprocess.run(command)  # nosec B603
+            except FileNotFoundError as exc:
+                logger.error(
+                    f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?",  # noqa: E501
+                    exc_info=exc,
+                )
+                writeable_errors.append(f"Error generating database dump: {exc}")
 
         # If we have some errors generating outputs - log them in the zip
         if writeable_errors:
