@@ -156,7 +156,7 @@ def write_zip_to_file(
             raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
         exectuable_name = "pg_dump"
         for dump_args, dump_filename in [
-            (["--schema-only"], f"EnvoyDBSchema{filename_infix}.dump"),
+            (["--schema-only", "--no-owner", "--no-privileges"], f"EnvoyDBSchema{filename_infix}.dump"),
             (["--data-only", "--inserts", "--column-inserts"], f"EnvoyDB{filename_infix}.dump"),
         ]:
             dump_file = str(archive_dir / dump_filename)
