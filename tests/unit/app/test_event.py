@@ -470,6 +470,54 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
         ),
         (
             event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+            ),
+            True,  # proceed with timeout_seconds fires via TIME trigger once elapsed
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+            ),
+            False,  # Not enough time elapsed
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+            ),
+            False,  # proceed without timeout_seconds does NOT fire via TIME trigger
+        ),
+        (
+            event.EventTrigger(
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+            ),
+            Listener(
+                step="step",
+                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+                actions=[],
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+            ),
+            True,  # Manual PROCEED still fires even when timeout_seconds is set but not yet elapsed
+        ),
+        (
+            event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
                 datetime(2022, 11, 10, tzinfo=timezone.utc),
                 False,
