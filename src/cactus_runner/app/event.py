@@ -117,9 +117,26 @@ async def is_listener_triggerable(
 
         return (trigger.time - listener.enabled_time).total_seconds() >= duration_seconds.value
 
-    # If this listener is a proceed event and we have received the appropriate trigger
-    if listener.event.type == "proceed" and trigger.type == EventTriggerType.PROCEED:
-        return True
+    # If this listener is a proceed event:
+    # - A PROCEED trigger (manual button press) always fires it
+    # - A TIME trigger fires it if timeout_seconds is set and the timeout has elapsed
+    if listener.event.type == "proceed":
+        if trigger.type == EventTriggerType.PROCEED:
+            return True
+        if trigger.type == EventTriggerType.TIME:
+            resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
+                session, listener.event.parameters
+            )
+            timeout_seconds = resolved_params.get("timeout_seconds", evaluator.ResolvedParam(None))
+            if timeout_seconds.value is not None:
+                elapsed = (trigger.time - listener.enabled_time).total_seconds()
+                if elapsed >= timeout_seconds.value:
+                    logger.info(
+                        f"handle_event_trigger: proceed timeout elapsed for step {listener.step} "
+                        f"({elapsed:.1f}s >= {timeout_seconds.value}s)"
+                    )
+                    return True
+        return False
 
     # This event type / trigger doesn't match
     return False
