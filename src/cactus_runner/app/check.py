@@ -1705,7 +1705,7 @@ def check_resource_requests(resolved_parameters: dict[str, Any], request_history
             (does_endpoint_match(path=request.path, match=match_uri) for match_uri in resource_match_uris)
         )
 
-    resources_string = ", ".join(r.value for r in resources)
+    resources_string = ", ".join(resources)
     if minimum_count is not None and total_matches < minimum_count:
         return CheckResult(
             False, f"Expected at least {minimum_count} {resources_string} matches but only saw {total_matches}"

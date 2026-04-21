@@ -4559,6 +4559,7 @@ def test_csip_aus_resource_to_match_uri():
         ([], [], 0, 0, True),
         ([], [], 1, 0, False),
         ([], [], 0, 99, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], ["EndDevice"], None, 2, True),
         (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], None, 2, True),
         (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, None, True),
         (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, 2, True),
