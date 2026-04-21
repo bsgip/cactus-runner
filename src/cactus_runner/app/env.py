@@ -38,6 +38,6 @@ MAX_LOG_FILE_BYTES = int(os.getenv("MAX_LOG_FILE_BYTES", str(32 * 1024 * 1024)))
 # Storage extension media type header, values only allowed when an `accept` or `content-type` header is provided.
 HEADER_MEDIA_TYPE = os.getenv("HEADER_MEDIA_TYPE", "application/sep+xml")
 HEADER_MEDIA_PARAM_NAME = os.getenv("HEADER_MEDIA_PARAM_NAME", "csipaus")
-HEADER_MEDIA_PARAM_VALUE = os.getenv("HEADER_MEDIA_PARAM_VALUE", "1.3-beta_storage")
+HEADER_MEDIA_PARAM_VALUE = os.getenv("HEADER_MEDIA_PARAM_VALUE", "1.3")
 
 HEADER_MEDIA_ALL = f"{HEADER_MEDIA_TYPE}; {HEADER_MEDIA_PARAM_NAME}={HEADER_MEDIA_PARAM_VALUE}"
