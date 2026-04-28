@@ -33,6 +33,7 @@ from sqlalchemy.orm import aliased
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
+    get_all_sites,
     get_csip_aus_site_reading_types_partitioned,
     get_site_readings,
 )
@@ -282,6 +283,26 @@ async def check_end_device_contents(
                     False,
                     f"PEN from lfdi '{pen_from_lfdi}' (last 8 hex digits) does not match '{pen}'. PEN should be decimal encoded.",  # noqa: E501
                 )
+
+    return CheckResult(True, None)
+
+
+async def check_end_device_count(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+    """Implements the end-device-count check
+
+    Returns pass if there are a specific number of EndDevice's registered for the current client"""
+
+    minimum_count: int | None = resolved_parameters.get("minimum_count", None)
+    maximum_count: int | None = resolved_parameters.get("maximum_count", None)
+
+    sites = await get_all_sites(session)
+    total_sites = len(sites)
+
+    if minimum_count is not None and total_sites < minimum_count:
+        return CheckResult(False, f"Expected at least {minimum_count} EndDevice(s) but only found {total_sites}")
+
+    if maximum_count is not None and total_sites > maximum_count:
+        return CheckResult(False, f"Expected at most {maximum_count} EndDevice(s) but found {total_sites}")
 
     return CheckResult(True, None)
 
@@ -1378,6 +1399,9 @@ async def run_check(
 
             case "end-device-contents":
                 check_result = await check_end_device_contents(active_test_procedure, session, resolved_parameters)
+
+            case "end-device-count":
+                check_result = await check_end_device_count(session, resolved_parameters)
 
             case "der-settings-contents":
                 check_result = await check_der_settings_contents(session, resolved_with_metadata_parameters)

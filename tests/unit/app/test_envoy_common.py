@@ -27,6 +27,7 @@ from envoy_schema.server.schema.sep2.types import (
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
+    get_all_sites,
     get_csip_aus_site_reading_types,
     get_reading_counts_grouped_by_reading_type,
     get_site_control_group_defaults_with_archive,
@@ -95,6 +96,33 @@ async def test_get_active_site_with_der_settings(pg_base_config):
         assert site.site_id == 2
         with pytest.raises(sqlalchemy.exc.InvalidRequestError, match="is not available due to lazy='raise'"):
             _ = site.site_ders
+
+
+@pytest.mark.anyio
+async def test_get_all_sites_no_sites(pg_base_config):
+    async with generate_async_session(pg_base_config) as session:
+        sites = await get_all_sites(session)
+        assert_list_type(Site, sites, count=0)
+
+
+@pytest.mark.anyio
+async def test_get_all_sites_many_sites(pg_base_config):
+    async with generate_async_session(pg_base_config) as session:
+        session.add(
+            generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10))
+        )
+        session.add(
+            generate_class_instance(Site, seed=202, aggregator_id=1, site_id=22, changed_time=datetime(2022, 11, 11))
+        )
+        session.add(
+            generate_class_instance(Site, seed=303, aggregator_id=1, site_id=3, changed_time=datetime(2000, 11, 10))
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        sites = await get_all_sites(session)
+        assert_list_type(Site, sites, count=3)
+        assert [s.site_id for s in sites] == [1, 3, 22], "Must be ordered by PK"
 
 
 @pytest.mark.anyio

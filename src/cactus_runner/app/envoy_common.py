@@ -64,6 +64,11 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
     return site
 
 
+async def get_all_sites(session: AsyncSession) -> Sequence[Site]:
+    """Fetches every registered Site - ordered by their PK site_id"""
+    return (await session.execute(select(Site).order_by(Site.site_id.asc()))).scalars().all()
+
+
 async def get_csip_aus_site_reading_types_partitioned(
     session: AsyncSession,
     uom: UomType,
