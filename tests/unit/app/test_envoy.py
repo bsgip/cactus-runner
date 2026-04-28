@@ -18,6 +18,7 @@ from envoy_schema.admin.schema.site_control import (
 from envoy_schema.admin.schema.uri import (
     ServerConfigRuntimeUri,
     SiteControlGroupListUri,
+    SiteControlGroupUri,
     SiteControlUri,
 )
 
@@ -45,6 +46,8 @@ def mock_session_with_json_response():
             mock_session.post = AsyncMock(return_value=mock_response)
         elif method == "delete":
             mock_session.delete = AsyncMock(return_value=mock_response)
+        elif method == "put":
+            mock_session.put = AsyncMock(return_value=mock_response)
         return mock_session, mock_response
 
     return _mock
@@ -202,6 +205,30 @@ async def test_post_site_control_group(mock_session_with_json_response):
     # Assert
     assert result == 12345, "This is the ID extracted from Location header"
     mock_session.post.assert_called_once_with(SiteControlGroupListUri, json=group.model_dump())
+
+
+@pytest.mark.asyncio
+async def test_put_site_control_group(mock_session_with_json_response):
+    # Arrange
+    expected_response_obj = generate_class_instance(SiteControlGroupResponse, seed=1001)
+    mock_session, _ = mock_session_with_json_response(
+        status=201,
+        method="put",
+        location_header="/site_control_group/12345",
+        json_data=expected_response_obj.model_dump(),
+    )
+
+    client = EnvoyAdminClient("http://localhost", EnvoyAdminClientAuthParams("admin", "pw"))
+    client._session = mock_session
+
+    group = generate_class_instance(SiteControlGroupRequest, seed=123)
+
+    # Act
+    result = await client.put_site_control_group(12345, group)
+
+    # Assert
+    assert result == expected_response_obj
+    mock_session.put.assert_called_once_with(SiteControlGroupUri.format(group_id=12345), json=group.model_dump())
 
 
 @pytest.mark.asyncio

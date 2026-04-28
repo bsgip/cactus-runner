@@ -29,12 +29,14 @@ from cactus_runner.app.action import (
     action_edev_registration_links,
     action_enable_steps,
     action_register_end_device,
+    action_remove_function_set_assignment,
     action_remove_steps,
     action_set_comms_rate,
     action_set_default_der_control,
     apply_action,
     apply_actions,
 )
+from cactus_runner.app.envoy_common import get_all_site_control_groups
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
@@ -64,6 +66,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "create-time-tariff-interval": None,  # Not supported in v1.2
     "cancel-time-tariff-intervals": None,  # Not supported in v1.2
     "delete-rate-component": None,  # Not supported in v1.2
+    "remove-function-set-assignment": "action_remove_function_set_assignment",
 }
 
 
@@ -1022,3 +1025,51 @@ async def test_action_edev_registration_links(
             pg_base_config.execute("select disable_edev_registration from runtime_server_config;").fetchone()[0]
             == expected_db_value
         )
+
+
+@pytest.mark.parametrize(
+    "scg_fsa_ids, fsa_id, expected_update_indexes",
+    [
+        ([], 1, []),
+        ([1, 2, 3], 1, [0]),
+        ([1, 2, 3], 2, [1]),
+        ([1, None, 3, 1, 2, 11, None], 1, [0, 3]),
+        ([1, 1], 1, [0, 1]),
+        ([1, 1], 2, []),
+    ],
+)
+@pytest.mark.anyio
+async def test_action_remove_function_set_assignment(
+    pg_base_config, envoy_admin_client, scg_fsa_ids: list[int | None], fsa_id: int, expected_update_indexes: list[int]
+):
+    # Arrange
+    primacies: list[int] = []
+    descriptions: list[str] = []
+    async with generate_async_session(pg_base_config) as session:
+        for idx, scg_fsa_id in enumerate(scg_fsa_ids):
+            new_instance = generate_class_instance(
+                SiteControlGroup, seed=idx * 101, fsa_id=scg_fsa_id, site_control_group_id=(idx + 1)
+            )
+            primacies.append(new_instance.primacy)
+            descriptions.append(new_instance.description)
+            session.add(new_instance)
+        await session.commit()
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_remove_function_set_assignment({"fsa_id": fsa_id}, session, envoy_admin_client)
+
+    # Assert
+    async with generate_async_session(pg_base_config) as session:
+        scgs = await get_all_site_control_groups(session)
+        assert len(scgs) == len(scg_fsa_ids)
+        for idx, original_fsa_id, original_primacy, original_description, site_control_group in zip(
+            range(len(scg_fsa_ids)), scg_fsa_ids, primacies, descriptions, scgs
+        ):
+            assert site_control_group.primacy == original_primacy
+            assert site_control_group.description == original_description
+            if idx in expected_update_indexes:
+                assert site_control_group.fsa_id is None
+                assert_nowish(site_control_group.changed_time)
+            else:
+                assert site_control_group.fsa_id == original_fsa_id

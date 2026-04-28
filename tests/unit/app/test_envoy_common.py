@@ -27,6 +27,7 @@ from envoy_schema.server.schema.sep2.types import (
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
+    get_all_site_control_groups,
     get_all_sites,
     get_csip_aus_site_reading_types,
     get_reading_counts_grouped_by_reading_type,
@@ -702,3 +703,29 @@ async def test_get_site_controls_active_archived(pg_base_config):
             )
             == 1
         )
+
+
+@pytest.mark.anyio
+async def test_get_all_site_control_groups(pg_base_config):
+    async with generate_async_session(pg_base_config) as session:
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=101, site_control_group_id=1, changed_time=datetime(2022, 11, 10)
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=202, site_control_group_id=22, changed_time=datetime(2022, 11, 11)
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=303, site_control_group_id=3, changed_time=datetime(2000, 11, 10)
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        groups = await get_all_site_control_groups(session)
+        assert_list_type(SiteControlGroup, groups, count=3)
+        assert [scg.site_control_group_id for scg in groups] == [1, 3, 22]

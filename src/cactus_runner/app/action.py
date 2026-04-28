@@ -7,7 +7,6 @@ from typing import Any
 from cactus_test_definitions.client import Action
 from envoy.server.crud.doe import select_site_control_groups
 from envoy.server.model.site import Site
-from sqlalchemy import select
 from envoy_schema.admin.schema.config import (
     RuntimeServerConfigRequest,
 )
@@ -19,10 +18,11 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlResponse,
     UpdateDefaultValue,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.envoy_common import get_active_site
+from cactus_runner.app.envoy_common import get_active_site, get_all_site_control_groups
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
@@ -397,6 +397,24 @@ async def action_edev_registration_links(resolved_parameters: dict[str, Any], en
     await envoy_client.update_runtime_config(RuntimeServerConfigRequest(disable_edev_registration=not links_enabled))
 
 
+async def action_remove_function_set_assignment(
+    resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
+):
+    fsa_id: int = resolved_parameters["fsa_id"]  # Mandatory param
+
+    # Identify which site control groups have the nominated function set assignment ID - and remove that FSA ID
+    # via the admin API
+    existing_groups = await get_all_site_control_groups(session)
+
+    for scg in existing_groups:
+        if scg.fsa_id == fsa_id:
+            logger.info(f"Removing fsa_id {scg.fsa_id} from SiteControlGroup {scg.site_control_group_id}")
+            request = SiteControlGroupRequest(
+                description=scg.description, primacy=scg.primacy, fsa_id=None, display_id=scg.display_id
+            )
+            await envoy_client.put_site_control_group(scg.site_control_group_id, request)
+
+
 async def apply_action(
     action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
@@ -453,6 +471,8 @@ async def apply_action(
             case "edev-registration-links":
                 await action_edev_registration_links(resolved_parameters, envoy_client)
                 return
+            case "remove-function-set-assignment":
+                await action_remove_function_set_assignment(resolved_parameters, session, envoy_client)
 
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)

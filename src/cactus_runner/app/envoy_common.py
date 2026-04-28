@@ -9,6 +9,7 @@ from envoy.server.model.archive.doe import (
 )
 from envoy.server.model.doe import (
     DynamicOperatingEnvelope,
+    SiteControlGroup,
     SiteControlGroupDefault,
 )
 from envoy.server.model.site import Site, SiteDER
@@ -235,3 +236,12 @@ async def get_site_control_group_defaults_with_archive(
     deleted_control_groups = (await session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
 
     return list(chain(active_control_groups, deleted_control_groups))
+
+
+async def get_all_site_control_groups(session: AsyncSession) -> Sequence[SiteControlGroup]:
+    """Fetches every registered SiteControlGroup - ordered by their PK site_control_group_id"""
+    return (
+        (await session.execute(select(SiteControlGroup).order_by(SiteControlGroup.site_control_group_id.asc())))
+        .scalars()
+        .all()
+    )

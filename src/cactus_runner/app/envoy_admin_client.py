@@ -111,6 +111,16 @@ class EnvoyAdminClient:
         href = resp.headers["Location"]
         return int(href.split("/")[-1])
 
+    async def put_site_control_group(
+        self, group_id: int, site_control_group: SiteControlGroupRequest
+    ) -> SiteControlGroupResponse:
+        resp = await self._session.put(
+            SiteControlGroupUri.format(group_id=group_id), json=site_control_group.model_dump()
+        )
+        resp.raise_for_status()
+        json = await resp.json()
+        return SiteControlGroupResponse(**json)
+
     async def post_site_control_default(
         self, group_id: int, control_default: SiteControlGroupDefaultRequest
     ) -> HTTPStatus:
