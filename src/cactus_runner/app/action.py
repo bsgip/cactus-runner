@@ -22,7 +22,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.envoy_common import get_active_site, get_all_site_control_groups
+from cactus_runner.app.envoy_common import (
+    count_all_site_controls_with_cancelled,
+    get_active_site,
+    get_all_site_control_groups,
+    get_all_sites,
+    get_site_controls_active_archived,
+)
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
@@ -189,14 +195,37 @@ async def action_create_der_control(
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
 ):
-    # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
-    active_site = await get_active_site(session)
-    if active_site is None:
-        raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
 
     start_time: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
     annotation: str | None = resolved_parameters.get("tag")
+    end_device_indexes: list[int] | None = resolved_parameters.get("end_device_indexes", None)
+    display_id: int | None = None
+
+    site_ids: list[int]
+    if not end_device_indexes:
+        # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
+        active_site = await get_active_site(session)
+        if active_site is None:
+            raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
+        site_ids = [active_site.site_id]
+    else:
+        site_ids = []
+        all_sites = await get_all_sites(session)
+        for idx in end_device_indexes:
+            if idx < 0 or idx >= len(all_sites):
+                raise Exception(f"end_device_index {idx} doesn't map to a valid EndDevice. {len(all_sites)} registered")
+            site_ids.append(all_sites[idx].site_id)
+
+        # We also need a unique display_id if we are "sharing" this DERControl virtually across multiple EndDevices
+        # We could just use the current count of DERControls but that will recycle between test runs - not ideal
+        # so we ALSO combine that with a timestamp to get a 64 bit display_id
+        existing_control_count = await count_all_site_controls_with_cancelled(session, site_id=None)
+        now_seconds = int(datetime.now(timezone.utc).timestamp())
+        display_id = existing_control_count << 32 | (now_seconds & 0xFFFFFFFF)
+
+    if len(site_ids) > 1 and annotation:
+        raise Exception("Cannot combine 'tag' and 'end_device_indexes' parameters. This is a test definition error.")
 
     # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
     primacy: int = resolved_parameters.get("primacy", 0)
@@ -241,26 +270,28 @@ async def action_create_der_control(
             )
         await envoy_client.update_runtime_config(RuntimeServerConfigRequest(site_control_pow10_encoding=effective_mult))
 
-    await envoy_client.create_site_controls(
-        site_control_group_id,
-        [
-            SiteControlRequest(
-                calculation_log_id=None,
-                site_id=active_site.site_id,
-                duration_seconds=duration_seconds,
-                start_time=start_time,
-                randomize_start_seconds=randomize_seconds,
-                set_energized=energize,
-                set_connect=connect,
-                import_limit_watts=import_limit_watts,
-                export_limit_watts=export_limit_watts,
-                generation_limit_watts=gen_limit_watts,
-                load_limit_watts=load_limit_watts,
-                set_point_percentage=set_point_percent,
-                ramp_time_seconds=ramp_time_seconds,
-            )
-        ],
-    )
+    for site_id in site_ids:
+        await envoy_client.create_site_controls(
+            site_control_group_id,
+            [
+                SiteControlRequest(
+                    calculation_log_id=None,
+                    site_id=site_id,
+                    duration_seconds=duration_seconds,
+                    start_time=start_time,
+                    randomize_start_seconds=randomize_seconds,
+                    display_id=display_id,
+                    set_energized=energize,
+                    set_connect=connect,
+                    import_limit_watts=import_limit_watts,
+                    export_limit_watts=export_limit_watts,
+                    generation_limit_watts=gen_limit_watts,
+                    load_limit_watts=load_limit_watts,
+                    set_point_percentage=set_point_percent,
+                    ramp_time_seconds=ramp_time_seconds,
+                )
+            ],
+        )
 
     # If we have tagged a control, we now need to find the site_control_id and add it to the test procedure annotations
     # Ideally this would be part of the admin client return functionality, but for now we will just grab the latest
@@ -274,6 +305,7 @@ async def action_create_der_control(
         else:
             raise FailedActionError("No controls exist for this site control group despite creation in this action.")
 
+        # We know due to an earlier check that if we have a tag annotation - there will ONLY be a single control created
         active_test_procedure.resource_annotations.der_control_ids_by_alias[annotation] = latest_site_control_id
 
 
@@ -473,6 +505,7 @@ async def apply_action(
                 return
             case "remove-function-set-assignment":
                 await action_remove_function_set_assignment(resolved_parameters, session, envoy_client)
+                return
 
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)

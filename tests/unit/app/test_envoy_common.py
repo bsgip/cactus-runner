@@ -26,6 +26,7 @@ from envoy_schema.server.schema.sep2.types import (
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
+    count_all_site_controls_with_cancelled,
     get_active_site,
     get_all_site_control_groups,
     get_all_sites,
@@ -729,3 +730,82 @@ async def test_get_all_site_control_groups(pg_base_config):
         groups = await get_all_site_control_groups(session)
         assert_list_type(SiteControlGroup, groups, count=3)
         assert [scg.site_control_group_id for scg in groups] == [1, 3, 22]
+
+
+@pytest.mark.anyio
+async def test_count_all_site_controls_with_cancelled(pg_base_config):
+    """Really simple test - can count_all_site_controls_with_cancelled handle the counting"""
+
+    async with generate_async_session(pg_base_config) as session:
+        # Add active site
+        site1 = generate_class_instance(Site, seed=11, aggregator_id=1, site_id=1)
+        site2 = generate_class_instance(Site, seed=22, aggregator_id=1, site_id=2)
+        session.add(site1)
+        session.add(site2)
+
+        session.add(
+            generate_class_instance(
+                SiteControlGroup,
+                site_control_group_id=1,
+                dynamic_operating_envelopes=[
+                    generate_class_instance(
+                        DynamicOperatingEnvelope,
+                        seed=101,
+                        site=site1,
+                        calculation_log_id=None,
+                    ),
+                    generate_class_instance(
+                        DynamicOperatingEnvelope,
+                        seed=202,
+                        site=site1,
+                        calculation_log_id=None,
+                    ),
+                    generate_class_instance(
+                        DynamicOperatingEnvelope,
+                        seed=303,
+                        site=site2,
+                        calculation_log_id=None,
+                    ),
+                ],
+            )
+        )
+
+        session.add_all(
+            [
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=404,
+                    deleted_time=None,
+                    site_id=1,
+                ),
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=505,
+                    site_id=1,
+                ),
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=606,
+                    site_id=2,
+                ),
+            ]
+        )
+        await session.commit()
+
+    # Act / Assert
+    async with generate_async_session(pg_base_config) as session:
+        result = await count_all_site_controls_with_cancelled(session, site_id=None)
+        assert isinstance(result, int)
+        assert result == 5, "3 active, 2 cancelled"
+
+        result = await count_all_site_controls_with_cancelled(session, site_id=1)
+        assert isinstance(result, int)
+        assert result == 3, "2 active, 1 cancelled"
+
+        result = await count_all_site_controls_with_cancelled(session, site_id=2)
+        assert isinstance(result, int)
+        assert result == 2, "1 active, 1 cancelled"
+
+        result = await count_all_site_controls_with_cancelled(session, site_id=99)
+        assert isinstance(result, int)
+        assert result == 0

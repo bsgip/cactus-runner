@@ -196,6 +196,22 @@ async def get_sites(session: AsyncSession) -> Sequence[Site]:
     return response.scalars().all()
 
 
+async def count_all_site_controls_with_cancelled(session: AsyncSession, site_id: int | None) -> int:
+    active_stmt = select(func.count()).select_from(DynamicOperatingEnvelope)
+    if site_id is not None:
+        active_stmt = active_stmt.where(DynamicOperatingEnvelope.site_id == site_id)
+
+    archive_stmt = (
+        select(func.count())
+        .select_from(ArchiveDynamicOperatingEnvelope)
+        .where(ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None))
+    )
+    if site_id is not None:
+        archive_stmt = archive_stmt.where(ArchiveDynamicOperatingEnvelope.site_id == site_id)
+
+    return (await session.execute(active_stmt)).scalar_one() + (await session.execute(archive_stmt)).scalar_one()
+
+
 async def get_site_controls_active_archived(
     session: AsyncSession,
 ) -> list[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope]:

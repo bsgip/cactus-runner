@@ -731,6 +731,106 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
 
 
 @pytest.mark.anyio
+async def test_action_create_der_control_with_tag_and_edev_indexes(pg_base_config, envoy_admin_client):
+    """Verifies that creating a DER control with a tag AND end_device_indexes bails out"""
+    # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
+    )
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        await session.commit()
+    tag = "DERC1"
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+        "opModFixedW": 0,
+        "tag": tag,
+        "end_device_indexes": [0, 1],
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        with pytest.raises(Exception):
+            await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
+
+    # Assert nothing in the DB
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 0
+
+    # Verify the tag was NOT added to the active test procedure
+    assert tag not in active_test_procedure.resource_annotations.der_control_ids_by_alias
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_with_end_device_indexes(pg_base_config, envoy_admin_client):
+    """Verifies that creating a DER control with end_device_indexes creates multiple controls with the same display
+    id for the appropriate site_ids"""
+    # Arrange
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, seed=101, site_id=11, aggregator_id=1))
+        session.add(generate_class_instance(Site, seed=202, site_id=22, aggregator_id=1))
+        session.add(generate_class_instance(Site, seed=303, site_id=44, aggregator_id=1))
+        session.add(generate_class_instance(Site, seed=404, site_id=33, aggregator_id=1))
+        await session.commit()
+
+    active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
+
+    resolved_params_1 = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "opModExpLimW": 10,
+        "end_device_indexes": [0, 2],  # These will correspond to site_id 11 and 33
+    }
+    resolved_params_2 = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "primacy": 2,
+        "opModExpLimW": 20,
+        "end_device_indexes": [0, 2],  # These will correspond to site_id 11 and 33
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        # We do this twice so we can ensure display_id is unique PER call
+        await action_create_der_control(resolved_params_1, session, envoy_admin_client, active_test_procedure)
+        await action_create_der_control(resolved_params_2, session, envoy_admin_client, active_test_procedure)
+
+    # Verify the tagged control ID matches the created control
+    async with generate_async_session(pg_base_config) as session:
+
+        all_does = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+        assert len(all_does) == 4
+        assert len(set([d.export_limit_watts for d in all_does])) == 2, "Two sets of opModExpLimW"
+
+        does_by_display_id: dict[int, list[DynamicOperatingEnvelope]] = {}
+        for d in all_does:
+            assert d.display_id
+            existing = does_by_display_id.get(d.display_id, None)
+            if existing is None:
+                does_by_display_id[d.display_id] = [d]
+            else:
+                existing.append(d)
+
+        for grouped_does in does_by_display_id.values():
+            assert len(grouped_does) == 2
+            assert len(set([d.export_limit_watts for d in grouped_does])) == 1
+            assert set([d.site_id for d in all_does]) == {11, 33}
+
+
+@pytest.mark.anyio
 async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
