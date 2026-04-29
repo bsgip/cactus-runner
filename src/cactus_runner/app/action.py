@@ -27,7 +27,6 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_all_site_control_groups,
     get_all_sites,
-    get_site_controls_active_archived,
 )
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
@@ -180,12 +179,20 @@ async def action_set_default_der_control(
     )
 
 
-async def action_create_der_program(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+async def action_create_der_program(
+    resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient, session: AsyncSession
+):
     primacy: int = int(resolved_parameters["primacy"])  # mandatory param
     fsa_id: int = int(resolved_parameters.get("fsa_id", 1))
+    end_device_indexes: list[int] | None = resolved_parameters.get("end_device_indexes", None)
+
+    display_id: int | None = None
+    if end_device_indexes:
+        # We can't fully implement this for a subset of end_device_indexes - so we just apply it globally
+        display_id = len(await get_all_site_control_groups(session)) + 1
 
     await envoy_client.post_site_control_group(
-        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id)
+        SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id, display_id=display_id)
     )
 
 
@@ -486,7 +493,7 @@ async def apply_action(
                 await action_create_der_control(resolved_parameters, session, envoy_client, active_test_procedure)
                 return
             case "create-der-program":
-                await action_create_der_program(resolved_parameters, envoy_client)
+                await action_create_der_program(resolved_parameters, envoy_client, session)
                 return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)

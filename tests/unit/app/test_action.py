@@ -1,6 +1,7 @@
 import unittest.mock as mock
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from itertools import product
 from typing import Any
 
 import pytest
@@ -472,27 +473,35 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
             assert new_scg.fsa_id == fsa_id
 
 
-@pytest.mark.parametrize("fsa_id", [None, 6812])
+@pytest.mark.parametrize("fsa_id, end_device_indexes", product([None, 6812], [None, [0, 1]]))
 @pytest.mark.anyio
-async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa_id):
+async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa_id, end_device_indexes):
     # Arrange
     resolved_params = {
         "primacy": 17,
     }
     if fsa_id is not None:
         resolved_params["fsa_id"] = fsa_id
+    if end_device_indexes is not None:
+        resolved_params["end_device_indexes"] = end_device_indexes
 
     # Act
-    await action_create_der_program(resolved_params, envoy_admin_client)
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_program(resolved_params, envoy_admin_client, session)
 
     # Assert
     if fsa_id is None:
         expected_fsa_id = 1
     else:
         expected_fsa_id = fsa_id
+    if end_device_indexes is None:
+        display_id_clause = "is null"
+    else:
+        display_id_clause = "> 0"
     assert (
         pg_base_config.execute(
-            f"select count(*) from site_control_group where primacy = 17 and fsa_id = {expected_fsa_id};"
+            f"select count(*) from site_control_group where primacy = 17 and fsa_id = {expected_fsa_id} and"
+            + f" display_id {display_id_clause};"
         ).fetchone()[0]
         == 1
     )
