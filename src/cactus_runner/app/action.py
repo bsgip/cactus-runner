@@ -180,23 +180,30 @@ async def action_set_default_der_control(
 
 
 async def action_create_der_program(
-    resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient, session: AsyncSession
+    resolved_parameters: dict[str, Any],
+    envoy_client: EnvoyAdminClient,
+    active_test_procedure: ActiveTestProcedure,
+    session: AsyncSession,
 ):
     primacy: int = int(resolved_parameters["primacy"])  # mandatory param
     fsa_id: int = int(resolved_parameters.get("fsa_id", 1))
     end_device_indexes: list[int] | None = resolved_parameters.get("end_device_indexes", None)
+    tag: str | None = resolved_parameters.get("tag", None)
 
     display_id: int | None = None
     if end_device_indexes:
         # We can't fully implement this for a subset of end_device_indexes - so we just apply it globally
         display_id = len(await get_all_site_control_groups(session)) + 1
 
-    await envoy_client.post_site_control_group(
+    site_control_group_id = await envoy_client.post_site_control_group(
         SiteControlGroupRequest(description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id, display_id=display_id)
     )
 
+    if tag is not None:
+        active_test_procedure.resource_annotations.der_program_ids_by_alias[tag] = site_control_group_id
 
-async def action_create_der_control(
+
+async def action_create_der_control(  # noqa: C901
     resolved_parameters: dict[str, Any],
     session: AsyncSession,
     envoy_client: EnvoyAdminClient,
@@ -207,6 +214,7 @@ async def action_create_der_control(
     duration_seconds: int = resolved_parameters["duration_seconds"]
     annotation: str | None = resolved_parameters.get("tag")
     end_device_indexes: list[int] | None = resolved_parameters.get("end_device_indexes", None)
+
     display_id: int | None = None
 
     site_ids: list[int]
@@ -234,24 +242,33 @@ async def action_create_der_control(
     if len(site_ids) > 1 and annotation:
         raise Exception("Cannot combine 'tag' and 'end_device_indexes' parameters. This is a test definition error.")
 
-    # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
-    primacy: int = resolved_parameters.get("primacy", 0)
-    fsa_id: int | None = resolved_parameters.get("fsa_id", None)
+    # We need the parent SiteControlGroup.site_control_group_id to nest this control under. This can be resolved via
+    # a direct tag reference - or it can be implied via primacy / fsa_id values.
+    der_program_tag: str | None = resolved_parameters.get("der_program_tag", None)
     site_control_group_id: int | None = None
-    control_groups_response = await envoy_client.get_all_site_control_groups()
-    if control_groups_response.site_control_groups:
-        for g in control_groups_response.site_control_groups:
-            if g.primacy == primacy and (fsa_id is None or fsa_id == g.fsa_id):
-                site_control_group_id = g.site_control_group_id
-                break
+    if der_program_tag is not None:
+        site_control_group_id = active_test_procedure.resource_annotations.der_program_ids_by_alias.get(der_program_tag)
+        if site_control_group_id is None:
+            raise Exception(f"Couldn't find DERProgram with tag '{der_program_tag}'. This is a test definition error.")
 
-    # Create our site control group if we don't have an existing one
-    if site_control_group_id is None:
-        site_control_group_id = await envoy_client.post_site_control_group(
-            SiteControlGroupRequest(
-                description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id if fsa_id is not None else 1
+    else:
+        # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
+        primacy: int = resolved_parameters.get("primacy", 0)
+        fsa_id: int | None = resolved_parameters.get("fsa_id", None)
+        control_groups_response = await envoy_client.get_all_site_control_groups()
+        if control_groups_response.site_control_groups:
+            for g in control_groups_response.site_control_groups:
+                if g.primacy == primacy and (fsa_id is None or fsa_id == g.fsa_id):
+                    site_control_group_id = g.site_control_group_id
+                    break
+
+        # Create our site control group if we don't have an existing one
+        if site_control_group_id is None:
+            site_control_group_id = await envoy_client.post_site_control_group(
+                SiteControlGroupRequest(
+                    description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id if fsa_id is not None else 1
+                )
             )
-        )
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
     ramp_time_seconds: Decimal | None = resolved_parameters.get("ramp_time_seconds", None)
@@ -493,7 +510,7 @@ async def apply_action(
                 await action_create_der_control(resolved_parameters, session, envoy_client, active_test_procedure)
                 return
             case "create-der-program":
-                await action_create_der_program(resolved_parameters, envoy_client, session)
+                await action_create_der_program(resolved_parameters, envoy_client, active_test_procedure, session)
                 return
             case "cancel-active-der-controls":
                 await action_cancel_active_controls(envoy_client)

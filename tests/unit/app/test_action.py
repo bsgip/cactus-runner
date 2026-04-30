@@ -473,10 +473,13 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
             assert new_scg.fsa_id == fsa_id
 
 
-@pytest.mark.parametrize("fsa_id, end_device_indexes", product([None, 6812], [None, [0, 1]]))
+@pytest.mark.parametrize("fsa_id, end_device_indexes, tag", product([None, 6812], [None, [0, 1]], [None, "Foo"]))
 @pytest.mark.anyio
-async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa_id, end_device_indexes):
+async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa_id, end_device_indexes, tag):
     # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
+    )
     resolved_params = {
         "primacy": 17,
     }
@@ -484,12 +487,22 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
         resolved_params["fsa_id"] = fsa_id
     if end_device_indexes is not None:
         resolved_params["end_device_indexes"] = end_device_indexes
+    if tag is not None:
+        resolved_params["tag"] = tag
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        await action_create_der_program(resolved_params, envoy_admin_client, session)
+        await action_create_der_program(resolved_params, envoy_admin_client, active_test_procedure, session)
 
     # Assert
+    if tag is not None:
+        assert tag in active_test_procedure.resource_annotations.der_program_ids_by_alias
+        expected_id = active_test_procedure.resource_annotations.der_program_ids_by_alias[tag]
+        assert isinstance(expected_id, int) and expected_id > 0
+    else:
+        assert len(active_test_procedure.resource_annotations.der_program_ids_by_alias) == 0
+        expected_id = None
+
     if fsa_id is None:
         expected_fsa_id = 1
     else:
@@ -498,10 +511,16 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
         display_id_clause = "is null"
     else:
         display_id_clause = "> 0"
+
+    if expected_id is None:
+        pk_clause = " and site_control_group_id > 0"
+    else:
+        pk_clause = f" and site_control_group_id = {expected_id}"
+
     assert (
         pg_base_config.execute(
             f"select count(*) from site_control_group where primacy = 17 and fsa_id = {expected_fsa_id} and"
-            + f" display_id {display_id_clause};"
+            + f" display_id {display_id_clause} {pk_clause};"
         ).fetchone()[0]
         == 1
     )
@@ -547,6 +566,101 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
     async with generate_async_session(pg_base_config) as session:
         new_scg = (await session.execute(select(SiteControlGroup))).scalar_one()
         assert new_scg.fsa_id == existing_fsa_id
+
+
+@pytest.mark.parametrize("tag", [None, "456-ABC"])
+@pytest.mark.anyio
+async def test_action_create_der_control_existing_group_with_tag(pg_base_config, envoy_admin_client, tag):
+    # Arrange
+    derp_tag = "abc-DEF-123"
+    existing_scg_id = 1251161
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        step_status={},
+        finished_zip_path=None,
+        resource_annotations=ResourceAnnotations(
+            der_program_ids_by_alias={(derp_tag + "foo"): existing_scg_id + 1, derp_tag: existing_scg_id}
+        ),
+    )
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=existing_scg_id))
+        await session.commit()
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+        "opModFixedW": 0,
+        "der_program_tag": derp_tag,
+        "tag": tag,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from runtime_server_config;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 1
+
+    async with generate_async_session(pg_base_config) as session:
+        existing_scg = (await session.execute(select(SiteControlGroup))).scalar_one()
+        assert existing_scg.site_control_group_id == existing_scg_id
+    assert len(active_test_procedure.resource_annotations.der_program_ids_by_alias) == 2
+
+    if tag is None:
+        assert len(active_test_procedure.resource_annotations.der_control_ids_by_alias) == 0
+    else:
+        assert len(active_test_procedure.resource_annotations.der_control_ids_by_alias) == 1
+
+
+@pytest.mark.anyio
+async def test_action_create_der_control_derp_tag_missing(pg_base_config, envoy_admin_client):
+    # Arrange
+    derp_tag = "abc-DEF-123"
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
+    )
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(SiteControlGroup, primacy=2))
+        await session.commit()
+    resolved_params = {
+        "start": datetime.now(timezone.utc),
+        "duration_seconds": 300,
+        "pow_10_multipliers": -1,
+        "randomizeStart_seconds": 0,
+        "ramp_time_seconds": 0,
+        "opModEnergize": 0,
+        "opModConnect": 0,
+        "opModImpLimW": 0,
+        "opModExpLimW": 0,
+        "opModGenLimW": 0,
+        "opModLoadLimW": 0,
+        "opModFixedW": 0,
+        "der_program_tag": derp_tag,
+    }
+
+    # Act
+    async with generate_async_session(pg_base_config) as session:
+        with pytest.raises(Exception):
+            await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
+
+    # Assert
+    assert pg_base_config.execute("select count(*) from site_control_group;").fetchone()[0] == 1
+    assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 0
+
+    assert len(active_test_procedure.resource_annotations.der_control_ids_by_alias) == 0
+    assert len(active_test_procedure.resource_annotations.der_program_ids_by_alias) == 0
 
 
 @pytest.mark.parametrize("value_seed", [None, 101, 202])

@@ -90,6 +90,7 @@ class StepInfo:
 
 @dataclass
 class ResourceAnnotations:
+    der_program_ids_by_alias: dict[str, int] = field(default_factory=dict)
     der_control_ids_by_alias: dict[str, int] = field(default_factory=dict)
 
 
