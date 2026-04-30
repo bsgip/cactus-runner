@@ -806,7 +806,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
         ActiveTestProcedure,
         step_status={},
         finished_zip_path=None,
-        resource_annotations=ResourceAnnotations({existing_derc_tag: existing_derc_id}),
+        resource_annotations=ResourceAnnotations(der_control_ids_by_alias={existing_derc_tag: existing_derc_id}),
     )
 
     inserted_tag = "DERC-NEW"
