@@ -252,7 +252,7 @@ async def action_create_der_control(  # noqa: C901
             raise Exception(f"Couldn't find DERProgram with tag '{der_program_tag}'. This is a test definition error.")
 
     else:
-        # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating one if required)
+        # For primacy/fsa_id - we need to find the site_control_group with the specified values (creating if required)
         primacy: int = resolved_parameters.get("primacy", 0)
         fsa_id: int | None = resolved_parameters.get("fsa_id", None)
         control_groups_response = await envoy_client.get_all_site_control_groups()
