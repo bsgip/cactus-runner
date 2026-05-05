@@ -15,13 +15,12 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Check
-from freezegun import freeze_time
-
 from envoy.server.model.site import Site, SiteDER, SiteDERRating, SiteDERSetting, SiteDERStatus
+from freezegun import freeze_time
 
 from cactus_runner.app import status
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
-from cactus_runner.models import CheckResult, ActiveTestProcedure, StepInfo
+from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc))

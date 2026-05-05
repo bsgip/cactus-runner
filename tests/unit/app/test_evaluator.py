@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from cactus_test_definitions.errors import UnresolvableVariableError
 from cactus_test_definitions.variable_expressions import (
     Constant,
     Expression,
@@ -13,7 +14,6 @@ from cactus_test_definitions.variable_expressions import (
     NamedVariableType,
     OperationType,
 )
-from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDER, SiteDERSetting
 from freezegun import freeze_time
 

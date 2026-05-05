@@ -1,7 +1,7 @@
 import logging
-from pathlib import Path
 import re
 import shutil
+from pathlib import Path
 
 from cactus_runner.app import proxy
 from cactus_runner.models import RequestEntry

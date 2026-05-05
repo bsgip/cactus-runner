@@ -122,14 +122,14 @@ def test_CHECK_TYPE_TO_HANDLER_in_sync():
 
     # Make sure we don't have any extra definitions not found in cactus-test-definitions
     for check_type in CHECK_TYPE_TO_HANDLER.keys():
-        assert (
-            check_type in CHECK_PARAMETER_SCHEMA
-        ), f"The check type {check_type} isn't defined in the test definitions (has it been removed/renamed)"
+        assert check_type in CHECK_PARAMETER_SCHEMA, (
+            f"The check type {check_type} isn't defined in the test definitions (has it been removed/renamed)"
+        )
 
     supported_checks = dict(((k, v) for k, v in CHECK_TYPE_TO_HANDLER.items() if v is not None))
-    assert len(set(supported_checks.values())) == len(
-        supported_checks
-    ), "At least 1 check type have listed the same check handler. This is likely a bug"
+    assert len(set(supported_checks.values())) == len(supported_checks), (
+        "At least 1 check type have listed the same check handler. This is likely a bug"
+    )
 
 
 def generate_active_test_procedure_steps(active_steps: list[str], all_steps: list[str]) -> ActiveTestProcedure:
@@ -1497,7 +1497,6 @@ async def test_do_check_readings_for_types(
     ]
 
     async with generate_async_session(pg_base_config) as session:
-
         result = await do_check_readings_for_types(session, faked_srts, minimum_count)
         assert_check_result(result, expected)
 
@@ -1595,7 +1594,6 @@ async def test_do_check_single_level(
     ]
 
     async with generate_async_session(pg_base_config) as session:
-
         result = await do_check_single_level(session, faked_srts, min_level, max_level)
         assert_check_result(result, expected)
 
@@ -2509,7 +2507,6 @@ async def test_check_response_contents_latest(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         site_control_group = generate_class_instance(SiteControlGroup, seed=101)
         session.add(site_control_group)
 
@@ -2611,7 +2608,6 @@ async def test_check_response_contents_all(
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         site_control_group = generate_class_instance(SiteControlGroup, seed=101)
         session.add(site_control_group)
 
@@ -2667,7 +2663,6 @@ async def test_check_response_contents_any(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         site_control_group = generate_class_instance(SiteControlGroup, seed=101)
         session.add(site_control_group)
 
@@ -2786,7 +2781,6 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         site_control_group = generate_class_instance(SiteControlGroup, seed=101)
         session.add(site_control_group)
 
@@ -3273,9 +3267,9 @@ async def test_check_der_settings_contents_error_messages_meaningful(
         result = await check_der_settings_contents(session, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
-        assert (
-            re.search(msg_regex, result.description) is not None
-        ), f"'{msg_regex}' not found in '{result.description}'"
+        assert re.search(msg_regex, result.description) is not None, (
+            f"'{msg_regex}' not found in '{result.description}'"
+        )
 
 
 @pytest.mark.parametrize(
@@ -3460,9 +3454,9 @@ async def test_check_der_capability_contents_error_messages_meaningful(
         result = await check_der_capability_contents(session, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
-        assert (
-            re.search(msg_regex, result.description) is not None
-        ), f"'{msg_regex}' not found in '{result.description}'"
+        assert re.search(msg_regex, result.description) is not None, (
+            f"'{msg_regex}' not found in '{result.description}'"
+        )
 
 
 @pytest.mark.parametrize(

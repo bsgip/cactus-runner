@@ -566,7 +566,6 @@ class SiteDERStatus(JSONWizard):
 
 @dataclass(frozen=True)
 class SiteDER(JSONWizard):
-
     site_der_id: int
     site_id: int
     created_time: datetime
@@ -592,7 +591,6 @@ class SiteDER(JSONWizard):
 
 @dataclass(frozen=True)
 class Site(JSONWizard):
-
     site_id: int
     nmi: str | None
     aggregator_id: int
@@ -626,7 +624,6 @@ class Site(JSONWizard):
 
 @dataclass
 class ReportingData:
-
     @staticmethod
     def v(version: int):
         if version == 1:

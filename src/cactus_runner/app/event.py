@@ -109,7 +109,6 @@ async def is_listener_triggerable(
 
     # If this listener is a wait event and the current trigger is time based
     if listener.event.type == "wait" and trigger.type == EventTriggerType.TIME:
-
         resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
             session, listener.event.parameters
         )
@@ -169,7 +168,6 @@ async def handle_event_trigger(
     triggered_listeners: list[Listener] = []
     listeners_to_eval = active_test_procedure.listeners.copy()  # We copy this as the underlying list might mutate
     for listener in listeners_to_eval:
-
         if await is_listener_triggerable(listener, trigger, session):
             logger.info(f"handle_event_trigger: Matched Step {listener.step} for {trigger}")
 

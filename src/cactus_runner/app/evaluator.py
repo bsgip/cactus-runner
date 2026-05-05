@@ -1,19 +1,18 @@
+import dataclasses
 from typing import Any
 
-import dataclasses
-
-from cactus_runner.app import resolvers
-
+from cactus_test_definitions.errors import UnresolvableVariableError
 from cactus_test_definitions.variable_expressions import (
+    BaseExpression,
     Constant,
     Expression,
     NamedVariable,
     NamedVariableType,
     OperationType,
-    BaseExpression,
 )
-from cactus_test_definitions.errors import UnresolvableVariableError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from cactus_runner.app import resolvers
 
 
 @dataclasses.dataclass

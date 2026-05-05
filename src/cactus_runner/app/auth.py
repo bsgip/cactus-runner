@@ -8,8 +8,8 @@ from envoy.server.api.depends.lfdi_auth import (
     is_valid_sha256,
 )
 
-from cactus_runner.app.shared import APPKEY_INITIALISED_CERTS
 from cactus_runner.app import env
+from cactus_runner.app.shared import APPKEY_INITIALISED_CERTS
 
 logger = logging.getLogger(__name__)
 

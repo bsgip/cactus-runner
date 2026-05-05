@@ -82,14 +82,14 @@ def test_ACTION_TYPE_TO_HANDLER_in_sync():
 
     # Make sure we don't have any extra definitions not found in cactus-test-definitions
     for action_type in ACTION_TYPE_TO_HANDLER.keys():
-        assert (
-            action_type in ACTION_PARAMETER_SCHEMA
-        ), f"The action type {action_type} isn't defined in the test definitions (has it been removed/renamed)"
+        assert action_type in ACTION_PARAMETER_SCHEMA, (
+            f"The action type {action_type} isn't defined in the test definitions (has it been removed/renamed)"
+        )
 
     supported_actions = dict(((k, v) for k, v in ACTION_TYPE_TO_HANDLER.items() if v is not None))
-    assert len(set(supported_actions.values())) == len(
-        supported_actions
-    ), "At least 1 action type have listed the same action handler. This is likely a bug"
+    assert len(set(supported_actions.values())) == len(supported_actions), (
+        "At least 1 action type have listed the same action handler. This is likely a bug"
+    )
 
 
 def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
@@ -125,9 +125,9 @@ async def test_action_enable_steps():
     assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
     for step in steps_to_enable:
-        assert (
-            runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.ACTIVE
-        ), "Check we update step_status"
+        assert runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.ACTIVE, (
+            "Check we update step_status"
+        )
 
 
 @pytest.mark.parametrize(
@@ -183,9 +183,9 @@ async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[
     assert len(listeners) == 0  # all steps removed from list of listeners
     assert steps_to_disable == original_steps_to_disable  # check we are mutating 'steps_to_diable'
     for step in steps_to_disable:
-        assert (
-            runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.RESOLVED
-        ), "Check we update step_status"
+        assert runner_state.active_test_procedure.step_status[step].get_step_status() == StepStatus.RESOLVED, (
+            "Check we update step_status"
+        )
 
 
 @pytest.mark.parametrize(
@@ -933,7 +933,6 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
 
     # Verify the tagged control ID matches the created control
     async with generate_async_session(pg_base_config) as session:
-
         all_does = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
         assert len(all_does) == 4
         assert len(set([d.export_limit_watts for d in all_does])) == 2, "Two sets of opModExpLimW"

@@ -27,7 +27,6 @@ from cactus_runner.app.envoy_common import (
 
 @dataclass
 class TimelineDataStream(JSONWizard):
-
     label: str  # Descriptive label of this data stream
     offset_watt_values: list[
         int | None
@@ -313,7 +312,6 @@ async def generate_default_control_data_streams(
 
     intervals: list[Interval] = []
     for default_control in all_defaults:
-
         if isinstance(default_control, ArchiveSiteControlGroupDefault):
             # An archive record was active only from when it was last changed and then archived
             start_time = default_control.changed_time

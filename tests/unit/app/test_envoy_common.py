@@ -553,8 +553,9 @@ async def test_get_site_control_group_defaults_with_archive(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, ArchiveSiteControlGroupDefault)
-                        and sc.ramp_rate_percent_per_second == 3,
+                        lambda sc: (
+                            isinstance(sc, ArchiveSiteControlGroupDefault) and sc.ramp_rate_percent_per_second == 3
+                        ),
                         result,
                     )
                 )
@@ -565,8 +566,9 @@ async def test_get_site_control_group_defaults_with_archive(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, ArchiveSiteControlGroupDefault)
-                        and sc.ramp_rate_percent_per_second == 4,
+                        lambda sc: (
+                            isinstance(sc, ArchiveSiteControlGroupDefault) and sc.ramp_rate_percent_per_second == 4
+                        ),
                         result,
                     )
                 )
@@ -648,8 +650,9 @@ async def test_get_site_controls_active_archived(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, DynamicOperatingEnvelope)
-                        and sc.import_limit_active_watts == Decimal("1.11"),
+                        lambda sc: (
+                            isinstance(sc, DynamicOperatingEnvelope) and sc.import_limit_active_watts == Decimal("1.11")
+                        ),
                         result,
                     )
                 )
@@ -660,8 +663,9 @@ async def test_get_site_controls_active_archived(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, DynamicOperatingEnvelope)
-                        and sc.import_limit_active_watts == Decimal("2.22"),
+                        lambda sc: (
+                            isinstance(sc, DynamicOperatingEnvelope) and sc.import_limit_active_watts == Decimal("2.22")
+                        ),
                         result,
                     )
                 )
@@ -672,8 +676,9 @@ async def test_get_site_controls_active_archived(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, DynamicOperatingEnvelope)
-                        and sc.import_limit_active_watts == Decimal("3.33"),
+                        lambda sc: (
+                            isinstance(sc, DynamicOperatingEnvelope) and sc.import_limit_active_watts == Decimal("3.33")
+                        ),
                         result,
                     )
                 )
@@ -684,8 +689,10 @@ async def test_get_site_controls_active_archived(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, ArchiveDynamicOperatingEnvelope)
-                        and sc.import_limit_active_watts == Decimal("4.44"),
+                        lambda sc: (
+                            isinstance(sc, ArchiveDynamicOperatingEnvelope)
+                            and sc.import_limit_active_watts == Decimal("4.44")
+                        ),
                         result,
                     )
                 )
@@ -696,8 +703,10 @@ async def test_get_site_controls_active_archived(pg_base_config):
             len(
                 list(
                     filter(
-                        lambda sc: isinstance(sc, ArchiveDynamicOperatingEnvelope)
-                        and sc.import_limit_active_watts == Decimal("5.55"),
+                        lambda sc: (
+                            isinstance(sc, ArchiveDynamicOperatingEnvelope)
+                            and sc.import_limit_active_watts == Decimal("5.55")
+                        ),
                         result,
                     )
                 )

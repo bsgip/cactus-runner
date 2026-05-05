@@ -80,7 +80,6 @@ def test_reporting_data_versions():
 
     # Perform checks on each version of a reporting data class
     for ReportingDataClass in reporting_data_classes:
-
         # All reporting classes must be subclasses of ReportingData_Base in order to receive the version attribute
         assert issubclass(ReportingDataClass, ReportingData_Base)
 

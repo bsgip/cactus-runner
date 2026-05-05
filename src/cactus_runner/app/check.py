@@ -220,7 +220,7 @@ def check_all_steps_complete(
         failing_active_steps.append(active_listener.step)
 
     if failing_active_steps:
-        return CheckResult(False, f"Steps {", ".join(failing_active_steps)} have not been completed.")
+        return CheckResult(False, f"Steps {', '.join(failing_active_steps)} have not been completed.")
     else:
         return CheckResult(True, None)
 
@@ -592,7 +592,6 @@ async def do_check_readings_for_types(
 
     """
     if minimum_count is not None:
-
         if site_reading_types:
             srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
             results = await session.execute(
@@ -838,7 +837,7 @@ async def do_check_readings_on_minute_boundary(
         results = await session.execute(
             select(SiteReading.time_period_start).where(SiteReading.site_reading_type_id.in_(srt_ids))
         )
-        on_minute_boundary = [timestamp_on_minute_boundary(time_period_start) for time_period_start, in results.all()]
+        on_minute_boundary = [timestamp_on_minute_boundary(time_period_start) for (time_period_start,) in results.all()]
         aligned_count = on_minute_boundary.count(True)
         total_count = len(on_minute_boundary)
 
@@ -1393,7 +1392,6 @@ async def run_check(
     pen: int = active_test_procedure.pen
     try:
         match check.type:
-
             case "all-steps-complete":
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 

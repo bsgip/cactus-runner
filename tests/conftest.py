@@ -197,9 +197,9 @@ async def cactus_runner_client_with_mount_point(aiohttp_client, envoy_admin_clie
 
 
 @pytest.fixture
-def run_request_generator() -> (
-    Callable[[TestProcedureId, str | None, str | None, CSIPAusVersion, str | None], RunRequest]
-):
+def run_request_generator() -> Callable[
+    [TestProcedureId, str | None, str | None, CSIPAusVersion, str | None], RunRequest
+]:
     """Yields a function for generating a RunRequest when supplied with a TestProcedureId"""
 
     def _generate_run_request(

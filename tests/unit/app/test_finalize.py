@@ -11,6 +11,7 @@ import pytest
 from assertical.asserts.generator import assert_class_instance_equality
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
+from cactus_schema.runner.schema import RequestEntry
 
 from cactus_runner.app import finalize
 from cactus_runner.app.timeline import Timeline
@@ -21,7 +22,6 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
-from cactus_schema.runner.schema import RequestEntry
 
 DT_NOW = datetime.now(timezone.utc)
 
