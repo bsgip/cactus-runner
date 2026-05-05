@@ -113,7 +113,7 @@ def test_validate_proxy_request_schema_schema_invalid(xml: str):
 
 def test_validate_proxy_request_schema_empty_body():
     """Tests that an empty body returns no errors"""
-    result = validate_proxy_request_schema(make_proxy_result(bytes()))
+    result = validate_proxy_request_schema(make_proxy_result(b""))
     assert_list_type(str, result, count=0)
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def resolve_named_variable_now() -> dt.datetime:
-    return dt.datetime.now(tz=dt.timezone.utc)
+    return dt.datetime.now(tz=dt.UTC)
 
 
 async def _select_single_site_der_setting(session: AsyncSession, variable_name: str) -> model.SiteDERSetting:

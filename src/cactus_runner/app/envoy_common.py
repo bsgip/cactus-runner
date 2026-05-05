@@ -1,7 +1,7 @@
 import logging
+from collections.abc import Sequence
 from enum import IntEnum
 from itertools import chain
-from typing import Sequence
 
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
@@ -137,7 +137,7 @@ async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadin
 
     response = await session.execute(
         select(SiteReading)
-        .where((SiteReading.site_reading_type_id == site_reading_type.site_reading_type_id))
+        .where(SiteReading.site_reading_type_id == site_reading_type.site_reading_type_id)
         .order_by(SiteReading.created_time.asc())
     )
 

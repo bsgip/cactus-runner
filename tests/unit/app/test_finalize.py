@@ -3,7 +3,7 @@ import random
 import string
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pandas as pd
@@ -23,7 +23,7 @@ from cactus_runner.models import (
     Site,
 )
 
-DT_NOW = datetime.now(timezone.utc)
+DT_NOW = datetime.now(UTC)
 
 
 @pytest.mark.parametrize(

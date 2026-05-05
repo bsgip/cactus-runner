@@ -1,9 +1,10 @@
 import http
 import logging
 import re
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
 from itertools import chain
-from typing import Annotated, Any, Iterable, Optional, Sequence
+from typing import Annotated, Any
 
 import pydantic
 import pydantic.alias_generators
@@ -247,11 +248,11 @@ async def check_end_device_contents(
     if has_connection_point_id and not site.nmi:
         return CheckResult(False, f"EndDevice {site.site_id} has no ConnectionPoint id specified.")
 
-    deviceCategory_anyset: int = int(resolved_parameters.get("deviceCategory_anyset", "0"), 16)
-    if deviceCategory_anyset and (deviceCategory_anyset & int(site.device_category)) == 0:
+    device_category_anyset: int = int(resolved_parameters.get("deviceCategory_anyset", "0"), 16)
+    if device_category_anyset and (device_category_anyset & int(site.device_category)) == 0:
         return CheckResult(
             False,
-            f"EndDevice {site.site_id} has none of the expected ({deviceCategory_anyset:b}) deviceCategory bits set.",
+            f"EndDevice {site.site_id} has none of the expected ({device_category_anyset:b}) deviceCategory bits set.",
         )
 
     check_lfdi: bool = resolved_parameters.get("check_lfdi", False)
@@ -581,7 +582,7 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
 
 
 async def do_check_readings_for_types(
-    session: AsyncSession, site_reading_types: Sequence[SiteReadingType], minimum_count: Optional[int]
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType], minimum_count: int | None
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
     are met. "Valid" is that at least ONE of the site_reading_types supplied meets the conditions
@@ -623,7 +624,7 @@ async def do_check_readings_for_types(
         #
         # If the client breaks these assumptions - they're still getting marked as failing - the error message will
         # just end up being a little less than perfect.
-        total_mups = len(set((srt.group_id for srt in site_reading_types)))
+        total_mups = len(set(srt.group_id for srt in site_reading_types))
         total_mmrs = len(site_reading_types)
 
         if highest_found_count >= minimum_count:
@@ -841,7 +842,7 @@ async def do_check_readings_on_minute_boundary(
         aligned_count = on_minute_boundary.count(True)
         total_count = len(on_minute_boundary)
 
-        total_mups = len(set((srt.group_id for srt in site_reading_types)))
+        total_mups = len(set(srt.group_id for srt in site_reading_types))
         total_mmrs = len(site_reading_types)
 
         if aligned_count != total_count:
@@ -1189,7 +1190,7 @@ async def check_response_contents(
     is_all: bool = resolved_parameters.get("all", False)
     status_filter: int | None = resolved_parameters.get("status", None)
     status_filter_string: str = response_type_to_string(status_filter)
-    subject_tag: Optional[str] = resolved_parameters.get("subject_tag", None)
+    subject_tag: str | None = resolved_parameters.get("subject_tag", None)
 
     # Handle the "all" case separately
     if is_all:
@@ -1444,7 +1445,7 @@ async def run_check(
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)
-        raise FailedCheckError(f"Failed performing check {check}. {exc}")
+        raise FailedCheckError(f"Failed performing check {check}. {exc}") from None
 
     if check_result is None:
         raise UnknownCheckError(f"Unrecognised check '{check.type}'. This is a problem with the test definition")

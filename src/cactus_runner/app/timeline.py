@@ -1,8 +1,9 @@
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from itertools import chain
-from typing import Any, Callable, Sequence, cast
+from typing import Any, cast
 
 from dataclass_wizard import JSONWizard
 from envoy.server.model.archive import ArchiveBase
@@ -200,11 +201,11 @@ async def generate_readings_data_stream(
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree.update(
-            (
+
                 Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
                 for r in readings
                 if r.time_period_seconds is not None and r.time_period_seconds > 0
-            )
+
         )
 
     # Generate all the reading data
@@ -220,7 +221,7 @@ async def generate_control_data_streams(
 ) -> list[TimelineDataStream]:
 
     all_controls = await get_site_controls_active_archived(session)
-    site_control_group_ids: set[int] = set((c.site_control_group_id for c in all_controls))
+    site_control_group_ids: set[int] = set(c.site_control_group_id for c in all_controls)
     all_data_streams: list[TimelineDataStream] = []
 
     # We will enumerate all the controls, batched by the site control group (DERProgram) that they belong to
@@ -402,7 +403,7 @@ async def generate_timeline(
     # Collate the data streams - culling any that don't have at least 1 value
     populated_data_streams = list(
         filter(
-            lambda ds: any((v is not None for v in ds.offset_watt_values)),
+            lambda ds: any(v is not None for v in ds.offset_watt_values),
             chain([site_readings, device_readings], controls, defaults),
         )
     )

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from cactus_schema.runner import (
     CriteriaEntry,
@@ -295,7 +295,7 @@ async def get_active_runner_status(
     last_client_interaction: ClientInteraction,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     step_status: dict[str, StepEventStatus] = {}
     for step_name, step_info in active_test_procedure.step_status.items():
@@ -334,11 +334,11 @@ async def get_active_runner_status(
 
     # Optionally crop request_history to reduce status size for UI
     if crop_minutes is not None:
-        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=crop_minutes)
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=crop_minutes)
         request_history = [req for req in request_history if req.timestamp >= cutoff_time]
 
     return RunnerStatus(
-        timestamp_status=datetime.now(tz=timezone.utc),
+        timestamp_status=datetime.now(tz=UTC),
         timestamp_initialise=active_test_procedure.initialised_at,
         timestamp_start=active_test_procedure.started_at,
         csip_aus_version=active_test_procedure.csip_aus_version.value,
@@ -358,7 +358,7 @@ async def get_active_runner_status(
 
 def get_runner_status(last_client_interaction: ClientInteraction) -> RunnerStatus:
     return RunnerStatus(
-        timestamp_status=datetime.now(tz=timezone.utc),
+        timestamp_status=datetime.now(tz=UTC),
         timestamp_start=None,
         timestamp_initialise=None,
         csip_aus_version="",

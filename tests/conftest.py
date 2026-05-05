@@ -1,9 +1,9 @@
 import os
 import shutil
 import unittest.mock as mock
+from collections.abc import Callable, Generator
 from http import HTTPStatus
 from pathlib import Path
-from typing import Callable, Generator
 from urllib.parse import urlparse
 
 import aiohttp.web as web

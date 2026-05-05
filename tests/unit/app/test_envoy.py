@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock
 
@@ -126,8 +126,8 @@ async def test_delete_site_controls_in_range(mock_session_with_json_response):
     client = EnvoyAdminClient("http://localhost", EnvoyAdminClientAuthParams("user", "pass"))
     client._session = mock_session
 
-    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 2, tzinfo=UTC)
 
     status = await client.delete_site_controls_in_range(group_id=1, period_start=start, period_end=end)
 

@@ -57,7 +57,7 @@ class JSONLFormatter(logging.Formatter):
     def _prepare_log_dict(self, record: logging.LogRecord):
         always_fields = {
             "message": record.getMessage(),
-            "timestamp": dt.datetime.fromtimestamp(record.created, tz=dt.timezone.utc).isoformat(),
+            "timestamp": dt.datetime.fromtimestamp(record.created, tz=dt.UTC).isoformat(),
         }
 
         if record.exc_info is not None:
@@ -95,7 +95,7 @@ def read_log_file(log_file_path: str) -> str:
 
     Significantly large log files will be truncated"""
     try:
-        with open(log_file_path, "r") as file:
+        with open(log_file_path) as file:
             return file.read(1024 * 1024 * 4)  # Limit to 4MB so we don't over fetch - should be more than enough
     except Exception as exc:
         return f"Error extracting {log_file_path}: {exc}"

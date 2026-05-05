@@ -1,6 +1,7 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Sequence
+from typing import Any
 
 import pandas as pd
 from envoy.server.model.site_reading import SiteReading, SiteReadingType

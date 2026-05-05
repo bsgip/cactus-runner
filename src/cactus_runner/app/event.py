@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import IntEnum, auto
 from http import HTTPMethod
 
@@ -193,7 +193,7 @@ async def handle_event_trigger(
 def generate_time_trigger() -> EventTrigger:
     """Generates an EventTrigger representing a poll of the TIME event"""
     return EventTrigger(
-        type=EventTriggerType.TIME, time=datetime.now(timezone.utc), single_listener=False, client_request=None
+        type=EventTriggerType.TIME, time=datetime.now(UTC), single_listener=False, client_request=None
     )
 
 
@@ -227,7 +227,7 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
     trigger_type = EventTriggerType.CLIENT_REQUEST_BEFORE if before_serving else EventTriggerType.CLIENT_REQUEST_AFTER
     return EventTrigger(
         type=trigger_type,
-        time=datetime.now(timezone.utc),
+        time=datetime.now(UTC),
         single_listener=True,
         client_request=ClientRequestDetails(HTTPMethod(request.method), path_without_mount, query_start),
     )
@@ -236,5 +236,5 @@ def generate_client_request_trigger(request: web.Request, mount_point: str, befo
 def generate_proceed_trigger() -> EventTrigger:
     """Generates an EventTrigger representing a proceed signal sent by the UI"""
     return EventTrigger(
-        type=EventTriggerType.PROCEED, time=datetime.now(timezone.utc), single_listener=True, client_request=None
+        type=EventTriggerType.PROCEED, time=datetime.now(UTC), single_listener=True, client_request=None
     )

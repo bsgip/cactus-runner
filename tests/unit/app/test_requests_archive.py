@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPMethod, HTTPStatus
 
 import pytest
@@ -45,7 +45,7 @@ def entry():
         path="/dcap",
         method=HTTPMethod.POST,
         status=HTTPStatus.OK,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         step_name="ALL-01-001",
         body_xml_errors=[],
         request_id=0,
@@ -115,7 +115,7 @@ def test_write_request_response_files_creates_directory_if_missing():
         path="/test",
         method=HTTPMethod.GET,
         status=HTTPStatus.OK,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         step_name="TEST-001",
         body_xml_errors=[],
         request_id=0,

@@ -1,6 +1,6 @@
 import asyncio
 import http
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -45,7 +45,7 @@ from tests.integration.certificate2 import (
 
 
 def mocked_ProxyResult(status: int) -> ProxyResult:
-    return ProxyResult("", "", bytes(), None, {}, Response(status=status))
+    return ProxyResult("", "", b"", None, {}, Response(status=status))
 
 
 def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = False) -> RunRequest:
@@ -756,7 +756,7 @@ async def test_proxied_request_handler_replaces_existing_proxied_request_interac
 
     # Seed a prior PROXIED_REQUEST so the replace branch is exercised
     prior_interaction = ClientInteraction(
-        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime(2020, 1, 1, tzinfo=timezone.utc)
+        interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime(2020, 1, 1, tzinfo=UTC)
     )
     request.app[APPKEY_RUNNER_STATE].client_interactions.append(prior_interaction)
     interactions_before = len(request.app[APPKEY_RUNNER_STATE].client_interactions)

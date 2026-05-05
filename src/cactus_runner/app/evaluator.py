@@ -108,7 +108,7 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
             raise ValueError(f"Unsupported operation {v.operation} ({int(v.operation)})")
 
         except Exception as exc:
-            raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {exc}")
+            raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {exc}") from exc
     else:
         raise UnresolvableVariableError(f"Unsupported variable type {type(v)}")
 

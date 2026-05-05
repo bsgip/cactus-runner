@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from assertical.asserts.type import assert_list_type
@@ -120,7 +120,7 @@ async def test_register_aggregator(pg_empty_config, subscription_domain: str | N
         certs = (await session.execute(select(Certificate))).scalars().all()
         assert len(certs) == 1, "Only a single cert should be injected"
         assert certs[0].lfdi == lfdi
-        assert certs[0].expiry > (datetime.now(timezone.utc) + timedelta(hours=4)), "Why is the expiry so short?"
+        assert certs[0].expiry > (datetime.now(UTC) + timedelta(hours=4)), "Why is the expiry so short?"
 
         cert_assignments = (await session.execute(select(AggregatorCertificateAssignment))).scalars().all()
         assert len(cert_assignments) == 1, "Single cert assigned to a single aggregator"

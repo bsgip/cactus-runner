@@ -136,7 +136,7 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
 
         if request_files:
             try:
-                with open(request_files[0], "r", encoding="utf-8") as f:
+                with open(request_files[0], encoding="utf-8") as f:
                     request_content = f.read()
             except Exception as exc:
                 logger.error(f"Failed to read request file for request_id={request_id}", exc_info=exc)
@@ -145,7 +145,7 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
 
         if response_files:
             try:
-                with open(response_files[0], "r", encoding="utf-8") as f:
+                with open(response_files[0], encoding="utf-8") as f:
                     response_content = f.read()
             except Exception as exc:
                 logger.error(f"Failed to read response file for request_id={request_id}", exc_info=exc)

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -177,7 +177,7 @@ class RunnerState:
     request_history: list[RequestEntry] = field(default_factory=list)
     client_interactions: list[ClientInteraction] = field(
         default_factory=lambda: [
-            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
+            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(UTC))
         ]
     )
 
@@ -636,11 +636,11 @@ class ReportingData:
 
 
 @dataclass(kw_only=True)
-class ReportingData_Base(JSONWizard):
+class ReportingData_Base(JSONWizard):  # noqa: N801
     version: int = field(init=False)
 
     def _classname_to_version(self) -> int:
-        CLASS_NAME_PREFIX = "ReportingData_v"
+        CLASS_NAME_PREFIX = "ReportingData_v"  # noqa: N806
         return int(self.__class__.__name__.split(CLASS_NAME_PREFIX)[1])
 
     def __post_init__(self):
@@ -649,7 +649,7 @@ class ReportingData_Base(JSONWizard):
 
 
 @dataclass(kw_only=True)
-class ReportingData_v1(ReportingData_Base):
+class ReportingData_v1(ReportingData_Base):  # noqa: N801
     """Holds all the data required to generate cactus run report.
 
     This class is serializable with a `to_json()` call. e.g.

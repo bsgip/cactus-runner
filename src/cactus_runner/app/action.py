@@ -1,6 +1,6 @@
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -98,7 +98,7 @@ async def action_enable_steps(
     for listener in active_test_procedure.listeners:
         if listener.step in steps_to_enable:
             logger.info(f"ACTION enable-steps: Enabling step {listener.step}")
-            dt_now = datetime.now(tz=timezone.utc)
+            dt_now = datetime.now(tz=UTC)
             listener.enabled_time = dt_now
             active_test_procedure.step_status[listener.step].started_at = dt_now
 
@@ -130,7 +130,7 @@ async def action_remove_steps(
     for listener in listeners_to_remove:
         logger.info(f"ACTION remove-steps: Removing listener: {listener}")
         active_test_procedure.listeners.remove(listener)  # mutate the original listeners list
-        active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=timezone.utc)
+        active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=UTC)
 
 
 async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
@@ -146,7 +146,7 @@ async def action_set_default_der_control(
     export_limit_watts = resolved_parameters.get("opModExpLimW", None)
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
-    setGradW = resolved_parameters.get("setGradW", None)
+    set_grad_w = resolved_parameters.get("setGradW", None)
     cancelled = resolved_parameters.get("cancelled", False)
     default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
@@ -174,7 +174,7 @@ async def action_set_default_der_control(
             load_limit_watts=(
                 UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else default_val
             ),
-            ramp_rate_percent_per_second=UpdateDefaultValue(value=setGradW) if setGradW is not None else default_val,
+            ramp_rate_percent_per_second=UpdateDefaultValue(value=set_grad_w) if set_grad_w is not None else default_val,
         ),
     )
 
@@ -236,7 +236,7 @@ async def action_create_der_control(  # noqa: C901
         # We could just use the current count of DERControls but that will recycle between test runs - not ideal
         # so we ALSO combine that with a timestamp to get a 64 bit display_id
         existing_control_count = await count_all_site_controls_with_cancelled(session, site_id=None)
-        now_seconds = int(datetime.now(timezone.utc).timestamp())
+        now_seconds = int(datetime.now(UTC).timestamp())
         display_id = existing_control_count << 32 | (now_seconds & 0xFFFFFFFF)
 
     if len(site_ids) > 1 and annotation:
@@ -339,9 +339,9 @@ async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
         for g in control_groups_response.site_control_groups:
             await envoy_client.delete_site_controls_in_range(
                 g.site_control_group_id,
-                datetime(2000, 1, 1, tzinfo=timezone.utc),
+                datetime(2000, 1, 1, tzinfo=UTC),
                 datetime(
-                    2100, 1, 1, tzinfo=timezone.utc
+                    2100, 1, 1, tzinfo=UTC
                 ),  # If this is still in use in 2100... I hope you guys sorted out that climate change thing.
                 # Sorry, some of us were trying. Sincerely people in 2025
             )
@@ -403,7 +403,7 @@ async def action_register_end_device(
     registration_pin: int | None = resolved_parameters.get("registration_pin", None)
     aggregator_lfdi: str | None = resolved_parameters.get("aggregator_lfdi", None)
     aggregator_sfdi: int | None = resolved_parameters.get("aggregator_sfdi", None)
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     lfdi: str
     sfdi: int
@@ -533,7 +533,7 @@ async def apply_action(
 
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
-        raise FailedActionError(f"Failed executing action {action.type}")
+        raise FailedActionError(f"Failed executing action {action.type}") from None
 
     raise UnknownActionError(f"Unrecognised action '{action.type}'. This is a problem with the test definition")
 

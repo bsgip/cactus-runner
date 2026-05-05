@@ -1,3 +1,6 @@
+WILDCARD = "*"
+
+
 def does_endpoint_match(path: str, match: str) -> bool:
     """Performs all logic for matching an "endpoint" to an incoming request's path.
 
@@ -12,7 +15,6 @@ def does_endpoint_match(path: str, match: str) -> bool:
     """
 
     # If we don't have a wildcard - do an EXACT match
-    WILDCARD = "*"
     if WILDCARD not in match:
         return path == match
 
