@@ -214,9 +214,7 @@ async def initialize_next_test(
 ) -> None:
     """Initialize the next test procedure in a playlist."""
     runner_state.client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC)
-        )
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC))
     )
 
     prev_test = runner_state.active_test_procedure
@@ -327,9 +325,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
 
     # Update last client interaction
     request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC)
-        )
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC))
     )
 
     # Reset envoy database

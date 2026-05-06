@@ -11,9 +11,7 @@ from cactus_schema.runner import (
 )
 
 PENDING_STEP = StepEventStatus(started_at=None, completed_at=None, event_status=None)
-RESOLVED_STEP = StepEventStatus(
-    started_at=datetime.now(tz=UTC), completed_at=datetime.now(tz=UTC), event_status=None
-)
+RESOLVED_STEP = StepEventStatus(started_at=datetime.now(tz=UTC), completed_at=datetime.now(tz=UTC), event_status=None)
 
 
 @pytest.fixture

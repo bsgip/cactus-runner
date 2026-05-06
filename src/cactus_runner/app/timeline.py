@@ -201,11 +201,9 @@ async def generate_readings_data_stream(
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree.update(
-
-                Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
-                for r in readings
-                if r.time_period_seconds is not None and r.time_period_seconds > 0
-
+            Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
+            for r in readings
+            if r.time_period_seconds is not None and r.time_period_seconds > 0
         )
 
     # Generate all the reading data

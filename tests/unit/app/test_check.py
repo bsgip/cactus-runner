@@ -2141,9 +2141,9 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
 
     # Assert
     assert mock_do_check_site_readings_and_params.call_count == len(reading_checks)
-    assert len(set(a.args[2:] for a in mock_do_check_site_readings_and_params.call_args_list)) == len(
-        reading_checks
-    ), "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
+    assert len(set(a.args[2:] for a in mock_do_check_site_readings_and_params.call_args_list)) == len(reading_checks), (
+        "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
+    )
 
     assert_mock_session(mock_session)
 

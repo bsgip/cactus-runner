@@ -177,9 +177,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This was enabled after the event trigger (negative time)
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
@@ -189,9 +187,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This was enabled shortly after the event trigger (negative time)
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
@@ -201,9 +197,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             True,
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
@@ -213,9 +207,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This listener is NOT enabled
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
@@ -421,9 +413,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             True,
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
@@ -433,9 +423,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # Wrong type of event
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="unsupported-event-type", parameters={}),
@@ -469,9 +457,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This listener is NOT enabled
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
@@ -481,9 +467,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             True,  # proceed with timeout_seconds fires via TIME trigger once elapsed
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
@@ -493,9 +477,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # Not enough time elapsed
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={}),
