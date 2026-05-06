@@ -82,7 +82,7 @@ def reading_to_watts(srts: Sequence[SiteReadingType], r: SiteReading) -> int:
     raise ValueError(f"Couldn't find SiteReadingType with ID {r.site_reading_type_id}")
 
 
-def entity_to_priority(entity: Any) -> int:
+def entity_to_priority(entity: Any) -> int:  # noqa: ANN401
     """this function will calculate the entity priority which follows these rules:
 
     1) an ArchiveBase (deletion) descendent is ALWAYS lower priority when compared to other types.
@@ -101,7 +101,7 @@ def entity_to_priority(entity: Any) -> int:
         return 2  # normal record
 
 
-def highest_priority_entity(entities: set[Interval]) -> Any:
+def highest_priority_entity(entities: set[Interval]) -> Any:  # noqa: ANN401
     """this function will take the highest priority entity which follows these priorities:
 
     This priority mapping is done by entity_to_priority

@@ -226,7 +226,7 @@ def check_all_steps_complete(
         return CheckResult(True, None)
 
 
-async def check_end_device_contents(
+async def check_end_device_contents(  # noqa: C901
     active_test_procedure: ActiveTestProcedure, session: AsyncSession, resolved_parameters: dict[str, Any]
 ) -> CheckResult:
     """Implements the end-device-contents check
@@ -387,7 +387,7 @@ def do_field_exists_check(
         soft_checker.add(f"{field.alias} MUST be unset but is currently specified as: {actual_value}")
 
 
-async def check_der_settings_contents(
+async def check_der_settings_contents(  # noqa: C901
     session: AsyncSession, resolved_parameters: dict[str, ResolvedParam]
 ) -> CheckResult:
     """Implements the der-settings-contents check
@@ -504,7 +504,7 @@ def is_nth_bit_set_properly(value: int, nth_bit: int, expected: bool) -> bool:
     return bool(value & (1 << nth_bit)) is expected
 
 
-async def check_der_status_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_der_status_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:  # noqa: C901
     """Implements the der-status-contents check
 
     Returns pass if DERStatus has been submitted for the active site and optionally has certain fields set"""
@@ -685,7 +685,7 @@ async def do_check_single_level(
     )
 
     # Step 2: Alias the subquery to access its columns
-    RankedReading = aliased(SiteReading, ranked_subquery)
+    RankedReading = aliased(SiteReading, ranked_subquery)  # noqa: N806
 
     # Step 3: Join with SiteReadingType and filter to only the latest reading per type
     query = (
@@ -1181,7 +1181,7 @@ def match_all_responses(
         return CheckResult(True, f"All DERControl(s) have a Response with a status of {status_str}")
 
 
-async def check_response_contents(
+async def check_response_contents(  # noqa: C901
     resolved_parameters: dict[str, Any], session: AsyncSession, active_test_procedure: ActiveTestProcedure
 ) -> CheckResult:
     """Implements the response-contents check by inspecting the response table for site controls"""
@@ -1369,7 +1369,7 @@ def check_all_polls_at_correct_time(
     return result
 
 
-async def run_check(
+async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,

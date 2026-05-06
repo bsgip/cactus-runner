@@ -631,7 +631,7 @@ class ReportingData:
         raise ValueError(f"Unknown version of ReportingData ({version}).")
 
     @staticmethod
-    def from_json(version, string, **kwargs) -> Any:
+    def from_json(version, string, **kwargs) -> Any:  # noqa: ANN401
         return ReportingData.v(version).from_json(string, **kwargs)
 
 

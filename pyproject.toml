@@ -41,6 +41,7 @@ Changelog = "https://github.com/bsgip/cactus-runner/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
+  "bandit",
   "mypy",
   "ruff",
   "tox",

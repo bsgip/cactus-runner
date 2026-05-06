@@ -1724,7 +1724,7 @@ async def test_do_check_reading_levels_for_types(
         case (False, False):
             assert_check_result(result, True)
         case _:
-            assert False, "Unhandled test case found"
+            raise AssertionError("Unhandled test case found")
 
 
 @pytest.mark.parametrize(

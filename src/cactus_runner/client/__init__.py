@@ -80,8 +80,8 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return init_response_body
-        except Exception as e:
-            raise RunnerClientError(f"Unexpected failure while initialising test {e}.") from e
+        except Exception as err:
+            raise RunnerClientError(f"Unexpected failure while initialising test {err}.") from err
 
     @staticmethod
     async def start(session: ClientSession) -> StartResponseBody:
@@ -95,8 +95,8 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return start_response_body
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError("Unexpected failure while starting test.") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while starting test.") from err
 
     @staticmethod
     async def finalize(session: ClientSession) -> bytes:
@@ -104,8 +104,8 @@ class RunnerClient:
             async with session.post(url=uri.Finalize) as response:
                 await ensure_success_response(response)
                 return await response.read()
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError("Unexpected failure while finalizing test procedure.") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while finalizing test procedure.") from err
 
     @staticmethod
     async def status(session: ClientSession) -> RunnerStatus:
@@ -119,8 +119,8 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return runner_status
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError("Unexpected failure while requesting test procedure status.") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while requesting test procedure status.") from err
 
     @staticmethod
     async def last_interaction(session: ClientSession) -> ClientInteraction:
@@ -133,8 +133,8 @@ class RunnerClient:
             async with session.get(url=uri.Health) as response:
                 await ensure_success_response(response)
                 return True
-        except Exception as e:
-            logger.debug(e)
+        except Exception as err:
+            logger.debug(err)
             return False
 
     @staticmethod
@@ -149,8 +149,8 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return request_data
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError(f"Unexpected failure while retrieving request data for ID: {request_id}") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError(f"Unexpected failure while retrieving request data for ID: {request_id}") from err
 
     @staticmethod
     async def list_requests(session: ClientSession) -> RequestList:
@@ -164,8 +164,8 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return request_list
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError("Unexpected failure while listing request IDs.") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while listing request IDs.") from err
 
     @staticmethod
     async def proceed(session: ClientSession) -> ProceedResponse:
@@ -179,5 +179,5 @@ class RunnerClient:
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return proceed_response
-        except ConnectionTimeoutError as e:
-            raise RunnerClientError("Unexpected failure while sending proceed request to test runner.") from e
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while sending proceed request to test runner.") from err

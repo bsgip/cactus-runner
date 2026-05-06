@@ -63,7 +63,7 @@ class EventTrigger:
     client_request: ClientRequestDetails | None  # Only specified if type == CLIENT_REQUEST
 
 
-async def is_listener_triggerable(
+async def is_listener_triggerable(  # noqa: C901
     listener: Listener,
     trigger: EventTrigger,
     session: AsyncSession,

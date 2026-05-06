@@ -172,8 +172,8 @@ async def setup_test_procedure_from_request(
         definition = TestProcedure.from_yaml(run_request.test_definition.yaml_definition)
         if isinstance(definition, list):
             raise ValueError("Definition must be a TestProcedure instance and not list[TestProcedure]")
-    except Exception as e:
-        raise ValueError(f"Received invalid test procedure definition {e}")
+    except Exception as err:
+        raise ValueError(f"Received invalid test procedure definition {err}") from err
 
     # Create listeners for all test procedure events
     listeners = []

@@ -471,7 +471,7 @@ async def action_remove_function_set_assignment(
             await envoy_client.put_site_control_group(scg.site_control_group_id, request)
 
 
-async def apply_action(
+async def apply_action(  # noqa: C901
     action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
 ):
     """Applies the action to the active test procedure.

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
 # Alternatives tried: hardcoded paths (permission errors), tempfile (failed on write to zip, issue on finalise?)
-REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
+REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # noqa: S108
 
 
 def ensure_request_data_dir() -> Path:
@@ -44,7 +44,7 @@ def sanitise_url_to_filename(url: str) -> str:
     return sanitised if sanitised else "root"
 
 
-def write_request_response_files(
+def write_request_response_files(  # noqa: C901
     request_id: int,
     proxy_result: proxy.ProxyResult,
     entry: RequestEntry,

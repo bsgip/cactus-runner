@@ -169,7 +169,7 @@ def create_app() -> web.Application:
 
     app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
-    DEFAULT_PERIOD_SEC = 10  # seconds
+    DEFAULT_PERIOD_SEC = 10  # noqa: N806  # seconds
     app[APPKEY_PERIOD_SEC] = DEFAULT_PERIOD_SEC  # Frequency of periodic task
 
     # Start the periodic task

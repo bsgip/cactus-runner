@@ -1,4 +1,4 @@
-name: Linting and Testing
+name: CI
 on:
   push:
     branches: [main, csipaus.org/ns/v1.2, csipaus.org/ns/v1.3, csipaus.org/ns/v1.3-beta/storage]
@@ -7,16 +7,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  ruff:
+  ruff_bandit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install ruff
-        run: pip install ruff
-      - name: Lint
+      - name: Install linters
+        run: pip install ruff bandit
+      - name: Lint (ruff)
         run: ruff check .
       - name: Format check
         run: ruff format --check .
+      - name: Security scan (bandit)
+        run: bandit -r src/
 
   mypy_py312:
     runs-on: ubuntu-latest

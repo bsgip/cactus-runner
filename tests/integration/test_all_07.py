@@ -21,7 +21,7 @@ URI_ENCODED_CERT = quote(TEST_CERTIFICATE_PEM.decode())
 async def assert_success_response(response: ClientResponse):
     if response.status < 200 or response.status >= 300:
         body = await response.read()
-        assert False, f"{response.status}: {body}"
+        raise AssertionError(f"{response.status}: {body}")
 
 
 @pytest.mark.slow
