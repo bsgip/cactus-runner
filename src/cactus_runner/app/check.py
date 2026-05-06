@@ -1459,7 +1459,7 @@ async def check_response_contents(
     is_latest: bool = resolved_parameters.get("latest", False)
     is_all: bool = resolved_parameters.get("all", False)
     status_filter: int | None = resolved_parameters.get("status", None)
-    subject_tag: Optional[str] = resolved_parameters.get("subject_tag", None)
+    subject_tag: str | None = resolved_parameters.get("subject_tag", None)
     exists: bool = resolved_parameters.get("exists", True)
 
     # Handle the "all" case separately
