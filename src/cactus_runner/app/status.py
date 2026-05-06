@@ -56,7 +56,7 @@ def _resolve_intflag(bitmap: int | None, flag_type: type[IntFlag]) -> list[str] 
     """Resolve an IntFlag bitmap to a list of active flag names."""
     if bitmap is None:
         return None
-    return [flag.name for flag in flag_type if bitmap & flag]
+    return [flag.name for flag in flag_type if bitmap & flag and flag.name is not None]
 
 
 def _resolve_intenum(value: int | None, enum_type: type[IntEnum]) -> str | None:

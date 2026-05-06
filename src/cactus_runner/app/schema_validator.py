@@ -1,6 +1,7 @@
 import logging
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from lxml import etree
 
@@ -15,13 +16,13 @@ CSIP_AUS_12_DIR = Path(csipaus12.__file__).parent
 class LocalXsdResolver(etree.Resolver):
     """Finds specific XSD files in our local schema directory"""
 
-    def resolve(self, url: str | None, id: str | None, context: etree._ResolverContext) -> etree._InputDocument | None:  # noqa: A002
+    def resolve(self, url: str | None, id: str | None, context: Any) -> Any:  # noqa: A002, ANN401  # type: ignore[override]
         if url == "sep.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "sep.xsd"), context)
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "sep.xsd"), context)  # type: ignore[attr-defined]
         elif url == "csipaus-core.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-core.xsd"), context)
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-core.xsd"), context)  # type: ignore[attr-defined]
         elif url == "csipaus-ext.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-ext.xsd"), context)
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-ext.xsd"), context)  # type: ignore[attr-defined]
         return None
 
 

@@ -156,7 +156,7 @@ def write_zip_to_file(
             # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
             command = [exectuable_name, f"--dbname={connection_string}", "-f", dump_file, "--no-password"] + dump_args
             try:
-                subprocess.run(command)  # noqa: S603
+                subprocess.run(command)  # nosec B603  # noqa: S603
             except FileNotFoundError as exc:
                 logger.error(
                     f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?",  # noqa: E501
@@ -214,7 +214,7 @@ async def generate_json_reporting_data(
             for k, v in reading_counts.items()
         ]
 
-        reporting_data = ReportingData.v(version)(
+        reporting_data = ReportingData.v(version)(  # type: ignore[call-arg]
             created_at=created_at,
             runner_state=runner_state,
             check_results=check_results,

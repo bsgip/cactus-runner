@@ -7,6 +7,7 @@ import logging.config
 import logging.handlers
 import os
 import traceback
+from collections.abc import AsyncGenerator
 from http import HTTPStatus
 from pathlib import Path
 
@@ -96,7 +97,7 @@ async def periodic_task(app: web.Application) -> None:
         await asyncio.sleep(period)
 
 
-async def setup_periodic_task(app: web.Application) -> None:
+async def setup_periodic_task(app: web.Application) -> AsyncGenerator[None, None]:
     """Setup periodic task.
 
     The periodic task is accessible through app[APPKEY_PERIODIC_TASKS].
