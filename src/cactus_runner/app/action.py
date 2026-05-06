@@ -174,7 +174,7 @@ async def action_set_default_der_control(
             load_limit_watts=(
                 UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else default_val
             ),
-            ramp_rate_percent_per_second=(  # noqa: E501
+            ramp_rate_percent_per_second=(
                 UpdateDefaultValue(value=set_grad_w) if set_grad_w is not None else default_val
             ),
         ),

@@ -895,7 +895,7 @@ async def do_check_reading_type_mrids_match_pen(site_reading_types: Sequence[Sit
         return CheckResult(
             True,
             "All MRIDS and group MRIDS for the site readings types match the supplied Private Enterprise Number (PEN).",
-        )  # noqa: E501
+        )
 
     return CheckResult(True, None)
 
