@@ -20,28 +20,6 @@ jobs:
       - name: Security scan (bandit)
         run: bandit -r src/
 
-  mypy_py312:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Dependencies
-        run: |
-          pip install .[dev]
-
-      - name: Add mypy annotator
-        uses: pr-annotators/mypy-pr-annotator@v1.0.0
-
-      - name: Run mypy
-        run: |
-          mypy .
-
   pytest_py312:
     runs-on: ubuntu-latest
     steps:

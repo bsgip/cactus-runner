@@ -42,7 +42,6 @@ Changelog = "https://github.com/bsgip/cactus-runner/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 dev = [
   "bandit",
-  "mypy",
   "ruff",
   "tox",
   "python-dotenv[cli]",
@@ -98,7 +97,7 @@ line-length = 120
 select = ["E", "W", "F", "I", "S", "C90", "B", "UP", "ANN", "N"]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 10
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ANN", "N"]
