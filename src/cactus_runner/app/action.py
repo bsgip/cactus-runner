@@ -170,7 +170,8 @@ async def action_set_default_der_control(
     export_limit_watts = resolved_parameters.get("opModExpLimW", None)
     gen_limit_watts = resolved_parameters.get("opModGenLimW", None)
     load_limit_watts = resolved_parameters.get("opModLoadLimW", None)
-    setGradW = resolved_parameters.get("setGradW", None)
+    storage_target_watts = resolved_parameters.get("opModStorageTargetW", None)
+    set_grad_w = resolved_parameters.get("setGradW", None)
     cancelled = resolved_parameters.get("cancelled", False)
     default_val: UpdateDefaultValue | None = UpdateDefaultValue(value=None) if cancelled else None
 
@@ -506,7 +507,7 @@ async def action_create_tariff_profile(
     resolved_parameters: dict[str, Any],
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
-):
+) -> None:
     primacy: int = resolved_parameters["primacy"]
     fsa_id: int = resolved_parameters.get("fsa_id", 1)
     price_pow_10_multiplier: int = resolved_parameters.get("price_pow_10_multiplier", 0)
@@ -532,7 +533,7 @@ async def action_create_rate_component(
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
-):
+) -> None:
     tariff_profile_tag: str | None = resolved_parameters.get("tariff_profile_tag", None)
     role_flags: RoleFlagsType = resolved_parameters.get("role_flags", RoleFlagsType.NONE)
     commodity: CommodityType | None = resolved_parameters.get("commodity", None)
@@ -588,7 +589,7 @@ async def action_create_time_tariff_interval(
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
-):
+) -> None:
     start: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
     price_pow10_encoded_block0: int = resolved_parameters["price_pow10_encoded_block0"]
@@ -642,7 +643,7 @@ async def action_cancel_time_tariff_intervals(
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
-):
+) -> None:
 
     tag: str | None = resolved_parameters.get("tag", None)
 
@@ -661,7 +662,7 @@ async def action_cancel_time_tariff_intervals(
 
 async def action_delete_rate_component(
     resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient, active_test_procedure: ActiveTestProcedure
-):
+) -> None:
 
     tag: str = resolved_parameters["tag"]
 

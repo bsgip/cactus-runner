@@ -7,8 +7,8 @@ from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from fastapi.testclient import TestClient
 
-from cactus_runner.client import RunnerClient
 from cactus_runner.app import env
+from cactus_runner.client import RunnerClient
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import URI_ENCODED_CERT, assert_success_response
 

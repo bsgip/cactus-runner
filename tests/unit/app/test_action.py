@@ -1505,7 +1505,7 @@ async def test_action_create_time_tariff_interval(
     tag = "TTI-1"
     resolved_params = {
         "rate_component_tag": rate_component_tag,
-        "start": datetime(2023, 4, 5, tzinfo=timezone.utc),
+        "start": datetime(2023, 4, 5, tzinfo=UTC),
         "duration_seconds": 123,
         "price_pow10_encoded_block0": 1,
         "price_pow10_encoded_block1": 2,
@@ -1551,7 +1551,7 @@ async def test_action_create_time_tariff_interval(
                 assert tagged_tc_id == rate.tariff_component_id
 
             # Sanity check some fields match what we suplied
-            assert rate.start_time == datetime(2023, 4, 5, tzinfo=timezone.utc)
+            assert rate.start_time == datetime(2023, 4, 5, tzinfo=UTC)
             assert rate.duration_seconds == 123
             assert rate.price_pow10_encoded == 1
             assert rate.price_pow10_encoded_block_1 == 2
@@ -1608,7 +1608,7 @@ async def test_action_cancel_time_tariff_intervals(
         for idx, tag in enumerate(tti_tags):
             await action_create_time_tariff_interval(
                 {
-                    "start": datetime(2023, 4, 5, tzinfo=timezone.utc) + timedelta(hours=idx),
+                    "start": datetime(2023, 4, 5, tzinfo=UTC) + timedelta(hours=idx),
                     "duration_seconds": 123,
                     "price_pow10_encoded_block0": idx,
                     "price_pow10_encoded_block1": 2,
@@ -1716,7 +1716,7 @@ async def test_action_delete_rate_component(
                 await action_create_time_tariff_interval(
                     {
                         "rate_component_tag": tag,
-                        "start": datetime(2023, 4, 5, tzinfo=timezone.utc) + timedelta(hours=idx),
+                        "start": datetime(2023, 4, 5, tzinfo=UTC) + timedelta(hours=idx),
                         "duration_seconds": 123,
                         "price_pow10_encoded_block0": idx,
                         "price_pow10_encoded_block1": 2,

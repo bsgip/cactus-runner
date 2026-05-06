@@ -1,5 +1,5 @@
 import unittest.mock as mock
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 

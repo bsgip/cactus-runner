@@ -1,6 +1,6 @@
 import asyncio
 import http
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -769,7 +769,7 @@ async def test_proxied_request_handler_replaces_existing_proxied_request_interac
     # Seed a prior PROXIED_REQUEST so the replace branch is exercised
     prior_interaction = ClientInteraction(
         interaction_type=ClientInteractionType.PROXIED_REQUEST,
-        timestamp=datetime.now(tz=timezone.utc) - timedelta(seconds=10),
+        timestamp=datetime.now(tz=UTC) - timedelta(seconds=10),
     )
     request.app[APPKEY_RUNNER_STATE].client_interactions.append(prior_interaction)
     interactions_before = len(request.app[APPKEY_RUNNER_STATE].client_interactions)

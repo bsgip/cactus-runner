@@ -13,8 +13,8 @@ from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from pytest_aiohttp.plugin import TestClient
 from sqlalchemy import func, select
 
-from cactus_runner.client import RunnerClient
 from cactus_runner.app import env
+from cactus_runner.client import RunnerClient
 from tests.integration.certificate1 import TEST_CERTIFICATE_PEM
 from tests.integration.test_all_01 import assert_success_response
 

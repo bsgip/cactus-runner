@@ -4063,7 +4063,6 @@ async def test_check_price_response_contents_latest(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
         session.add(tariff)
 
@@ -4089,7 +4088,7 @@ async def test_check_price_response_contents_latest(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=505,
                 response_type=ResponseType.EVENT_CANCELLED,
-                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 10, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4101,7 +4100,7 @@ async def test_check_price_response_contents_latest(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=606,
                 response_type=ResponseType.EVENT_COMPLETED,
-                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 11, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4112,7 +4111,7 @@ async def test_check_price_response_contents_latest(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=707,
                 response_type=ResponseType.EVENT_RECEIVED,
-                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 9, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4178,7 +4177,6 @@ async def test_check_price_response_contents_all(
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
         session.add(tariff)
 
@@ -4205,7 +4203,7 @@ async def test_check_price_response_contents_all(
                 ArchiveTariffGeneratedRate,
                 seed=idx * 1001,
                 site_id=site1.site_id,
-                deleted_time=datetime(2022, 11, 14, tzinfo=timezone.utc),
+                deleted_time=datetime(2022, 11, 14, tzinfo=UTC),
                 tariff_component_id=tariff_component.tariff_component_id,
                 calculation_log_id=None,
                 tariff_generated_rate_id=control_id,
@@ -4242,7 +4240,6 @@ async def test_check_price_response_contents_any(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
         session.add(tariff)
 
@@ -4267,7 +4264,7 @@ async def test_check_price_response_contents_any(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=505,
                 response_type=ResponseType.EVENT_CANCELLED,
-                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 10, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4278,7 +4275,7 @@ async def test_check_price_response_contents_any(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=606,
                 response_type=ResponseType.EVENT_COMPLETED,
-                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 11, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4289,7 +4286,7 @@ async def test_check_price_response_contents_any(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=707,
                 response_type=ResponseType.EVENT_RECEIVED,
-                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 9, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=rate_1.tariff_generated_rate_id,
             )
@@ -4397,7 +4394,6 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-
         tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
         session.add(tariff)
 
@@ -4437,7 +4433,7 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=505,
                 response_type=ResponseType.EVENT_RECEIVED,
-                created_time=datetime(2024, 11, 9, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 9, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=100,
             )
@@ -4448,7 +4444,7 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=606,
                 response_type=ResponseType.EVENT_COMPLETED,
-                created_time=datetime(2024, 11, 11, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 11, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=100,
             )
@@ -4460,7 +4456,7 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
                 TariffGeneratedRateResponse,
                 seed=707,
                 response_type=ResponseType.EVENT_CANCELLED,
-                created_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                created_time=datetime(2024, 11, 10, tzinfo=UTC),
                 site=site1,
                 tariff_generated_rate_id_snapshot=200,
             )

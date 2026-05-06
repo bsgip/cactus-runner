@@ -1496,7 +1496,7 @@ async def check_price_response_contents(
     is_latest: bool = resolved_parameters.get("latest", False)
     is_all: bool = resolved_parameters.get("all", False)
     status_filter: int | None = resolved_parameters.get("status", None)
-    subject_tag: Optional[str] = resolved_parameters.get("subject_tag", None)
+    subject_tag: str | None = resolved_parameters.get("subject_tag", None)
     exists: bool = resolved_parameters.get("exists", True)
 
     # Handle the "all" case separately
@@ -1723,114 +1723,7 @@ def check_resource_requests(resolved_parameters: dict[str, Any], request_history
     total_matches: int = 0
     for request in request_history:
         total_matches += any(
-            (does_endpoint_match(path=request.path, match=match_uri) for match_uri in resource_match_uris)
-        )
-
-    resources_string = ", ".join(resources)
-    if minimum_count is not None and total_matches < minimum_count:
-        return CheckResult(
-            False, f"Expected at least {minimum_count} {resources_string} matches but only saw {total_matches}"
-        )
-    if maximum_count is not None and total_matches > maximum_count:
-        return CheckResult(
-            False, f"Expected at most {maximum_count} {resources_string} matches but saw {total_matches}"
-        )
-
-    return CheckResult(True, f"Found {resources_string} matches")
-
-
-def resolve_format(fmt: str, constant: str = WILDCARD) -> str:
-    """Replace every format variable in fmt with a constant string."""
-    variables = {
-        field_name: constant for _, field_name, _, _ in string.Formatter().parse(fmt) if field_name is not None
-    }
-    return fmt.format(**variables)
-
-
-def csip_aus_resource_to_match_uri(resource: CSIPAusResource) -> str:
-    """Given a CSIPAusResource - generate a URI that envoy will expect when resolving that resource. Any parameters
-    on that URI will be substituted with a wildcard. eg DERControlList should yield something like /edev/*/derp/*/derc
-    """
-    match resource:
-        case CSIPAusResource.DeviceCapability:
-            return resolve_format(uri.DeviceCapabilityUri)
-        case CSIPAusResource.Time:
-            return resolve_format(uri.TimeUri)
-        case CSIPAusResource.MirrorUsagePointList:
-            return resolve_format(uri.MirrorUsagePointListUri)
-        case CSIPAusResource.MirrorUsagePoint:
-            return resolve_format(uri.MirrorUsagePointUri)
-        case CSIPAusResource.EndDeviceList:
-            return resolve_format(uri.EndDeviceListUri)
-        case CSIPAusResource.EndDevice:
-            return resolve_format(uri.EndDeviceUri)
-        case CSIPAusResource.ConnectionPoint:
-            return resolve_format(uri.ConnectionPointUri)
-        case CSIPAusResource.Registration:
-            return resolve_format(uri.RegistrationUri)
-        case CSIPAusResource.FunctionSetAssignmentsList:
-            return resolve_format(uri.FunctionSetAssignmentsListUri)
-        case CSIPAusResource.FunctionSetAssignments:
-            return resolve_format(uri.FunctionSetAssignmentsUri)
-        case CSIPAusResource.DERProgramList:
-            return resolve_format(uri.DERProgramListUri)
-        case CSIPAusResource.DERProgram:
-            return resolve_format(uri.DERProgramUri)
-        case CSIPAusResource.DERControlList:
-            return resolve_format(uri.DERControlListUri)
-        case CSIPAusResource.DERControl:
-            return resolve_format(uri.DERControlUri)
-        case CSIPAusResource.DefaultDERControl:
-            return resolve_format(uri.DefaultDERControlUri)
-        case CSIPAusResource.DERList:
-            return resolve_format(uri.DERListUri)
-        case CSIPAusResource.DER:
-            return resolve_format(uri.DERUri)
-        case CSIPAusResource.DERCapability:
-            return resolve_format(uri.DERCapabilityUri)
-        case CSIPAusResource.DERSettings:
-            return resolve_format(uri.DERSettingsUri)
-        case CSIPAusResource.DERStatus:
-            return resolve_format(uri.DERStatusUri)
-        case CSIPAusResource.SubscriptionList:
-            return resolve_format(uri.SubscriptionListUri)
-        case CSIPAusResource.Subscription:
-            return resolve_format(uri.SubscriptionUri)
-        case CSIPAusResource.TariffProfileList:
-            return resolve_format(uri.TariffProfileFSAListUri)
-        case CSIPAusResource.TariffProfile:
-            return resolve_format(uri.TariffProfileUri)
-        case CSIPAusResource.RateComponentList:
-            return resolve_format(uri.RateComponentListUri)
-        case CSIPAusResource.RateComponent:
-            return resolve_format(uri.RateComponentUri)
-        case CSIPAusResource.CombinedTimeTariffIntervalList:
-            return resolve_format(uri.CombinedTimeTariffIntervalListUri)
-        case CSIPAusResource.TimeTariffIntervalList:
-            return resolve_format(uri.TimeTariffIntervalListUri)
-        case CSIPAusResource.TimeTariffInterval:
-            return resolve_format(uri.TimeTariffIntervalUri)
-        case CSIPAusResource.ConsumptionTariffIntervalList:
-            return resolve_format(uri.ConsumptionTariffIntervalListUri)
-        case CSIPAusResource.ConsumptionTariffInterval:
-            return resolve_format(uri.ConsumptionTariffIntervalUri)
-        case _:
-            raise Exception(f"Unsupported resource type {resource}")
-
-
-def check_resource_requests(resolved_parameters: dict[str, Any], request_history: list[RequestEntry]) -> CheckResult:
-    """Validates the request_history has a specific number of requests for the specified resource(s)"""
-
-    resources: list[CSIPAusResource] = resolved_parameters["resources"]
-    minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    maximum_count: int | None = resolved_parameters.get("maximum_count", None)
-
-    resource_match_uris: list[str] = [csip_aus_resource_to_match_uri(r) for r in resources]
-
-    total_matches: int = 0
-    for request in request_history:
-        total_matches += any(
-            (does_endpoint_match(path=request.path, match=match_uri) for match_uri in resource_match_uris)
+            does_endpoint_match(path=request.path, match=match_uri) for match_uri in resource_match_uris
         )
 
     resources_string = ", ".join(resources)
