@@ -1,7 +1,7 @@
 import logging
-from pathlib import Path
 import re
 import shutil
+from pathlib import Path
 
 from cactus_runner.app import proxy
 from cactus_runner.models import RequestEntry
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
 # Alternatives tried: hardcoded paths (permission errors), tempfile (failed on write to zip, issue on finalise?)
-REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108
+REQUEST_DATA_DIR = Path("/tmp/cactus_request_data")  # nosec B108  # noqa: S108
 
 
 def ensure_request_data_dir() -> Path:
@@ -44,7 +44,7 @@ def sanitise_url_to_filename(url: str) -> str:
     return sanitised if sanitised else "root"
 
 
-def write_request_response_files(
+def write_request_response_files(  # noqa: C901
     request_id: int,
     proxy_result: proxy.ProxyResult,
     entry: RequestEntry,
@@ -136,7 +136,7 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
 
         if request_files:
             try:
-                with open(request_files[0], "r", encoding="utf-8") as f:
+                with open(request_files[0], encoding="utf-8") as f:
                     request_content = f.read()
             except Exception as exc:
                 logger.error(f"Failed to read request file for request_id={request_id}", exc_info=exc)
@@ -145,7 +145,7 @@ def read_request_response_files(request_id: int) -> tuple[str | None, str | None
 
         if response_files:
             try:
-                with open(response_files[0], "r", encoding="utf-8") as f:
+                with open(response_files[0], encoding="utf-8") as f:
                     response_content = f.read()
             except Exception as exc:
                 logger.error(f"Failed to read response file for request_id={request_id}", exc_info=exc)

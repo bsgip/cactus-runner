@@ -1,8 +1,9 @@
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from itertools import chain
-from typing import Any, Callable, Sequence, cast
+from typing import Any, cast
 
 from dataclass_wizard import JSONWizard
 from envoy.server.model.archive import ArchiveBase
@@ -27,7 +28,6 @@ from cactus_runner.app.envoy_common import (
 
 @dataclass
 class TimelineDataStream(JSONWizard):
-
     label: str  # Descriptive label of this data stream
     offset_watt_values: list[
         int | None
@@ -82,7 +82,7 @@ def reading_to_watts(srts: Sequence[SiteReadingType], r: SiteReading) -> int:
     raise ValueError(f"Couldn't find SiteReadingType with ID {r.site_reading_type_id}")
 
 
-def entity_to_priority(entity: Any) -> int:
+def entity_to_priority(entity: Any) -> int:  # noqa: ANN401
     """this function will calculate the entity priority which follows these rules:
 
     1) an ArchiveBase (deletion) descendent is ALWAYS lower priority when compared to other types.
@@ -101,7 +101,7 @@ def entity_to_priority(entity: Any) -> int:
         return 2  # normal record
 
 
-def highest_priority_entity(entities: set[Interval]) -> Any:
+def highest_priority_entity(entities: set[Interval]) -> Any:  # noqa: ANN401
     """this function will take the highest priority entity which follows these priorities:
 
     This priority mapping is done by entity_to_priority
@@ -173,7 +173,7 @@ def generate_offset_watt_values(
         matching_intervals: set[Interval] = tree[current_interval:next_interval]  # type: ignore
         if matching_intervals:
             entity = highest_priority_entity(matching_intervals)
-            for watt_data, fetcher in zip(fetched_data, watt_fetchers):
+            for watt_data, fetcher in zip(fetched_data, watt_fetchers, strict=True):
                 watt_data.append(fetcher(entity))
         else:
             for watt_data in fetched_data:
@@ -201,11 +201,9 @@ async def generate_readings_data_stream(
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree.update(
-            (
-                Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
-                for r in readings
-                if r.time_period_seconds is not None and r.time_period_seconds > 0
-            )
+            Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
+            for r in readings
+            if r.time_period_seconds is not None and r.time_period_seconds > 0
         )
 
     # Generate all the reading data
@@ -221,7 +219,7 @@ async def generate_control_data_streams(
 ) -> list[TimelineDataStream]:
 
     all_controls = await get_site_controls_active_archived(session)
-    site_control_group_ids: set[int] = set((c.site_control_group_id for c in all_controls))
+    site_control_group_ids: set[int] = set(c.site_control_group_id for c in all_controls)
     all_data_streams: list[TimelineDataStream] = []
 
     # We will enumerate all the controls, batched by the site control group (DERProgram) that they belong to
@@ -313,7 +311,6 @@ async def generate_default_control_data_streams(
 
     intervals: list[Interval] = []
     for default_control in all_defaults:
-
         if isinstance(default_control, ArchiveSiteControlGroupDefault):
             # An archive record was active only from when it was last changed and then archived
             start_time = default_control.changed_time
@@ -404,7 +401,7 @@ async def generate_timeline(
     # Collate the data streams - culling any that don't have at least 1 value
     populated_data_streams = list(
         filter(
-            lambda ds: any((v is not None for v in ds.offset_watt_values)),
+            lambda ds: any(v is not None for v in ds.offset_watt_values),
             chain([site_readings, device_readings], controls, defaults),
         )
     )

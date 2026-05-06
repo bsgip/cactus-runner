@@ -48,11 +48,8 @@ Changelog = "https://github.com/bsgip/cactus-runner/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 dev = [
   "bandit",
-  "black",
-  "flake8",
-  "isort",
-  "mccabe",
   "mypy",
+  "ruff",
   "tox",
   "python-dotenv[cli]",
   "coverage",
@@ -100,15 +97,17 @@ env = [
 ]
 
 
-[tool.black]
+[tool.ruff]
 line-length = 120
 
-[tool.isort]
-profile = "black"
-src_paths = ["src", "tests"]
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "S", "C90", "B", "UP", "ANN", "N"]
 
-[tool.bandit]
-exclude_dirs = ["tests"]
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "ANN", "N"]
 
 [tool.mypy]
 exclude = ["dist", "tests", "build"]

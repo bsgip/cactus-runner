@@ -1,5 +1,5 @@
 import http
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from cactus_schema.runner import (
@@ -11,21 +11,19 @@ from cactus_schema.runner import (
 )
 
 PENDING_STEP = StepEventStatus(started_at=None, completed_at=None, event_status=None)
-RESOLVED_STEP = StepEventStatus(
-    started_at=datetime.now(tz=timezone.utc), completed_at=datetime.now(tz=timezone.utc), event_status=None
-)
+RESOLVED_STEP = StepEventStatus(started_at=datetime.now(tz=UTC), completed_at=datetime.now(tz=UTC), event_status=None)
 
 
 @pytest.fixture
 def runner_status_fixture():
     return RunnerStatus(
-        timestamp_status=datetime(2022, 4, 5, tzinfo=timezone.utc),
-        timestamp_initialise=datetime(2022, 4, 6, tzinfo=timezone.utc),
-        timestamp_start=datetime(2022, 4, 7, tzinfo=timezone.utc),
+        timestamp_status=datetime(2022, 4, 5, tzinfo=UTC),
+        timestamp_initialise=datetime(2022, 4, 6, tzinfo=UTC),
+        timestamp_start=datetime(2022, 4, 7, tzinfo=UTC),
         log_envoy="log for\nenvoy",
         status_summary="status summary here",
         last_client_interaction=ClientInteraction(
-            interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(timezone.utc)
+            interaction_type=ClientInteractionType.PROXIED_REQUEST, timestamp=datetime.now(UTC)
         ),
         csip_aus_version="v1.2",
         test_procedure_name="ALL-01",
@@ -41,7 +39,7 @@ def runner_status_fixture():
                 path="/dcap",
                 method=http.HTTPMethod.GET,
                 status=http.HTTPStatus.OK,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 step_name="ALL-01-001",
                 body_xml_errors=[],
                 request_id=1,

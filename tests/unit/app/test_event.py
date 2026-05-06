@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPMethod
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -147,63 +147,57 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
     "trigger, listener, expected",
     [
         (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Wrong type of event
         ),
         (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="unsupported-event-type", parameters={}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Unrecognized event type
         ),
         (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # This was enabled after the event trigger (negative time)
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 5, 5, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 5, 5, tzinfo=UTC),
             ),
             False,  # This was enabled shortly after the event trigger (negative time)
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
             ),
             True,
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
@@ -213,21 +207,19 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This listener is NOT enabled
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
             ),
             False,  # Not enough time elapsed
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -235,14 +227,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
             ),
@@ -250,14 +242,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="POST-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.PUT, "/foo/bar"),
             ),
@@ -265,14 +257,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="PUT-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -286,14 +278,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                     },
                 ),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_AFTER,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -307,14 +299,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                     },
                 ),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/my/endppoint/1"),
             ),
@@ -324,14 +316,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                     type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/my/endppoint/1")}
                 ),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_AFTER,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -339,14 +331,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Without serve_request_first: True - Only BEFORE events will fire
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo"),
             ),
@@ -354,14 +346,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Wrong endpoint
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -369,14 +361,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Wrong endpoint
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
             ),
@@ -384,14 +376,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Wrong method
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
             ),
@@ -406,7 +398,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/foo/123/bar/456"),
             ),
@@ -416,49 +408,45 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                     type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/*/bar/*")}
                 ),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Wrong type of event
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="unsupported-event-type", parameters={}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # Unrecognized event type
         ),
         (
             event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
             ),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
             ),
             True,
         ),
         (
             event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
             ),
             Listener(
                 step="step",
@@ -469,57 +457,51 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
             False,  # This listener is NOT enabled
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
             ),
             True,  # proceed with timeout_seconds fires via TIME trigger once elapsed
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
             ),
             False,  # Not enough time elapsed
         ),
         (
-            event.EventTrigger(
-                event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
-            ),
+            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
             ),
             False,  # proceed without timeout_seconds does NOT fire via TIME trigger
         ),
         (
             event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=timezone.utc), False, None
+                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
             ),
             Listener(
                 step="step",
                 event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
             ),
             True,  # Manual PROCEED still fires even when timeout_seconds is set but not yet elapsed
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=0),
             ),
@@ -527,14 +509,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,  # s=0 (first page) should trigger
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=1),
             ),
@@ -542,14 +524,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # s=1 (second page) should NOT trigger
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=5),
             ),
@@ -557,14 +539,14 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             False,  # s=5 (paginated) should NOT trigger
         ),
         (
             event.EventTrigger(
                 event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=timezone.utc),
+                datetime(2022, 11, 10, tzinfo=UTC),
                 False,
                 event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=None),
             ),
@@ -572,7 +554,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
                 step="step",
                 event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
                 actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=timezone.utc),
+                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
             ),
             True,  # No s param should trigger (same as first page)
         ),
@@ -677,8 +659,8 @@ async def test_handle_event_trigger_normal_operation(
     )
 
     # we want a unique "checks" reference for each event listener so we can look it up later
-    for idx, l in enumerate(listeners):
-        l.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
+    for idx, listener in enumerate(listeners):
+        listener.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
 
     def find_index(to_find, items) -> int | None:
         for idx, i in enumerate(items):

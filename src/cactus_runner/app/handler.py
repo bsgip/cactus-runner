@@ -1,7 +1,7 @@
 import http
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email import message, policy
 from itertools import groupby
 from pathlib import Path
@@ -72,7 +72,7 @@ class StartResult:
 
 async def attempt_apply_actions(
     actions: list[Action] | None, runner_state: RunnerState, envoy_client: EnvoyAdminClient
-):
+) -> None:
     if actions:
         async with begin_session() as session:
             for a in actions:
@@ -121,7 +121,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
         )
 
     # Update last client interaction
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     runner_state.client_interactions.append(
         ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_START, timestamp=now)
     )
@@ -148,7 +148,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
         StartResponseBody(
             status="Test procedure started.",
             test_procedure=active_test_procedure.name,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         ).to_json(),
     )
 
@@ -178,8 +178,8 @@ async def setup_test_procedure_from_request(
         definition = TestProcedure.from_yaml(run_request.test_definition.yaml_definition)
         if isinstance(definition, list):
             raise ValueError("Definition must be a TestProcedure instance and not list[TestProcedure]")
-    except Exception as e:
-        raise ValueError(f"Received invalid test procedure definition {e}")
+    except Exception as err:
+        raise ValueError(f"Received invalid test procedure definition {err}") from err
 
     # Create listeners for all test procedure events
     listeners = []
@@ -194,7 +194,7 @@ async def setup_test_procedure_from_request(
         name=run_request.test_definition.test_procedure_id,
         definition=definition,
         csip_aus_version=run_request.run_group.csip_aus_version,
-        initialised_at=datetime.now(tz=timezone.utc),
+        initialised_at=datetime.now(tz=UTC),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
         step_status=step_status,
@@ -220,9 +220,7 @@ async def initialize_next_test(
 ) -> None:
     """Initialize the next test procedure in a playlist."""
     runner_state.client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
-        )
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC))
     )
 
     prev_test = runner_state.active_test_procedure
@@ -333,9 +331,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
 
     # Update last client interaction
     request.app[APPKEY_RUNNER_STATE].client_interactions.append(
-        ClientInteraction(
-            interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(timezone.utc)
-        )
+        ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC))
     )
 
     # Reset envoy database
@@ -467,7 +463,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     body = InitResponseBody(
         status="Test procedure initialised.",
         test_procedure=run_request.test_definition.test_procedure_id.value,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         is_started=is_started,
     )
     return web.Response(status=http.HTTPStatus.CREATED, content_type="application/json", text=body.to_json())
@@ -541,7 +537,7 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
         )
 
         # Determine zip filename
-        generation_timestamp = datetime.now(timezone.utc).replace(microsecond=0)
+        generation_timestamp = datetime.now(UTC).replace(microsecond=0)
         zip_filename = (
             f"CactusTestProcedureArtifacts_{generation_timestamp.isoformat()}_{finalized_test_procedure_name}.zip"
         )
@@ -565,7 +561,7 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
                     runner_state.client_interactions.append(
                         ClientInteraction(
                             interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT,
-                            timestamp=datetime.now(timezone.utc),
+                            timestamp=datetime.now(UTC),
                         )
                     )
                     runner_state.active_test_procedure = await setup_test_procedure_from_request(
@@ -832,7 +828,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
         )
 
     # Store timestamp of when the request was received
-    request_timestamp = datetime.now(timezone.utc)
+    request_timestamp = datetime.now(UTC)
 
     # Fail the request if the incorret media type headers are supplied
     if header_problems := await media_headers_check(request):

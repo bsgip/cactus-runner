@@ -28,7 +28,7 @@ from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app.database import remove_database_connection
 from cactus_runner.app.requests_archive import ensure_request_data_dir
-from cactus_runner.client import RunnerClient, RunnerClientException
+from cactus_runner.client import RunnerClient, RunnerClientError
 from tests.integration.certificate1 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
 )
@@ -105,7 +105,7 @@ async def test_client_interactions(
     # Interrogate start response (if it's an immediate start - you shouldn't be able to start it - it should be started)
     if expect_immediate_start:
         async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
-            with pytest.raises(RunnerClientException):
+            with pytest.raises(RunnerClientError):
                 await RunnerClient.start(session)
     else:
         async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
@@ -187,7 +187,7 @@ async def test_client_init_bad_cert_combos(
     )
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
         # Look for a BAD_REQUEST (http 400)
-        with pytest.raises(RunnerClientException, check=lambda e: "400" in str(e)):
+        with pytest.raises(RunnerClientError, check=lambda e: "400" in str(e)):
             await RunnerClient.initialise(session, run_request)
 
 
@@ -208,7 +208,7 @@ async def test_client_precondition_fails(cactus_runner_client: TestClient, run_r
 
         # This test will expect preconditions to be met (eg registering an EndDevice) - if we try to start now
         # it should fail and report a useful error
-        with pytest.raises(RunnerClientException) as exc_info:
+        with pytest.raises(RunnerClientError) as exc_info:
             await RunnerClient.start(session)
 
         assert exc_info.value.http_status_code == HTTPStatus.PRECONDITION_FAILED

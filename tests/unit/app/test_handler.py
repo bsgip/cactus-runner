@@ -1,6 +1,6 @@
 import asyncio
 import http
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -49,7 +49,7 @@ from tests.integration.certificate2 import (
 
 
 def mocked_ProxyResult(status: int) -> ProxyResult:
-    return ProxyResult("", "", bytes(), None, {}, Response(status=status))
+    return ProxyResult("", "", b"", None, {}, Response(status=status))
 
 
 def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = False) -> RunRequest:

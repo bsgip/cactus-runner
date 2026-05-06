@@ -23,12 +23,12 @@ class ResolvedParam:
     original_expression: BaseExpression | None = None
 
 
-def is_resolvable_variable(v: Any) -> bool:
+def is_resolvable_variable(v: Any) -> bool:  # noqa: ANN401
     """Returns True if the supplied value is a variable definition that requires resolving"""
     return isinstance(v, NamedVariable) or isinstance(v, Expression) or isinstance(v, Constant)
 
 
-async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression | Constant) -> Any:
+async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression | Constant) -> Any:  # noqa: C901, ANN401
     """Attempts to resolve the specified variable (potentially from the database)
 
     raises UnresolvableVariableError if any errors are encountered
@@ -115,8 +115,8 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                     return lhs >= rhs
             raise ValueError(f"Unsupported operation {v.operation} ({int(v.operation)})")
 
-        except Exception as exc:
-            raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {exc}")
+        except Exception as err:
+            raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {err}") from err
     else:
         raise UnresolvableVariableError(f"Unsupported variable type {type(v)}")
 

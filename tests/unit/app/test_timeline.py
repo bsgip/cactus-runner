@@ -1,5 +1,5 @@
 import unittest.mock as mock
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -31,7 +31,7 @@ from cactus_runner.app.timeline import (
     reading_to_watts,
 )
 
-BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=timezone.utc)  # Used as an arbitrary - non aligned datetime
+BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=UTC)  # Used as an arbitrary - non aligned datetime
 
 
 @pytest.mark.parametrize(
@@ -111,21 +111,21 @@ def test_reading_to_watts(srts, reading, expected):
         ([generate_class_instance(SiteReading)], 0),
         (
             [
-                generate_class_instance(SiteReading, seed=101, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)),
-                generate_class_instance(SiteReading, seed=202, changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc)),
+                generate_class_instance(SiteReading, seed=101, changed_time=datetime(2022, 1, 1, tzinfo=UTC)),
+                generate_class_instance(SiteReading, seed=202, changed_time=datetime(2021, 1, 1, tzinfo=UTC)),
             ],
             0,
         ),  # changed_time is tiebreaker
         (
             [
                 generate_class_instance(
-                    DynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc)
+                    DynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=303, changed_time=datetime(2023, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=303, changed_time=datetime(2023, 1, 1, tzinfo=UTC)
                 ),
             ],
             0,
@@ -133,13 +133,13 @@ def test_reading_to_watts(srts, reading, expected):
         (
             [
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=303, changed_time=datetime(2023, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=303, changed_time=datetime(2023, 1, 1, tzinfo=UTC)
                 ),
             ],
             2,
@@ -147,16 +147,16 @@ def test_reading_to_watts(srts, reading, expected):
         (
             [
                 generate_class_instance(
-                    ArchiveDynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc)
+                    ArchiveDynamicOperatingEnvelope, seed=101, changed_time=datetime(2021, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
-                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
                     ArchiveDynamicOperatingEnvelope,
                     seed=303,
                     deleted_time=None,
-                    changed_time=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                    changed_time=datetime(2023, 1, 1, tzinfo=UTC),
                 ),
             ],
             2,
@@ -167,21 +167,21 @@ def test_reading_to_watts(srts, reading, expected):
                     ArchiveDynamicOperatingEnvelope,
                     seed=101,
                     deleted_time=None,
-                    archive_time=datetime(2021, 1, 2, tzinfo=timezone.utc),  # highest archive time for tiebreak
+                    archive_time=datetime(2021, 1, 2, tzinfo=UTC),  # highest archive time for tiebreak
                 ),
                 generate_class_instance(
-                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=timezone.utc)
+                    DynamicOperatingEnvelope, seed=202, changed_time=datetime(2022, 1, 1, tzinfo=UTC)
                 ),
                 generate_class_instance(
                     ArchiveDynamicOperatingEnvelope,
                     seed=303,
                     deleted_time=None,
-                    archive_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                    archive_time=datetime(2021, 1, 1, tzinfo=UTC),
                 ),
                 generate_class_instance(
                     ArchiveDynamicOperatingEnvelope,
                     seed=404,
-                    archive_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                    archive_time=datetime(2021, 1, 1, tzinfo=UTC),
                 ),
             ],
             0,
@@ -220,7 +220,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=101,
-                changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                changed_time=datetime(2021, 1, 1, tzinfo=UTC),
                 import_limit_active_watts=Decimal("1"),
                 export_limit_watts=Decimal("11"),
             ),
@@ -231,7 +231,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=202,
-                changed_time=datetime(2021, 1, 1, tzinfo=timezone.utc),
+                changed_time=datetime(2021, 1, 1, tzinfo=UTC),
                 import_limit_active_watts=Decimal("2"),
                 export_limit_watts=Decimal("22"),
             ),
@@ -242,7 +242,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=303,
-                changed_time=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                changed_time=datetime(2020, 1, 1, tzinfo=UTC),
                 import_limit_active_watts=Decimal("3"),
                 export_limit_watts=Decimal("33"),
             ),
@@ -253,7 +253,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=404,
-                changed_time=datetime(2021, 1, 1, 9, tzinfo=timezone.utc),
+                changed_time=datetime(2021, 1, 1, 9, tzinfo=UTC),
                 import_limit_active_watts=Decimal("4"),
                 export_limit_watts=Decimal("44"),
             ),
@@ -264,7 +264,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=505,
-                changed_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                changed_time=datetime(2025, 1, 1, tzinfo=UTC),
                 import_limit_active_watts=Decimal("5"),
                 export_limit_watts=Decimal("55"),
             ),
@@ -275,7 +275,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
             generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=606,
-                changed_time=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                changed_time=datetime(2020, 1, 1, tzinfo=UTC),
                 import_limit_active_watts=Decimal("6"),
                 export_limit_watts=Decimal("66"),
             ),
@@ -309,7 +309,7 @@ async def test_generate_readings_data_stream_empty_db(pg_empty_config):
     assert result.label == "foo"
     assert isinstance(result.offset_watt_values, list)
     assert len(result.offset_watt_values) == 10, "10 seconds of 1 second intervals"
-    assert all((v is None for v in result.offset_watt_values))
+    assert all(v is None for v in result.offset_watt_values)
 
 
 @mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
@@ -636,7 +636,7 @@ async def test_generate_control_data_streams(
 
     # Assert
     assert_list_type(TimelineDataStream, result, len(expected))
-    assert len(set((ds.label for ds in result))) == len(result), "Expecting unique labels"
+    assert len(set(ds.label for ds in result)) == len(result), "Expecting unique labels"
     actual = [ds.offset_watt_values for ds in result]
     assert expected == actual
 
@@ -728,7 +728,7 @@ async def test_generate_default_control_data_streams(
 
     # Assert
     assert_list_type(TimelineDataStream, result, len(expected))
-    assert len(set((ds.label for ds in result))) == len(expected), "Expecting unique labels"
+    assert len(set(ds.label for ds in result)) == len(expected), "Expecting unique labels"
     actual = [ds.offset_watt_values for ds in result]
     assert expected == actual
 

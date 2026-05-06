@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from cactus_schema.runner import (
     ClientInteraction,
@@ -180,7 +180,7 @@ class RunnerState:
     request_history: list[RequestEntry] = field(default_factory=list)
     client_interactions: list[ClientInteraction] = field(
         default_factory=lambda: [
-            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(timezone.utc))
+            ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(UTC))
         ]
     )
 
@@ -244,7 +244,7 @@ class ReadingType(JSONWizard):
     # site: Site | None
 
     @classmethod
-    def from_site_reading_type(cls, srt: SiteReadingType):
+    def from_site_reading_type(cls, srt: SiteReadingType) -> Self:
         """Converts a sqlalchemy SiteReadingType (from envoy) to a serialisable ReadingType"""
         return cls(
             site_reading_type_id=srt.site_reading_type_id,
@@ -334,7 +334,7 @@ class SiteDERRating(JSONWizard):
     doe_modes_supported: DOESupportedMode | None
 
     @classmethod
-    def from_site_der_rating(cls, rating: EnvoySiteDERRating | None):
+    def from_site_der_rating(cls, rating: EnvoySiteDERRating | None) -> Self | None:
         if rating is None:
             return None
         return cls(
@@ -447,7 +447,7 @@ class SiteDERSetting(JSONWizard):
     doe_modes_enabled: DOESupportedMode | None
 
     @classmethod
-    def from_site_der_setting(cls, setting: EnvoySiteDERSetting | None):
+    def from_site_der_setting(cls, setting: EnvoySiteDERSetting | None) -> Self | None:
         if setting is None:
             return None
 
@@ -522,7 +522,7 @@ class SiteDERAvailability(JSONWizard):
     estimated_w_avail_multiplier: int | None
 
     @classmethod
-    def from_site_der_availability(cls, availability: EnvoySiteDERAvailability | None):
+    def from_site_der_availability(cls, availability: EnvoySiteDERAvailability | None) -> Self | None:
         if availability is None:
             return None
         return cls(
@@ -566,7 +566,7 @@ class SiteDERStatus(JSONWizard):
     storage_connect_status_time: datetime | None
 
     @classmethod
-    def from_site_der_status(cls, status: EnvoySiteDERStatus | None):
+    def from_site_der_status(cls, status: EnvoySiteDERStatus | None) -> Self | None:
         if status is None:
             return None
         return None
@@ -574,7 +574,6 @@ class SiteDERStatus(JSONWizard):
 
 @dataclass(frozen=True)
 class SiteDER(JSONWizard):
-
     site_der_id: int
     site_id: int
     created_time: datetime
@@ -585,7 +584,7 @@ class SiteDER(JSONWizard):
     site_der_status: SiteDERStatus | None
 
     @classmethod
-    def from_site_der(cls, site_der: EnvoySiteDER):
+    def from_site_der(cls, site_der: EnvoySiteDER) -> Self:
         return cls(
             site_der_id=site_der.site_der_id,
             site_id=site_der.site_id,
@@ -600,7 +599,6 @@ class SiteDER(JSONWizard):
 
 @dataclass(frozen=True)
 class Site(JSONWizard):
-
     site_id: int
     nmi: str | None
     aggregator_id: int
@@ -615,7 +613,7 @@ class Site(JSONWizard):
     site_ders: list[SiteDER]
 
     @classmethod
-    def from_site(cls, site: EnvoySite):
+    def from_site(cls, site: EnvoySite) -> Self:
         return cls(
             site_id=site.site_id,
             nmi=site.nmi,
@@ -634,33 +632,32 @@ class Site(JSONWizard):
 
 @dataclass
 class ReportingData:
-
     @staticmethod
-    def v(version: int):
+    def v(version: int) -> "type[ReportingData_Base]":
         if version == 1:
-            return ReportingData_v1
+            return ReportingData_v1  # type: ignore[return-value]
         raise ValueError(f"Unknown version of ReportingData ({version}).")
 
     @staticmethod
-    def from_json(version, string, **kwargs) -> Any:
+    def from_json(version: int, string: str, **kwargs: Any) -> Any:  # noqa: ANN401
         return ReportingData.v(version).from_json(string, **kwargs)
 
 
 @dataclass(kw_only=True)
-class ReportingData_Base(JSONWizard):
+class ReportingData_Base(JSONWizard):  # noqa: N801
     version: int = field(init=False)
 
     def _classname_to_version(self) -> int:
-        CLASS_NAME_PREFIX = "ReportingData_v"
+        CLASS_NAME_PREFIX = "ReportingData_v"  # noqa: N806
         return int(self.__class__.__name__.split(CLASS_NAME_PREFIX)[1])
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Automatically determine the version from the classname, ReportingData_vXXX
         self.version = self._classname_to_version()
 
 
 @dataclass(kw_only=True)
-class ReportingData_v1(ReportingData_Base):
+class ReportingData_v1(ReportingData_Base):  # noqa: N801
     """Holds all the data required to generate cactus run report.
 
     This class is serializable with a `to_json()` call. e.g.

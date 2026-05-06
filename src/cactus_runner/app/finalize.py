@@ -5,7 +5,7 @@ import shutil
 import subprocess  # nosec B404
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -61,7 +61,7 @@ class DatabaseDumpError(Exception):
     pass
 
 
-class NoActiveTestProcedure(Exception):
+class NoActiveTestProcedureError(Exception):
     pass
 
 
@@ -145,8 +145,8 @@ def write_zip_to_file(
         # Create db dumps (schema + data)
         try:
             connection_string = get_postgres_dsn().replace("+psycopg", "")
-        except DatabaseNotInitialisedError:
-            raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped")
+        except DatabaseNotInitialisedError as err:
+            raise DatabaseDumpError("Database is not initialised and therefore cannot be dumped") from err
         exectuable_name = "pg_dump"
         for dump_args, dump_filename in [
             (["--schema-only", "--no-owner", "--no-privileges"], f"EnvoyDBSchema{filename_infix}.dump"),
@@ -156,7 +156,7 @@ def write_zip_to_file(
             # This command isn't constructed from user input, so it should be safe to use subprocess.run (nosec B603)
             command = [exectuable_name, f"--dbname={connection_string}", "-f", dump_file, "--no-password"] + dump_args
             try:
-                subprocess.run(command)  # nosec B603
+                subprocess.run(command)  # nosec B603  # noqa: S603
             except FileNotFoundError as exc:
                 logger.error(
                     f"Unable to create database snapshot ('{exectuable_name}' executable not found). Did you forget to install 'postgresql-client'?",  # noqa: E501
@@ -199,11 +199,11 @@ async def generate_json_reporting_data(
     reading_counts: dict[ReadingType, int],
     sites: list[Site],
     timeline: timeline.Timeline | None,
-    errors,
+    errors: list[str],
     version: int = 1,
     set_max_w_varied: bool = False,
 ) -> str | None:
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
 
     try:
         # Repack readings into something serializable
@@ -214,7 +214,7 @@ async def generate_json_reporting_data(
             for k, v in reading_counts.items()
         ]
 
-        reporting_data = ReportingData.v(version)(
+        reporting_data = ReportingData.v(version)(  # type: ignore[call-arg]
             created_at=created_at,
             runner_state=runner_state,
             check_results=check_results,
@@ -234,19 +234,19 @@ async def generate_json_reporting_data(
 
 async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> Path:  # noqa: C901
     """For the specified RunnerState - move the active test into a "Finished" state by writing the final ZIP
-    to a temporary file. Raises NoActiveTestProcedure if there isn't an active test procedure for the specified
+    to a temporary file. Raises NoActiveTestProcedureError if there isn't an active test procedure for the specified
     RunnerState
 
     If the active test is already finished - this will have no effect and will return the cached finished_zip_path
 
     Populates and then returns the finished_zip_path for the active test procedure"""
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     errors: list[str] = []  # For capturing basic error information to encode in the zip to alert about missing content
 
     active_test_procedure = runner_state.active_test_procedure
     if not active_test_procedure:
-        raise NoActiveTestProcedure()
+        raise NoActiveTestProcedureError()
 
     if active_test_procedure.is_finished():
         logger.info(

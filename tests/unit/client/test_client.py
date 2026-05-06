@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPStatus
 from unittest.mock import MagicMock
 
@@ -19,7 +19,7 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions.client import TestProcedureId
 
-from cactus_runner.client import RunnerClient, RunnerClientException
+from cactus_runner.client import RunnerClient, RunnerClientError
 
 
 def make_run_request(run_id: str = "test-run-123") -> RunRequest:
@@ -44,7 +44,7 @@ async def test_initialise():
     expected_init_result = InitResponseBody(
         status="PLACEHOLDER-STATUS",
         test_procedure="ALL-01",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         is_started=False,
     )
     run_request = make_run_request()
@@ -70,7 +70,7 @@ async def test_initialise_connectionerror():
     run_request = make_run_request()
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while initialising test"):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while initialising test"):
         _ = await RunnerClient.initialise(
             session=mock_session,
             run_request=run_request,
@@ -84,7 +84,7 @@ async def test_initialise_playlist():
     expected_init_result = InitResponseBody(
         status="PLACEHOLDER-STATUS",
         test_procedure="ALL-01",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         is_started=True,
     )
     run_requests = [make_run_request("test-1"), make_run_request("test-2"), make_run_request("test-3")]
@@ -109,7 +109,7 @@ async def test_initialise_playlist():
 async def test_start():
     # Arrange
     expected_start_result = StartResponseBody(
-        status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(timezone.utc)
+        status="PLACEHOLDER-STATUS", test_procedure="ALL-01", timestamp=datetime.now(UTC)
     )
     mock_session = MagicMock()
     mock_session.post.return_value.__aenter__.return_value.status = 200
@@ -134,7 +134,7 @@ async def test_start_precondition_failures():
     mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_error_message
 
     # Act
-    with pytest.raises(RunnerClientException) as exc_info:
+    with pytest.raises(RunnerClientError) as exc_info:
         await RunnerClient.start(session=mock_session)
 
     # Assert
@@ -149,7 +149,7 @@ async def test_start_connectionerror():
     mock_session.post.side_effect = ConnectionTimeoutError
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while starting test."):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while starting test."):
         _ = await RunnerClient.start(session=mock_session)
 
 
@@ -158,7 +158,7 @@ async def test_finalize():
     # Arrange
     mock_session = MagicMock()
     mock_session.post.return_value.__aenter__.return_value.status = 200
-    mock_session.post.return_value.__aenter__.return_value.read.return_value = bytes()
+    mock_session.post.return_value.__aenter__.return_value.read.return_value = b""
 
     # Act
     finalize_result = await RunnerClient.finalize(session=mock_session)
@@ -176,7 +176,7 @@ async def test_finalize_connectionerror():
     mock_session.post.side_effect = ConnectionTimeoutError
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while finalizing test procedure."):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while finalizing test procedure."):
         _ = await RunnerClient.finalize(session=mock_session)
 
 
@@ -205,7 +205,7 @@ async def test_status_connectionerror():
     mock_session.get.side_effect = ConnectionTimeoutError
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while requesting test procedure status."):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while requesting test procedure status."):
         _ = await RunnerClient.status(session=mock_session)
 
 
@@ -234,7 +234,7 @@ async def test_last_interaction_connectionerror():
     mock_session.get.side_effect = ConnectionTimeoutError
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while requesting test procedure status."):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while requesting test procedure status."):
         _ = await RunnerClient.last_interaction(session=mock_session)
 
 
@@ -263,5 +263,5 @@ async def test_proceed_connectionerror():
     mock_session.get.side_effect = ConnectionTimeoutError
 
     # Act/Assert
-    with pytest.raises(RunnerClientException, match="Unexpected failure while sending proceed request to test runner."):
+    with pytest.raises(RunnerClientError, match="Unexpected failure while sending proceed request to test runner."):
         _ = await RunnerClient.proceed(session=mock_session)

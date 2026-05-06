@@ -15,12 +15,12 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions.client import TestProcedureId
 
-__all__ = ["ClientSession", "ClientTimeout", "RunnerClientException", "TestProcedureId", "RunnerClient"]
+__all__ = ["ClientSession", "ClientTimeout", "RunnerClientError", "TestProcedureId", "RunnerClient"]
 
 logger = logging.getLogger(__name__)
 
 
-class RunnerClientException(Exception):
+class RunnerClientError(Exception):
     http_status_code: int | None  # The HTTP status code received (if any) from the underlying client request
     error_message: str | None  # The error message extracted from the underlying client
 
@@ -34,7 +34,7 @@ class RunnerClientException(Exception):
 
 
 async def ensure_success_response(response: ClientResponse) -> None:
-    """Raises a RunnerClientException if the response is NOT a success response (will consume body). Does nothing
+    """Raises a RunnerClientError if the response is NOT a success response (will consume body). Does nothing
     otherwise"""
     if response.status < 200 or response.status > 299:
         try:
@@ -45,7 +45,7 @@ async def ensure_success_response(response: ClientResponse) -> None:
         logger.error(
             f"Received HTTP {response.status} response for {response.request_info.url}. Response: {response_body}"
         )
-        raise RunnerClientException(
+        raise RunnerClientError(
             f"Received HTTP {response.status} response from server. Response: {response_body}",
             http_status_code=response.status,
             error_message=response_body,  # We will just pass along the whole body - expecting plaintext
@@ -76,13 +76,12 @@ class RunnerClient:
                 response_json = await response.text()
                 init_response_body = InitResponseBody.from_json(response_json)
                 if isinstance(init_response_body, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return init_response_body
-        except Exception as e:
-            logger.debug(e)
-            raise RunnerClientException(f"Unexpected failure while initialising test {e}.")
+        except Exception as err:
+            raise RunnerClientError(f"Unexpected failure while initialising test {err}.") from err
 
     @staticmethod
     async def start(session: ClientSession) -> StartResponseBody:
@@ -92,13 +91,12 @@ class RunnerClient:
                 json = await response.text()
                 start_response_body = StartResponseBody.from_json(json)
                 if isinstance(start_response_body, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return start_response_body
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while starting test.")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while starting test.") from err
 
     @staticmethod
     async def finalize(session: ClientSession) -> bytes:
@@ -106,9 +104,8 @@ class RunnerClient:
             async with session.post(url=uri.Finalize) as response:
                 await ensure_success_response(response)
                 return await response.read()
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while finalizing test procedure.")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while finalizing test procedure.") from err
 
     @staticmethod
     async def status(session: ClientSession) -> RunnerStatus:
@@ -118,13 +115,12 @@ class RunnerClient:
                 json = await response.text()
                 runner_status = RunnerStatus.from_json(json)
                 if isinstance(runner_status, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return runner_status
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while requesting test procedure status.")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while requesting test procedure status.") from err
 
     @staticmethod
     async def last_interaction(session: ClientSession) -> ClientInteraction:
@@ -137,8 +133,8 @@ class RunnerClient:
             async with session.get(url=uri.Health) as response:
                 await ensure_success_response(response)
                 return True
-        except Exception as e:
-            logger.debug(e)
+        except Exception as err:
+            logger.debug(err)
             return False
 
     @staticmethod
@@ -149,13 +145,12 @@ class RunnerClient:
                 json = await response.text()
                 request_data = RequestData.from_json(json)
                 if isinstance(request_data, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return request_data
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException(f"Unexpected failure while retrieving request data for ID: {request_id}")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError(f"Unexpected failure while retrieving request data for ID: {request_id}") from err
 
     @staticmethod
     async def list_requests(session: ClientSession) -> RequestList:
@@ -165,13 +160,12 @@ class RunnerClient:
                 json = await response.text()
                 request_list = RequestList.from_json(json)
                 if isinstance(request_list, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return request_list
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while listing request IDs.")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while listing request IDs.") from err
 
     @staticmethod
     async def proceed(session: ClientSession) -> ProceedResponse:
@@ -181,10 +175,9 @@ class RunnerClient:
                 json = await response.text()
                 proceed_response = ProceedResponse.from_json(json)
                 if isinstance(proceed_response, list):
-                    raise RunnerClientException(
+                    raise RunnerClientError(
                         "Unexpected response from server. Expected a single object, but received a list."
                     )
                 return proceed_response
-        except ConnectionTimeoutError as e:
-            logger.debug(e)
-            raise RunnerClientException("Unexpected failure while sending proceed request to test runner.")
+        except ConnectionTimeoutError as err:
+            raise RunnerClientError("Unexpected failure while sending proceed request to test runner.") from err

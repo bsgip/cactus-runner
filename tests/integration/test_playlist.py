@@ -41,9 +41,9 @@ def verify_zip_contents(zip_data: bytes, expected_test_name: str) -> None:
     # Verify summary contains expected test name
     summary_data = zip_file.read(summary_files[0])
     summary = RunnerStatus.from_json(summary_data.decode())
-    assert (
-        summary.test_procedure_name == expected_test_name
-    ), f"Expected test name '{expected_test_name}', got '{summary.test_procedure_name}'"
+    assert summary.test_procedure_name == expected_test_name, (
+        f"Expected test name '{expected_test_name}', got '{summary.test_procedure_name}'"
+    )
 
 
 @pytest.mark.slow
@@ -280,7 +280,7 @@ async def test_playlist_invalid_start_index_rejected(cactus_runner_client: TestC
 
     # Create 3 test requests
     run_requests = []
-    for i in range(3):
+    for _ in range(3):
         rr = run_request_generator(TestProcedureId.ALL_01, agg_cert, None, csip_version, None)
         run_requests.append(rr)
 
@@ -309,7 +309,7 @@ async def test_playlist_three_tests(cactus_runner_client: TestClient, run_reques
     for i in range(3):
         rr = run_request_generator(TestProcedureId.ALL_01, agg_cert, None, csip_version, None)
         rr = RunRequest(
-            run_id=f"playlist-test-{i+1}",
+            run_id=f"playlist-test-{i + 1}",
             test_definition=rr.test_definition,
             run_group=rr.run_group,
             test_config=rr.test_config,
@@ -326,7 +326,7 @@ async def test_playlist_three_tests(cactus_runner_client: TestClient, run_reques
         # Verify a test is active
         async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(60)) as session:
             status = await RunnerClient.status(session)
-            assert status.test_procedure_name == TestProcedureId.ALL_01.value, f"Test {i+1}: Expected active test"
+            assert status.test_procedure_name == TestProcedureId.ALL_01.value, f"Test {i + 1}: Expected active test"
 
         # Make minimum requests to complete test
         await run_all_01_requests(cactus_runner_client)
