@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 import logging
-from typing import override
+from typing import Any, override
 
 # Changing these log file paths requires updating cactus-deploy logconf.json files - these are baked into built images.
 # In theory, we could try and make this more dynamic but for practical reasons, moving these around shouldn't be a
@@ -45,7 +45,7 @@ class JSONLFormatter(logging.Formatter):
     which is suitable for structured (machine-parsable) log files.
     """
 
-    def __init__(self, *, fmt_keys: dict[str, str] | None = None):
+    def __init__(self, *, fmt_keys: dict[str, str] | None = None) -> None:
         super().__init__()
         self.fmt_keys = fmt_keys if fmt_keys is not None else {}
 
@@ -54,7 +54,7 @@ class JSONLFormatter(logging.Formatter):
         message = self._prepare_log_dict(record)
         return json.dumps(message, default=str)
 
-    def _prepare_log_dict(self, record: logging.LogRecord):
+    def _prepare_log_dict(self, record: logging.LogRecord) -> dict[str, Any]:
         always_fields = {
             "message": record.getMessage(),
             "timestamp": dt.datetime.fromtimestamp(record.created, tz=dt.UTC).isoformat(),

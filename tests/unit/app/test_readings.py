@@ -220,7 +220,7 @@ def test_scale_readings(power_of_ten_multiplier, values, expected_scaled_values)
         expected_scaled_values = [Decimal(i) for i in expected_scaled_values]
         assert "scaled_value" in df
         TOLERANCE = 1e-5
-        for v1, v2 in zip(df["scaled_value"].tolist(), expected_scaled_values):
+        for v1, v2 in zip(df["scaled_value"].tolist(), expected_scaled_values, strict=True):
             assert abs(v1 - v2) < TOLERANCE
 
 

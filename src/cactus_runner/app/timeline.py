@@ -173,7 +173,7 @@ def generate_offset_watt_values(
         matching_intervals: set[Interval] = tree[current_interval:next_interval]  # type: ignore
         if matching_intervals:
             entity = highest_priority_entity(matching_intervals)
-            for watt_data, fetcher in zip(fetched_data, watt_fetchers):
+            for watt_data, fetcher in zip(fetched_data, watt_fetchers, strict=True):
                 watt_data.append(fetcher(entity))
         else:
             for watt_data in fetched_data:

@@ -218,7 +218,7 @@ def scale_readings(reading_type: SiteReadingType, readings: Sequence[SiteReading
     if not readings:
         raise ValueError("Expected at least 1 entry in readings. Got 0/None")
 
-    def filter_attributes(attributes: dict[str, Any]):
+    def filter_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
         """Removes attributes that start with _.
 
         This is mainly about targeting and removing sqlalchemy attributes

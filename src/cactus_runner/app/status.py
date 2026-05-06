@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime, timedelta
+from enum import IntEnum, IntFlag
 
 from cactus_schema.runner import (
     CriteriaEntry,
@@ -51,14 +52,14 @@ def _resolve_value_multiplier(value: int | None, multiplier: int | None) -> int 
     return int(value * (10 ** (multiplier if multiplier is not None else 0)))
 
 
-def _resolve_intflag(bitmap: int | None, flag_type) -> list[str] | None:
+def _resolve_intflag(bitmap: int | None, flag_type: type[IntFlag]) -> list[str] | None:
     """Resolve an IntFlag bitmap to a list of active flag names."""
     if bitmap is None:
         return None
     return [flag.name for flag in flag_type if bitmap & flag]
 
 
-def _resolve_intenum(value: int | None, enum_type) -> str | None:
+def _resolve_intenum(value: int | None, enum_type: type[IntEnum]) -> str | None:
     """Resolve an IntEnum integer value to its name string."""
     if value is None:
         return None
@@ -120,7 +121,7 @@ def _build_der_status(status: SiteDERStatus) -> DERStatusInfo:
     )
 
 
-def get_runner_status_summary(step_status: dict[str, StepInfo]):
+def get_runner_status_summary(step_status: dict[str, StepInfo]) -> str:
     completed_steps = sum(s.get_step_status() == StepStatus.RESOLVED for s in step_status.values())
     steps = len(step_status)
     return f"{completed_steps}/{steps} steps complete."

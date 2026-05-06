@@ -41,7 +41,7 @@ logger.setLevel(logging.INFO)
 
 
 class SecretString:
-    def __init__(self, secret: str):
+    def __init__(self, secret: str) -> None:
         self._secret = secret
 
     def __str__(self) -> str:
@@ -70,7 +70,7 @@ class EnvoyAdminClient:
     application cleanup to ensure proper session teardown.
     """
 
-    def __init__(self, base_url: StrOrURL, auth_params: EnvoyAdminClientAuthParams, timeout: int = 30):
+    def __init__(self, base_url: StrOrURL, auth_params: EnvoyAdminClientAuthParams, timeout: int = 30) -> None:
         self._base_url = base_url
         self._timeout = ClientTimeout(total=timeout)
         self._session: ClientSession = ClientSession(
@@ -80,7 +80,7 @@ class EnvoyAdminClient:
             auth=BasicAuth(login=auth_params.username, password=auth_params.password),
         )
 
-    async def close_session(self):
+    async def close_session(self) -> None:
         await self._session.close()
 
     async def get_aggregators(self) -> AggregatorPageResponse:

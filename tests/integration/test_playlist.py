@@ -280,7 +280,7 @@ async def test_playlist_invalid_start_index_rejected(cactus_runner_client: TestC
 
     # Create 3 test requests
     run_requests = []
-    for i in range(3):
+    for _ in range(3):
         rr = run_request_generator(TestProcedureId.ALL_01, agg_cert, None, csip_version, None)
         run_requests.append(rr)
 

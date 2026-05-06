@@ -66,7 +66,7 @@ class StartResult:
 
 async def attempt_apply_actions(
     actions: list[Action] | None, runner_state: RunnerState, envoy_client: EnvoyAdminClient
-):
+) -> None:
     if actions:
         async with begin_session() as session:
             for a in actions:

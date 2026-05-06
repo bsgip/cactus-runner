@@ -27,7 +27,7 @@ def does_endpoint_match(path: str, match: str) -> bool:
         return False
 
     # Compare each component
-    for request_component, match_component in zip(request_components, match_components):
+    for request_component, match_component in zip(request_components, match_components, strict=True):
         if match_component != WILDCARD and request_component != match_component:
             return False
 

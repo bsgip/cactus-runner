@@ -652,7 +652,7 @@ async def test_action_create_der_control_derp_tag_missing(pg_base_config, envoy_
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
 
     # Assert
@@ -884,7 +884,7 @@ async def test_action_create_der_control_with_tag_and_edev_indexes(pg_base_confi
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             await action_create_der_control(resolved_params, session, envoy_admin_client, active_test_procedure)
 
     # Assert nothing in the DB
@@ -1286,7 +1286,7 @@ async def test_action_remove_function_set_assignment(
         scgs = await get_all_site_control_groups(session)
         assert len(scgs) == len(scg_fsa_ids)
         for idx, original_fsa_id, original_primacy, original_description, site_control_group in zip(
-            range(len(scg_fsa_ids)), scg_fsa_ids, primacies, descriptions, scgs
+            range(len(scg_fsa_ids)), scg_fsa_ids, primacies, descriptions, scgs, strict=True
         ):
             assert site_control_group.primacy == original_primacy
             assert site_control_group.description == original_description

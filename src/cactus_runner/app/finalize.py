@@ -199,7 +199,7 @@ async def generate_json_reporting_data(
     reading_counts: dict[ReadingType, int],
     sites: list[Site],
     timeline: timeline.Timeline | None,
-    errors,
+    errors: list[str],
     version: int = 1,
     set_max_w_varied: bool = False,
 ) -> str | None:

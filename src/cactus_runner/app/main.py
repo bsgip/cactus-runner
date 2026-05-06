@@ -11,6 +11,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 from aiohttp import web
+from aiohttp.typedefs import Handler
 from cactus_schema.runner import uri
 
 from cactus_runner import __version__
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 @web.middleware
-async def log_error_middleware(request, handler):
+async def log_error_middleware(request: web.Request, handler: Handler) -> web.StreamResponse:
     try:
         response = await handler(request)
         return response
@@ -68,7 +69,7 @@ async def log_error_middleware(request, handler):
         )
 
 
-async def periodic_task(app: web.Application):
+async def periodic_task(app: web.Application) -> None:
     """Periodic task called app[APPKEY_PERIOD_SEC]
 
     Args:
@@ -95,7 +96,7 @@ async def periodic_task(app: web.Application):
         await asyncio.sleep(period)
 
 
-async def setup_periodic_task(app: web.Application):
+async def setup_periodic_task(app: web.Application) -> None:
     """Setup periodic task.
 
     The periodic task is accessible through app[APPKEY_PERIODIC_TASKS].
@@ -178,7 +179,7 @@ def create_app() -> web.Application:
     return app
 
 
-def setup_logging(logging_config_file: Path):
+def setup_logging(logging_config_file: Path) -> None:
     with open(logging_config_file) as f:
         config = json.load(f)
 

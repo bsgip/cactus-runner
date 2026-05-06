@@ -677,8 +677,8 @@ async def test_handle_event_trigger_normal_operation(
     )
 
     # we want a unique "checks" reference for each event listener so we can look it up later
-    for idx, l in enumerate(listeners):
-        l.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
+    for idx, listener in enumerate(listeners):
+        listener.event = generate_class_instance(Event, seed=idx, checks=MagicMock(), parameters={})
 
     def find_index(to_find, items) -> int | None:
         for idx, i in enumerate(items):

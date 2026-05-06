@@ -64,7 +64,7 @@ class FailedCheckError(Exception):
 class SiteReadingTypeProperty:
     name: str
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         self.name = name
 
 
@@ -165,7 +165,7 @@ class SoftChecker:
 
     _failures: list[CheckResult]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._failures = []
 
     def add(self, msg: str) -> None:
@@ -901,7 +901,7 @@ async def do_check_reading_type_mrids_match_pen(site_reading_types: Sequence[Sit
 
 
 async def do_check_site_readings_and_params(
-    session,
+    session: AsyncSession,
     resolved_parameters: dict[str, Any],
     pen: int,
     uom: UomType,

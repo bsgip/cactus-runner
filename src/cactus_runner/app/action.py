@@ -77,7 +77,7 @@ class FailedActionError(Exception):
 async def action_enable_steps(
     active_test_procedure: ActiveTestProcedure,
     resolved_parameters: dict[str, Any],
-):
+) -> None:
     """Applies the enable-steps action to the active test procedures.
 
     Each listener has a single test procedure step associated with it. A list of step names to enable is therefore
@@ -106,7 +106,7 @@ async def action_enable_steps(
 async def action_remove_steps(
     active_test_procedure: ActiveTestProcedure,
     resolved_parameters: dict[str, Any],
-):
+) -> None:
     """Applies the remove-steps action to the active test procedure.
 
     Each listener has a single test procedure step associated with it. A list of step names to disable is therefore
@@ -133,13 +133,13 @@ async def action_remove_steps(
         active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=UTC)
 
 
-async def action_finish_test(runner_state: RunnerState, session: AsyncSession):
+async def action_finish_test(runner_state: RunnerState, session: AsyncSession) -> None:
     await finish_active_test(runner_state, session)
 
 
 async def action_set_default_der_control(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
-):
+) -> None:
 
     derp_id: int | None = resolved_parameters.get("derp_id", None)
     import_limit_watts = resolved_parameters.get("opModImpLimW", None)
@@ -174,7 +174,9 @@ async def action_set_default_der_control(
             load_limit_watts=(
                 UpdateDefaultValue(value=load_limit_watts) if load_limit_watts is not None else default_val
             ),
-            ramp_rate_percent_per_second=UpdateDefaultValue(value=set_grad_w) if set_grad_w is not None else default_val,
+            ramp_rate_percent_per_second=(  # noqa: E501
+                UpdateDefaultValue(value=set_grad_w) if set_grad_w is not None else default_val
+            ),
         ),
     )
 
@@ -184,7 +186,7 @@ async def action_create_der_program(
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
-):
+) -> None:
     primacy: int = int(resolved_parameters["primacy"])  # mandatory param
     fsa_id: int = int(resolved_parameters.get("fsa_id", 1))
     end_device_indexes: list[int] | None = resolved_parameters.get("end_device_indexes", None)
@@ -208,7 +210,7 @@ async def action_create_der_control(  # noqa: C901
     session: AsyncSession,
     envoy_client: EnvoyAdminClient,
     active_test_procedure: ActiveTestProcedure,
-):
+) -> None:
 
     start_time: datetime = resolved_parameters["start"]
     duration_seconds: int = resolved_parameters["duration_seconds"]
@@ -333,7 +335,7 @@ async def action_create_der_control(  # noqa: C901
         active_test_procedure.resource_annotations.der_control_ids_by_alias[annotation] = latest_site_control_id
 
 
-async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
+async def action_cancel_active_controls(envoy_client: EnvoyAdminClient) -> None:
     control_groups_response = await envoy_client.get_all_site_control_groups()
     if control_groups_response.site_control_groups:
         for g in control_groups_response.site_control_groups:
@@ -349,7 +351,7 @@ async def action_cancel_active_controls(envoy_client: EnvoyAdminClient):
 
 async def action_set_comms_rate(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
-):
+) -> None:
     dcap_poll_seconds: int | None = resolved_parameters.get("dcap_poll_seconds", None)
     edev_list_poll_seconds: int | None = resolved_parameters.get("edev_list_poll_seconds", None)
     fsa_list_poll_seconds: int | None = resolved_parameters.get("fsa_list_poll_seconds", None)
@@ -394,7 +396,7 @@ async def action_set_comms_rate(
 
 async def action_register_end_device(
     active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any], session: AsyncSession
-):
+) -> None:
     """
     Register an end device for the test. Skip if a site with the same lfdi already exists, allowing the action to be
     re-run in playlist mode where site data is preserved between tests.
@@ -441,12 +443,14 @@ async def action_register_end_device(
     await session.commit()
 
 
-def action_communications_status(active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any]):
+def action_communications_status(
+    active_test_procedure: ActiveTestProcedure, resolved_parameters: dict[str, Any]
+) -> None:
     comms_enabled: bool = resolved_parameters["enabled"]
     active_test_procedure.communications_disabled = not comms_enabled
 
 
-async def action_edev_registration_links(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient):
+async def action_edev_registration_links(resolved_parameters: dict[str, Any], envoy_client: EnvoyAdminClient) -> None:
     """Implements edev-registration-links action"""
     links_enabled: bool = resolved_parameters["enabled"]
 
@@ -455,7 +459,7 @@ async def action_edev_registration_links(resolved_parameters: dict[str, Any], en
 
 async def action_remove_function_set_assignment(
     resolved_parameters: dict[str, Any], session: AsyncSession, envoy_client: EnvoyAdminClient
-):
+) -> None:
     fsa_id: int = resolved_parameters["fsa_id"]  # Mandatory param
 
     # Identify which site control groups have the nominated function set assignment ID - and remove that FSA ID
@@ -473,7 +477,7 @@ async def action_remove_function_set_assignment(
 
 async def apply_action(  # noqa: C901
     action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
-):
+) -> None:
     """Applies the action to the active test procedure.
 
     Actions describe operations such as activate or disabling steps.
@@ -543,7 +547,7 @@ async def apply_actions(
     listener: Listener,
     runner_state: RunnerState,
     envoy_client: EnvoyAdminClient,
-):
+) -> None:
     """Applies all actions for the given listener.
 
     Logs an error if the action was able to be executed.
