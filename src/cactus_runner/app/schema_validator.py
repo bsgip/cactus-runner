@@ -16,12 +16,12 @@ CSIP_AUS_12_DIR = Path(csipaus12.__file__).parent
 class LocalXsdResolver(etree.Resolver):
     """Finds specific XSD files in our local schema directory"""
 
-    def resolve(self, url: str | None, id: str | None, context: Any) -> Any:  # noqa: A002, ANN401  # type: ignore[override]
-        if url == "sep.xsd":
+    def resolve(self, system_url: str, public_id: str, context: Any = None) -> Any:  # noqa: ANN401
+        if system_url == "sep.xsd":
             return self.resolve_filename(str(CSIP_AUS_12_DIR / "sep.xsd"), context)  # type: ignore[attr-defined]
-        elif url == "csipaus-core.xsd":
+        elif system_url == "csipaus-core.xsd":
             return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-core.xsd"), context)  # type: ignore[attr-defined]
-        elif url == "csipaus-ext.xsd":
+        elif system_url == "csipaus-ext.xsd":
             return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-ext.xsd"), context)  # type: ignore[attr-defined]
         return None
 
