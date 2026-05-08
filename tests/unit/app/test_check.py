@@ -3549,6 +3549,46 @@ def test_check_all_polls_at_correct_time_path_matching(request_path: str, expect
 
 
 @pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("http://envoy/mup/1", True),        # No s param — first page
+        ("http://envoy/mup/1?s=0", True),    # Explicit s=0 — first page
+        ("http://envoy/mup/1?s=0&l=10", True),  # s=0 with limit — first page
+        ("http://envoy/mup/1?s=10", False),  # s=10 — not first page
+        ("http://envoy/mup/1?s=1", False),   # s=1 — not first page
+    ],
+)
+def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected: bool):
+    """Requests with s>0 (subsequent pages) are excluded from poll timing counts."""
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            url=url,
+            path="/mup/1",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+    )
+
+    assert_check_result(result, expected)
+
+
+@pytest.mark.parametrize(
     "offsets_seconds, expected_passed, description_contains",
     [
         ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
