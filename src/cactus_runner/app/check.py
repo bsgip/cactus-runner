@@ -1359,7 +1359,8 @@ def check_all_polls_at_correct_time(
 
     # Filter requests by endpoint, method, and first pagination page (s=0 or absent)
     endpoint_requests = [
-        r for r in request_history
+        r
+        for r in request_history
         if r.method == request_type and does_endpoint_match(r.path, endpoint) and _is_first_page(r.url)
     ]
 

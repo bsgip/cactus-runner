@@ -3551,11 +3551,11 @@ def test_check_all_polls_at_correct_time_path_matching(request_path: str, expect
 @pytest.mark.parametrize(
     "url, expected",
     [
-        ("http://envoy/mup/1", True),        # No s param — first page
-        ("http://envoy/mup/1?s=0", True),    # Explicit s=0 — first page
+        ("http://envoy/mup/1", True),  # No s param — first page
+        ("http://envoy/mup/1?s=0", True),  # Explicit s=0 — first page
         ("http://envoy/mup/1?s=0&l=10", True),  # s=0 with limit — first page
         ("http://envoy/mup/1?s=10", False),  # s=10 — not first page
-        ("http://envoy/mup/1?s=1", False),   # s=1 — not first page
+        ("http://envoy/mup/1?s=1", False),  # s=1 — not first page
     ],
 )
 def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected: bool):
