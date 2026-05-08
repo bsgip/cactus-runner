@@ -5,6 +5,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
 from itertools import chain
 from typing import Annotated, Any
+from urllib.parse import parse_qs, urlparse
 
 import pydantic
 import pydantic.alias_generators
@@ -1262,6 +1263,11 @@ async def check_response_contents(  # noqa: C901
     return CheckResult(True, f"At least one DERControl response{context_description} of type {rt_string} was found")
 
 
+def _is_first_page(url: str) -> bool:
+    """Returns True if the URL has no pagination start offset (s absent or s=0)."""
+    return parse_qs(urlparse(url).query).get("s", ["0"])[0] == "0"
+
+
 def _check_poll_timing_for_path(
     path_requests: list[RequestEntry],
     poll_interval_seconds: int,
@@ -1351,9 +1357,10 @@ def check_all_polls_at_correct_time(
     if test_started_at is None:
         return CheckResult(False, "Test has not started - cannot check poll timing")
 
-    # Filter requests by endpoint and method
+    # Filter requests by endpoint, method, and first pagination page (s=0 or absent)
     endpoint_requests = [
-        r for r in request_history if r.method == request_type and does_endpoint_match(r.path, endpoint)
+        r for r in request_history
+        if r.method == request_type and does_endpoint_match(r.path, endpoint) and _is_first_page(r.url)
     ]
 
     if not endpoint_requests:
