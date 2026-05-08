@@ -3549,13 +3549,16 @@ def test_check_all_polls_at_correct_time_path_matching(request_path: str, expect
 
 
 @pytest.mark.parametrize(
-    "offsets_seconds, description_contains",
+    "offsets_seconds, expected_passed, description_contains",
     [
-        ([0, 540], "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
-        ([0, 30, 60, 90, 120], "found 5"),  # Too many: 5 requests in first 3-minute window
+        ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
+        ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: within upper bound of 6
+        ([0, 15, 30, 45, 60, 75, 90], False, "found 7"),  # Too many: 7 requests in first 3-minute window exceeds 6
     ],
 )
-def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], description_contains: str):
+def test_check_all_polls_at_correct_time_poll_count(
+    offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
+):
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     poll_interval = 60
 
@@ -3580,8 +3583,9 @@ def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], 
         {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
-    assert_check_result(result, False)
-    assert description_contains in result.description
+    assert_check_result(result, expected_passed)
+    if description_contains is not None:
+        assert description_contains in result.description
 
 
 def test_check_all_polls_at_correct_time_filters_by_request_type():
