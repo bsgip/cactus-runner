@@ -1267,17 +1267,16 @@ def _check_poll_timing_for_path(
     poll_interval_seconds: int,
     test_started_at: datetime,
 ) -> CheckResult:
-    """Checks that requests in path_requests occur at the expected frequency using a window-based approach.
+    """Checks that requests in path_requests do not exceed the expected frequency using a window-based approach.
 
-    For each window of 3x the poll interval, expects at least 2 requests and no more than 4.
+    For each window of 3x the poll interval, expects no more than 4 requests.
     """
     sorted_requests = sorted(path_requests, key=lambda r: r.timestamp)
     last_request_time = sorted_requests[-1].timestamp
 
     # Window of 3x poll interval: 2 interior polls always land in the window,
-    # 2 boundary polls may drift in/out with ±50% jitter, giving a range of 2-4.
+    # 2 boundary polls may drift in/out with ±50% jitter, giving an upper bound of 4.
     window_seconds = poll_interval_seconds * 3
-    min_polls_per_window = 2
     max_polls_per_window = 4
 
     checker = SoftChecker()
@@ -1292,10 +1291,10 @@ def _check_poll_timing_for_path(
         requests_in_window = [r for r in sorted_requests if window_start <= r.timestamp < window_end]
         request_count = len(requests_in_window)
 
-        if request_count < min_polls_per_window or request_count > max_polls_per_window:
+        if request_count > max_polls_per_window:
             checker.add(
                 f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected {min_polls_per_window} to {max_polls_per_window} poll(s), found {request_count}",
+                f"expected at most {max_polls_per_window} poll(s), found {request_count}",
             )
 
         window_start = window_end
@@ -1310,8 +1309,8 @@ def check_all_polls_at_correct_time(
 ) -> CheckResult:
     """
     Validates that requests to a specific endpoint occur at the expected frequency throughout the test.
-    Uses a window-based approach with 50% leeway - for each window of 3x the poll interval, checks that there is
-    at least 2 requests and no more than 4 requests.
+    Uses a window-based approach with 50% leeway - for each window of 3x the poll interval, checks that there are
+    no more than 4 requests.
 
     If the endpoint contains a wildcard ('*'), each distinct concrete path matching the pattern is checked
     independently, so multi-MUP clients (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
