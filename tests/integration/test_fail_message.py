@@ -44,7 +44,7 @@ def generate_fail_message_tp() -> TestProcedure:
         description="",
         category="",
         classes=[],
-        target_versions=[CSIPAusVersion.RELEASE_1_3],
+        target_versions=[CSIPAusVersion.RELEASE_1_3.value],  # ty:ignore[invalid-argument-type]
         preconditions=Preconditions(immediate_start=True),
         criteria=Criteria([Check("all-steps-complete", {"ignored_steps": ["STEP-2"]})]),
         steps={
