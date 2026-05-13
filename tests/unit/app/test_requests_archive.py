@@ -104,7 +104,7 @@ def test_write_request_response_files_creates_directory_if_missing():
     proxy_result = ProxyResult(
         uri="/test",
         request_method="GET",
-        request_body=None,
+        request_body=bytes([]),
         request_encoding=None,
         request_headers=CIMultiDict({}),
         response=response,

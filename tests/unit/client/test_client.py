@@ -17,6 +17,7 @@ from cactus_schema.runner import (
     TestDefinition,
     TestUser,
 )
+from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 
 from cactus_runner.client import RunnerClient, RunnerClientError
@@ -30,7 +31,7 @@ def make_run_request(run_id: str = "test-run-123") -> RunRequest:
         run_group=RunGroup(
             run_group_id="1",
             name="test group",
-            csip_aus_version=None,
+            csip_aus_version=CSIPAusVersion.RELEASE_1_2,
             test_certificates=TestCertificates(aggregator=None, device=None),
         ),
         test_config=TestConfig(pen=12345, subscription_domain=None, is_static_url=False),

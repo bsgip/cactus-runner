@@ -47,7 +47,7 @@ def execute_test_sql_file(cfg: Connection, path_to_sql_file: str) -> None:
     with open(path_to_sql_file) as f:
         sql = f.read()
     with cfg.cursor() as cursor:
-        cursor.execute(sql)
+        cursor.execute(sql)  # type: ignore
         cfg.commit()
 
 
@@ -108,7 +108,7 @@ async def envoy_admin_client(pg_empty_config: Connection):
         admin_client = EnvoyAdminClient(
             "http://test", EnvoyAdminClientAuthParams("", "")
         )  # NOTE: these are throw away variables, we replace instance next line
-        admin_client._session = session
+        admin_client._session = session  # type: ignore
         yield admin_client
 
 
@@ -145,9 +145,12 @@ async def envoy_server_client(pg_empty_config: Connection):
             else:
                 proxy_url = parsed_url.path
 
-            headers = {k: v for k, v in headers.items()}
-
-            response = await envoy_client.request(method, proxy_url, headers=headers, data=request_body)
+            response = await envoy_client.request(
+                method,
+                proxy_url,
+                headers=headers,
+                data=request_body,  # type: ignore
+            )
             response_headers = response.headers.copy()
             return web.Response(headers=response_headers, status=HTTPStatus(response.status_code), body=response.read())
 

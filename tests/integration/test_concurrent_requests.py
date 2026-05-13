@@ -121,5 +121,6 @@ async def test_twenty_concurrent_gets_all_listeners_triggered(cactus_runner_clie
     async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(60)) as session:
         status: RunnerStatus = await RunnerClient.status(session)
 
+    assert status.step_status is not None
     for i in range(N):
         assert status.step_status[f"LISTENER-{i}"].completed_at is not None

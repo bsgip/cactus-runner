@@ -433,7 +433,7 @@ def der_bool_param_scenario(
     """
     der_props: dict[DERKey, SiteDERSetting | SiteDERRating] = {
         der_key: generate_class_instance(der_type, **{db_property: db_property_value})
-    }
+    }  # ty:ignore[invalid-assignment]
 
     if der_key == "site_der_rating":
         return pytest.param(
@@ -2181,6 +2181,9 @@ async def test_check_readings_voltage(
     assert_mock_session(mock_session)
     assert isinstance(result, CheckResult)
     assert result.passed is expected_result
+    assert result.description is not None
+    assert site_check_result.description is not None
+    assert device_check_result.description is not None
     assert site_check_result.description in result.description or device_check_result.description in result.description
 
     # Cursory look at passed params
@@ -2651,7 +2654,7 @@ async def test_check_response_contents_all(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        params = {"all": True}
+        params: dict = {"all": True}
         if status is not None:
             params["status"] = status
         assert_check_result(await check_response_contents(params, session, active_test_procedure), expected)
@@ -3581,6 +3584,7 @@ def test_check_all_polls_at_correct_time_poll_count(offsets_seconds: list[int], 
     )
 
     assert_check_result(result, False)
+    assert result.description is not None
     assert description_contains in result.description
 
 
@@ -3730,6 +3734,7 @@ def test_check_all_polls_at_correct_time_wildcard_fails_when_one_path_misses_pol
     )
 
     assert_check_result(result, False)
+    assert result.description is not None
     assert "/mup/3" in result.description
 
 
@@ -3752,6 +3757,7 @@ def test_check_all_polls_at_correct_time_missing_params(params: dict, descriptio
     result = check_all_polls_at_correct_time(active_test_procedure, [], params)
 
     assert_check_result(result, False)
+    assert result.description is not None
     assert description_contains in result.description
 
 
@@ -3767,4 +3773,5 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
     )
 
     assert_check_result(result, False)
+    assert result.description is not None
     assert "Test has not started" in result.description

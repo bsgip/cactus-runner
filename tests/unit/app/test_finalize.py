@@ -261,6 +261,7 @@ async def test_generate_json_reporting_data(version):
         errors=errors,
         version=version,
     )
+    assert reporting_data_str is not None
     reporting_data = ReportingData.from_json(version, reporting_data_str)
 
     # Assert

@@ -237,6 +237,7 @@ async def test_status_steps_immediate_start(cactus_runner_client: TestClient, pg
         status_response = await RunnerClient.status(session)
 
     assert isinstance(status_response, RunnerStatus)
+    assert status_response.step_status is not None
     assert all(isinstance(s, StepEventStatus) for s in status_response.step_status.values())
 
     step_status_counts: dict[StepStatus, int] = {}

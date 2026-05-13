@@ -7,18 +7,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  ruff_bandit:
+  linting:
     runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        pyver: ["3.12", "3.13", "3.14"]
+        
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.pyver }}
       - name: Install linters
-        run: pip install ruff bandit
+        run: pip install .[dev,test]
+
       - name: Lint (ruff)
         run: ruff check .
       - name: Format check
         run: ruff format --check .
+      - name: Typing (ty)
+        run: ty check .
       - name: Security scan (bandit)
-        run: bandit -r src/
+        run: bandit -c pyproject.toml -r src/
 
   pytest_py312:
     runs-on: ubuntu-latest

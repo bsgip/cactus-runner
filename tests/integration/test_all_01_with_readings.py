@@ -76,6 +76,7 @@ async def test_all_01_with_readings(
         "/mup", data=mup_xml, headers={"ssl-client-cert": URI_ENCODED_CERT, "Content-Type": "application/sep+xml"}
     )
     location = result.headers.get("Location")
+    assert location is not None
     mup_id = location.split("/")[-1]
     await assert_success_response(result)
 

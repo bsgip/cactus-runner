@@ -30,7 +30,9 @@ from cactus_runner.app.envoy_admin_client import (
 
 @pytest.fixture
 def mock_session_with_json_response():
-    def _mock(json_data: dict = None, status: int = 200, method: str = "get", location_header: str | None = None):
+    def _mock(
+        json_data: dict | None = None, status: int = 200, method: str = "get", location_header: str | None = None
+    ):
         mock_response = MagicMock()
         mock_response.status = status
         mock_response.json = AsyncMock(return_value=json_data or {})

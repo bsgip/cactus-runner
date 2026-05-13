@@ -101,7 +101,7 @@ def create_testing_runner_state(listeners: list[Listener]) -> RunnerState:
             listeners=listeners,
         ),
         [],
-        None,
+        [],
     )
 
 
@@ -116,11 +116,13 @@ async def test_action_enable_steps():
     ]  # listener defaults to disabled but should be enabled during this test
     runner_state = create_testing_runner_state(listeners)
     resolved_parameters = {"steps": steps_to_enable}
+    assert runner_state.active_test_procedure is not None
 
     # Act
     await action_enable_steps(runner_state.active_test_procedure, resolved_parameters)
 
     # Assert
+    assert listeners[0].enabled_time is not None
     assert_nowish(listeners[0].enabled_time)
     assert listeners[0].enabled_time.tzinfo, "Need timezone aware datetime"
     assert steps_to_enable == original_steps_to_enable  # Ensure we are not mutating step_to_enable
@@ -175,6 +177,7 @@ async def test_action_remove_steps(steps_to_disable: list[str], listeners: list[
     original_steps_to_disable = steps_to_disable.copy()
     runner_state = create_testing_runner_state(listeners)
     resolved_parameters = {"steps": steps_to_disable}
+    assert runner_state.active_test_procedure is not None
 
     # Act
     await action_remove_steps(runner_state.active_test_procedure, resolved_parameters)
@@ -1057,7 +1060,7 @@ async def test_action_register_aggregator_end_device_device_cert(
         finished_zip_path=None,
         client_aggregator_id=agg_id,
     )
-    resolved_params = {
+    resolved_params: dict = {
         "nmi": "1234567890",
     }
     if agg_lfdi is not None:
@@ -1212,7 +1215,8 @@ async def test_action_reregister_existing_device(pg_base_config):
 def test_action_communications_status(resolved_params: dict[str, Any], expected: bool | type[Exception]):
     """NOTE: The expected value is the expected value for comms DISABLED"""
     for initial_comms_disabled_value in [True, False]:
-        active_test_procedure = create_testing_runner_state([])
+        active_test_procedure = create_testing_runner_state([]).active_test_procedure
+        assert active_test_procedure is not None
         active_test_procedure.communications_disabled = initial_comms_disabled_value
 
         if isinstance(expected, type):
