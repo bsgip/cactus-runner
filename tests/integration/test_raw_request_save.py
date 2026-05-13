@@ -25,7 +25,7 @@ async def test_request_data_retrieval_endpoints(
     run_request: RunRequest = run_request_generator(
         TestProcedureId.ALL_01, agg_cert, device_cert, CSIPAusVersion.RELEASE_1_2, None
     )
-    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:  # ty:ignore[unresolved-attribute]
         await RunnerClient.initialise(session, run_request)
 
     headers = {"ssl-client-cert": URI_ENCODED_CERT}
@@ -37,14 +37,18 @@ async def test_request_data_retrieval_endpoints(
     xml_headers = {**headers, "Content-Type": "application/sep+xml"}
 
     result = await cactus_runner_client.post(
-        "/mup", data=(xml_data_dir / "mup.xml").read_text().strip(), headers=xml_headers
+        "/mup",
+        data=(xml_data_dir / "mup.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+        headers=xml_headers,
     )
     await assert_success_response(result)
     mup_id = result.headers.get("Location").split("/")[-1]  # Get mup id for next post
 
     await assert_success_response(
         await cactus_runner_client.post(
-            f"/mup/{mup_id}", data=(xml_data_dir / "mmr.xml").read_text().strip(), headers=xml_headers
+            f"/mup/{mup_id}",
+            data=(xml_data_dir / "mmr.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+            headers=xml_headers,
         )
     )
 

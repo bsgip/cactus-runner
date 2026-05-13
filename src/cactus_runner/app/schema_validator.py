@@ -18,11 +18,11 @@ class LocalXsdResolver(etree.Resolver):
 
     def resolve(self, system_url: str, public_id: str, context: Any = None) -> Any:  # noqa: ANN401
         if system_url == "sep.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "sep.xsd"), context)  # type: ignore[attr-defined]
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "sep.xsd"), context)  # ty:ignore[unresolved-attribute]
         elif system_url == "csipaus-core.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-core.xsd"), context)  # type: ignore[attr-defined]
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-core.xsd"), context)  # ty:ignore[unresolved-attribute]
         elif system_url == "csipaus-ext.xsd":
-            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-ext.xsd"), context)  # type: ignore[attr-defined]
+            return self.resolve_filename(str(CSIP_AUS_12_DIR / "csipaus-ext.xsd"), context)  # ty:ignore[unresolved-attribute]
         return None
 
 
@@ -60,4 +60,4 @@ def validate_proxy_request_schema(proxy_result: ProxyResult) -> list[str]:
     if schema.validate(xml_doc):
         return []
 
-    return [f"{e.line}: {e.message}" for e in schema.error_log]  # type: ignore
+    return [f"{e.line}: {e.message}" for e in schema.error_log]

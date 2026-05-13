@@ -384,7 +384,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
         client_certificate = cast(str, device_certificate)  # we know its set due to checks above
     else:
         client_type = ClientCertificateType.AGGREGATOR
-        client_lfdi = cast(str, aggregator_lfdi)  # we know its set due to checks above
+        client_lfdi = aggregator_lfdi  # we know its set due to checks above
         client_certificate = cast(str, aggregator_certificate)  # we know its set due to checks above
     logger.info(f"Registering a {client_type} certificate {client_lfdi} under aggregator id {client_aggregator_id}")
 

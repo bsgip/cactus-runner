@@ -9,6 +9,7 @@ from cactus_schema.runner import (
     ClientInteraction,
     CriteriaEntry,
     DataStreamPoint,
+    EndDeviceMetadata,
     RunnerStatus,
     StepEventStatus,
     TimelineDataStreamEntry,
@@ -125,11 +126,13 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     if expected_max_w is None:
         assert runner_status.timeline is None or runner_status.timeline.set_max_w is None
     else:
+        assert runner_status.timeline is not None
         assert runner_status.timeline.set_max_w == expected_max_w
     assert runner_status.end_device_metadata is None
 
     # If we have timeline data - ensure it's set as expected. Otherwise it should not be there at all
     if not isinstance(timeline_streams_result, type):
+        assert runner_status.timeline is not None
         assert runner_status.timeline.now_offset == expected_now_offset
         assert runner_status.timeline.data_streams is timeline_streams_result
     else:
@@ -221,7 +224,8 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
 
     # Assert - EndDeviceMetadata
-    metadata = runner_status.end_device_metadata
+    metadata: EndDeviceMetadata | None = runner_status.end_device_metadata
+    assert metadata is not None
     assert metadata.edevid == 42
     assert metadata.lfdi == site.lfdi
     assert metadata.sfdi == site.sfdi

@@ -214,14 +214,14 @@ async def generate_json_reporting_data(
             for k, v in reading_counts.items()
         ]
 
-        reporting_data = ReportingData.v(version)(  # type: ignore[call-arg]
-            created_at=created_at,
-            runner_state=runner_state,
-            check_results=check_results,
-            readings=packed_readings,
-            sites=sites,
-            timeline=timeline,
-            set_max_w_varied=set_max_w_varied,
+        reporting_data = ReportingData.v(version)(
+            created_at=created_at,  # ty:ignore[unknown-argument]
+            runner_state=runner_state,  # ty:ignore[unknown-argument]
+            check_results=check_results,  # ty:ignore[unknown-argument]
+            readings=packed_readings,  # ty:ignore[unknown-argument]
+            sites=sites,  # ty:ignore[unknown-argument]
+            timeline=timeline,  # ty:ignore[unknown-argument]
+            set_max_w_varied=set_max_w_varied,  # ty:ignore[unknown-argument]
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:

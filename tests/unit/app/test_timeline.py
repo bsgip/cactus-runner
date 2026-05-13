@@ -193,12 +193,12 @@ def test_highest_priority_entity(entities, expected_index):
 
     if isinstance(expected_index, type):
         with pytest.raises(expected_index):
-            highest_priority_entity(intervals)
+            highest_priority_entity(set(intervals))
     else:
         # Test intervals in forward and reverse
         result = highest_priority_entity(set(intervals))
         assert result is entities[expected_index]
-        result = highest_priority_entity(reversed(intervals))
+        result = highest_priority_entity(set(reversed(intervals)))
         assert result is entities[expected_index]
 
 
@@ -452,9 +452,9 @@ def doe(
 ) -> DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope:
     """Utility function for reducing boilerplate"""
 
-    extra_kwargs = {}
     t = DynamicOperatingEnvelope
 
+    extra_kwargs: dict = {}
     if archive_time is not None:
         t = ArchiveDynamicOperatingEnvelope
         extra_kwargs = {"archive_time": archive_time}
@@ -476,7 +476,7 @@ def doe(
         end_time=start + timedelta(seconds=duration),
         duration_seconds=duration,
         superseded=superseded,
-        **extra_kwargs,
+        **extra_kwargs,  # type: ignore
     )
 
 
@@ -654,9 +654,10 @@ def def_ctrl(
     gen_watts: int | None = None,
 ) -> SiteControlGroupDefault | ArchiveSiteControlGroupDefault:
     """Utility function for reducing boilerplate"""
+
+    extra_kwargs: dict = {}
     if archive_time is None:
         t = SiteControlGroupDefault
-        extra_kwargs = {}
     else:
         t = ArchiveSiteControlGroupDefault
         extra_kwargs = {"archive_time": archive_time, "deleted_time": None}

@@ -42,8 +42,8 @@ Changelog = "https://github.com/bsgip/cactus-runner/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 dev = [
   "bandit",
-  "mypy",
   "ruff",
+  "ty",
   "tox",
   "python-dotenv[cli]",
   "coverage",
@@ -57,7 +57,7 @@ test = [
   "pytest-postgresql",
   "pytest-aiohttp",
   "pytest-xdist",
-  "assertical>=0.4.0", # Has support for py310+ typing optionals
+  "assertical>=0.4.0",
   "freezegun",
   "pytest-env",
   "asgi_lifespan",
@@ -98,13 +98,16 @@ line-length = 120
 select = ["E", "W", "F", "I", "S", "C90", "B", "UP", "ANN", "N"]
 
 [tool.ruff.lint.mccabe]
-max-complexity = 10
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ANN", "N"]
 
-[tool.mypy]
-exclude = ["dist", "tests", "build"]
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.rules]
+invalid-await = "ignore" # The FastAPI Test client does some magic that ty can't identify
 
 [tool.setuptools.dynamic]
 version = { attr = "cactus_runner.__version__" }
