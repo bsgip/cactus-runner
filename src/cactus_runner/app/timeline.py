@@ -14,7 +14,7 @@ from envoy.server.model.archive.doe import (
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroupDefault
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
-from intervaltree import Interval, IntervalTree  # type: ignore
+from intervaltree import Interval, IntervalTree
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import (
@@ -170,7 +170,7 @@ def generate_offset_watt_values(
 
     while current_interval < end:
         next_interval = current_interval + delta
-        matching_intervals: set[Interval] = tree[current_interval:next_interval]  # type: ignore
+        matching_intervals: set[Interval] = tree[current_interval:next_interval]
         if matching_intervals:
             entity = highest_priority_entity(matching_intervals)
             for watt_data, fetcher in zip(fetched_data, watt_fetchers, strict=True):

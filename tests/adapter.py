@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -40,7 +41,7 @@ class HttpxClientSessionAdapter:
         await self._client.aclose()
 
     @asynccontextmanager
-    async def get(self, url: str, **kwargs) -> HttpxClientSessionResponseAdapter:
+    async def get(self, url: str, **kwargs) -> AsyncGenerator[HttpxClientSessionResponseAdapter, None]:
         response = await self._client.get(url, **kwargs)
         try:
             yield HttpxClientSessionResponseAdapter(response)

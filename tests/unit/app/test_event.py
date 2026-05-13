@@ -8,6 +8,7 @@ from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from cactus_schema.runner import RequestEntry
 from cactus_test_definitions.client import Event
 
 from cactus_runner.app import evaluator, event
@@ -116,6 +117,7 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
     trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving=True)
 
     assert isinstance(trigger, event.EventTrigger)
+    assert trigger.client_request is not None
     assert trigger.client_request.path == expected_path
     # Ensure path always has leading slash
     assert trigger.client_request.path.startswith("/")
@@ -140,6 +142,7 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
 
     trigger = event.generate_client_request_trigger(mock_request, mount_point="", before_serving=True)
 
+    assert trigger.client_request is not None
     assert trigger.client_request.query_start == expected_query_start
 
 
@@ -586,12 +589,12 @@ async def test_is_listener_triggerable(
 @pytest.mark.parametrize(
     "runner_state",
     [
-        (RunnerState(None, [], None)),  # This is when we have no active test procedure
+        (RunnerState(None, [], [])),  # This is when we have no active test procedure
         (
             RunnerState(
                 generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=Path(".")),
-                [generate_class_instance(Listener, actions=[])],
-                None,
+                [generate_class_instance(RequestEntry)],
+                [],
             )
         ),  # This is a finished test
     ],
@@ -655,7 +658,7 @@ async def test_handle_event_trigger_normal_operation(
     input_runner_state = RunnerState(
         generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None, listeners=listeners),
         [],
-        None,
+        [],
     )
 
     # we want a unique "checks" reference for each event listener so we can look it up later
