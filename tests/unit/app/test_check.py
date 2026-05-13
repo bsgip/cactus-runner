@@ -4625,7 +4625,7 @@ def test_check_resource_requests(
     expected: bool,
 ):
     request_history = [generate_class_instance(RequestEntry, seed=idx, path=p) for idx, p in enumerate(request_paths)]
-    params = {"resources": resources}
+    params: dict = {"resources": resources}
     if minimum_count is not None:
         params["minimum_count"] = minimum_count
     if maximum_count is not None:

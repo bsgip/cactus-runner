@@ -1640,7 +1640,7 @@ def resolve_format(fmt: str, constant: str = WILDCARD) -> str:
     return fmt.format(**variables)
 
 
-def csip_aus_resource_to_match_uri(resource: CSIPAusResource) -> str:
+def csip_aus_resource_to_match_uri(resource: CSIPAusResource) -> str:  # noqa: C901
     """Given a CSIPAusResource - generate a URI that envoy will expect when resolving that resource. Any parameters
     on that URI will be substituted with a wildcard. eg DERControlList should yield something like /edev/*/derp/*/derc
     """

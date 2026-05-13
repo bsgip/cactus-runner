@@ -63,7 +63,7 @@ def preserved_environment():
 @pytest.fixture
 def assertical_extensions():
     with generator_registry_snapshot():
-        register_base_type(Path, lambda x: Path(f"fake.{x}"), lambda x: [])
+        register_base_type(Path, lambda x, _: Path(f"fake.{x}"), lambda x: [])
         yield
 
 
