@@ -476,7 +476,7 @@ def doe(
         end_time=start + timedelta(seconds=duration),
         duration_seconds=duration,
         superseded=superseded,
-        **extra_kwargs,  # type: ignore
+        **extra_kwargs,
     )
 
 

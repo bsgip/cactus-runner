@@ -3628,6 +3628,7 @@ def test_check_all_polls_at_correct_time_poll_count(
 
     assert_check_result(result, expected_passed)
     if description_contains is not None:
+        assert result.description is not None
         assert description_contains in result.description
 
 
