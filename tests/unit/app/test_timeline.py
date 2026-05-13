@@ -454,6 +454,7 @@ def doe(
 
     t = DynamicOperatingEnvelope
 
+    extra_kwargs: dict = {}
     if archive_time is not None:
         t = ArchiveDynamicOperatingEnvelope
         extra_kwargs = {"archive_time": archive_time}

@@ -593,7 +593,7 @@ async def test_is_listener_triggerable(
         (
             RunnerState(
                 generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=Path(".")),
-                [generate_class_instance(RequestEntry, actions=[])],
+                [generate_class_instance(RequestEntry)],
                 [],
             )
         ),  # This is a finished test
