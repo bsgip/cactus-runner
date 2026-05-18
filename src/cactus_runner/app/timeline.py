@@ -191,8 +191,9 @@ async def generate_readings_data_stream(
         session, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
     )
 
-    # Build the interval tree from all matched readings
-    tree = IntervalTree()
+    # Build one interval tree per SiteReadingType. Multi-phase setups report each phase as a separate SRT;
+    # mixing them into one tree causes highest_priority_entity to discard all but one phase per interval.
+    per_srt_values: list[list[int | None]] = []
     for srt in srts:
         # Dump all readings - we will refine in memory
         # (we could be fancy and try to interrogate records within the start/end range but that introduces a bit more
@@ -200,16 +201,28 @@ async def generate_readings_data_stream(
         readings = await get_site_readings(session, srt)
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
-        tree.update(
+        tree = IntervalTree(
             Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
             for r in readings
             if r.time_period_seconds is not None and r.time_period_seconds > 0
         )
+        per_srt_values.append(
+            generate_offset_watt_values(
+                tree, start, end, interval_seconds, [lambda e, _srt=srt: reading_to_watts([_srt], e)]
+            )[0]
+        )
 
-    # Generate all the reading data
-    offset_watt_values = generate_offset_watt_values(
-        tree, start, end, interval_seconds, [lambda e: reading_to_watts(srts, e)]
-    )[0]
+    if per_srt_values:
+        # Sum across all SRTs at each interval; None only when ALL phases have no reading
+        offset_watt_values: list[int | None] = [
+            None if all(v is None for v in phase_readings) else sum(v for v in phase_readings if v is not None)
+            for phase_readings in zip(*per_srt_values)
+        ]
+    else:
+        # No SiteReadingTypes found — produce the correct count of None values via an empty tree
+        offset_watt_values = generate_offset_watt_values(
+            IntervalTree(), start, end, interval_seconds, [lambda e: None]
+        )[0]
 
     return TimelineDataStream(label=label, offset_watt_values=offset_watt_values, stepped=False, dashed=False)
 

@@ -350,7 +350,7 @@ async def test_generate_readings_data_stream(
             value=333,
             time_period_start=BASIS,
             time_period_seconds=5,
-        ),  # This will be highest priority due to having the highest changed_time
+        ),
     ]
     mock_get_site_readings.side_effect = lambda _, srt: srt1_readings if srt is srt1 else srt2_readings
 
@@ -364,7 +364,7 @@ async def test_generate_readings_data_stream(
     assert result.label == "bar"
     assert isinstance(result.offset_watt_values, list)
     assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
-    assert result.offset_watt_values == [3330, 22], "Values adjusted for pow10 in SiteReadingType"
+    assert result.offset_watt_values == [3341, 22], "Values summed across both SRTs, adjusted for pow10"
 
     assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
@@ -435,6 +435,52 @@ async def test_generate_readings_data_stream_filters_null_and_zero_durations(
     assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
     mock_get_site_readings.assert_called_once_with(mock_session, srt)
+
+
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@pytest.mark.asyncio
+async def test_generate_readings_data_stream_three_phase(
+    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
+):
+    """Three concurrent single-phase SRTs covering the same interval should be summed, not winner-takes-all."""
+    interval_seconds = 5
+    mock_session = create_mock_session()
+    srt_a = generate_class_instance(SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id=1)
+    srt_b = generate_class_instance(SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id=2)
+    srt_c = generate_class_instance(SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id=3)
+    mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
+
+    phase_values = {srt_a: 100, srt_b: 200, srt_c: 300}
+
+    def readings_for(_, srt):
+        return [
+            generate_class_instance(
+                SiteReading,
+                seed=phase_values[srt],
+                site_reading_type_id=srt.site_reading_type_id,
+                value=phase_values[srt],
+                time_period_start=BASIS,
+                time_period_seconds=5,
+            )
+        ]
+
+    mock_get_site_readings.side_effect = readings_for
+
+    result = await generate_readings_data_stream(
+        mock_session, "Three Phase", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+    )
+
+    assert isinstance(result, TimelineDataStream)
+    assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
+    assert result.offset_watt_values == [600, None], "Phase A+B+C summed at interval 1; no readings at interval 2"
+
+    assert_mock_session(mock_session)
+    mock_get_csip_aus_site_reading_types.assert_called_once()
+    mock_get_site_readings.assert_has_calls(
+        [mock.call(mock_session, srt_a), mock.call(mock_session, srt_b), mock.call(mock_session, srt_c)],
+        any_order=True,
+    )
 
 
 def doe(
