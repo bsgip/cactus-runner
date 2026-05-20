@@ -281,10 +281,15 @@ async def generate_control_data_streams(
                 lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).export_limit_watts, True),
                 lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).load_limit_active_watts, False),
                 lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).generation_limit_active_watts, True),
+                lambda e: decimal_to_watts(
+                    getattr(cast(DynamicOperatingEnvelope, e), "storage_target_active_watts", None), True
+                ),
             ],
         )
 
         # These indexes correspond 1-1 with the lambda's above
+        # opModStorageTargetW (index 4) is only present on v1.3+ envoy schemas; it is filtered out
+        # by generate_timeline when all values are None (i.e. on v1.2 schemas).
         all_data_streams.extend(
             [
                 TimelineDataStream(
@@ -308,6 +313,12 @@ async def generate_control_data_streams(
                 TimelineDataStream(
                     label=f"/derp/{site_control_group_id} opModGenLimW",
                     offset_watt_values=offset_watt_values[3],
+                    stepped=True,
+                    dashed=False,
+                ),
+                TimelineDataStream(
+                    label=f"/derp/{site_control_group_id} opModStorageTargetW",
+                    offset_watt_values=offset_watt_values[4],
                     stepped=True,
                     dashed=False,
                 ),
@@ -350,10 +361,15 @@ async def generate_default_control_data_streams(
             lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).export_limit_active_watts, True),
             lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).load_limit_active_watts, False),
             lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).generation_limit_active_watts, True),
+            lambda e: decimal_to_watts(
+                getattr(cast(SiteControlGroupDefault, e), "storage_target_active_watts", None), True
+            ),
         ],
     )
 
     # These indexes correspond 1-1 with the lambda's above
+    # Default opModStorageTargetW (index 4) is only present on v1.3+ envoy schemas; it is filtered out
+    # by generate_timeline when all values are None (i.e. on v1.2 schemas).
     return [
         TimelineDataStream(
             label="Default opModImpLimW",
@@ -376,6 +392,12 @@ async def generate_default_control_data_streams(
         TimelineDataStream(
             label="Default opModGenLimW",
             offset_watt_values=offset_watt_values[3],
+            stepped=True,
+            dashed=True,
+        ),
+        TimelineDataStream(
+            label="Default opModStorageTargetW",
+            offset_watt_values=offset_watt_values[4],
             stepped=True,
             dashed=True,
         ),
