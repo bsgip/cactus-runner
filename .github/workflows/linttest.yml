@@ -1,12 +1,13 @@
-name: CI
+name: Testing and Linting
 on:
   push:
-    branches: [main, csipaus.org/ns/v1.2, csipaus.org/ns/v1.3, csipaus.org/ns/v1.3-beta/storage]
+    branches: [main]
   pull_request:
-    branches: [main, csipaus.org/ns/v1.2, csipaus.org/ns/v1.3, csipaus.org/ns/v1.3-beta/storage]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
+  # This will run bandit and produce a security report if there are any failures
   linting:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -17,44 +18,42 @@ jobs:
         
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: ${{ matrix.pyver }}
-      - name: Install linters
-        run: pip install .[dev,test]
-
+      - name: Install Dependencies
+        run: uv sync --extra dev --extra test
       - name: Lint (ruff)
-        run: ruff check .
+        run: uv run ruff check .
       - name: Format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
       - name: Typing (ty)
-        run: ty check .
+        run: uv run ty check .
       - name: Security scan (bandit)
-        run: bandit -c pyproject.toml -r src/
+        run: uv run bandit -c pyproject.toml -r src/
 
-  pytest_py312:
+  # This will run pytest against the specified version
+  pytest:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pyver: ["3.13"]
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.pyver }}
 
       - name: Install Dependencies
-        run: |
-          pip install .[test]
+        run: uv sync --extra test
 
       - name: Run Pytest
-        run: |
-          export DATABASE_URL="postgresql+asyncpg://fake:fake@localhost:5432/fake"
-          pytest -n auto --junit-xml=.test_report.xml
-      - name: Upload Results
-        uses: test-summary/action@v1
-        with:
-          paths: .test_report.xml
-        if: always()
+        run: uv run pytest -n auto
+
+      

@@ -66,6 +66,10 @@ A persistent log is written to `logs/cactus_runner.jsonl`. All messages to the p
 The `cactus_runner` package (provided by this repo) should be installed into a suitable virtual environment. Activate your virtual environment and then run,
 
 ```sh
+# uv
+uv sync --all-extras
+
+# pip
 pip install --editable .[dev,test]
 ```
 
