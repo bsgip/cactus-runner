@@ -468,12 +468,61 @@ async def test_generate_readings_data_stream_three_phase(
     mock_get_site_readings.side_effect = readings_for
 
     result = await generate_readings_data_stream(
-        mock_session, "Three Phase", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+        mock_session,
+        "Three Phase",
+        ReadingLocation.SITE_READING,
+        BASIS,
+        BASIS + timedelta(seconds=10),
+        interval_seconds,
     )
 
     assert isinstance(result, TimelineDataStream)
     assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
     assert result.offset_watt_values == [600, None], "Phase A+B+C summed at interval 1; no readings at interval 2"
+
+    assert_mock_session(mock_session)
+    mock_get_csip_aus_site_reading_types.assert_called_once()
+    mock_get_site_readings.assert_has_calls(
+        [mock.call(mock_session, srt_a), mock.call(mock_session, srt_b), mock.call(mock_session, srt_c)],
+        any_order=True,
+    )
+
+
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@pytest.mark.asyncio
+async def test_generate_readings_data_stream_partial_phase(
+    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
+):
+    """When only one phase has a reading in an interval the result equals that phase's value.
+    None appears only when NO phase has a reading — not when just some are absent."""
+    interval_seconds = 5
+    mock_session = create_mock_session()
+    srt_a = generate_class_instance(SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id=1)
+    srt_b = generate_class_instance(SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id=2)
+    srt_c = generate_class_instance(SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id=3)
+    mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
+
+    # Only srt_b reports in interval 1; no phase reports in interval 2
+    readings_b = [
+        generate_class_instance(
+            SiteReading,
+            seed=10,
+            site_reading_type_id=srt_b.site_reading_type_id,
+            value=750,
+            time_period_start=BASIS,
+            time_period_seconds=5,
+        )
+    ]
+    mock_get_site_readings.side_effect = lambda _, srt: readings_b if srt is srt_b else []
+
+    result = await generate_readings_data_stream(
+        mock_session, "Partial", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+    )
+
+    assert isinstance(result, TimelineDataStream)
+    assert len(result.offset_watt_values) == 2
+    assert result.offset_watt_values == [750, None], "Interval 1: only phase B reported; interval 2: no phases"
 
     assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
@@ -535,7 +584,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[1, None], [-2, None], [3, None], [-4, None]],
+            [[1, None], [-2, None], [3, None], [-4, None], [None, None]],
         ),
         (
             [
@@ -553,7 +602,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[1, None], [-2, None], [3, None], [-4, None]],
+            [[1, None], [-2, None], [3, None], [-4, None], [None, None]],
         ),  # Control was active for only the first 5 seconds before being deleted
         (
             [
@@ -564,7 +613,7 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=10),
-            [[11, None], [None, -22], [33, None], [None, -44]],
+            [[11, None], [None, -22], [33, None], [None, -44], [None, None]],
         ),  # Multiple Controls, some out of range of the interval period - no overlaps - with None values in controls
         (
             [
@@ -585,7 +634,13 @@ def doe(
             BASIS,
             5,
             BASIS + timedelta(seconds=20),
-            [[21, 31, 41, 31], [-22, -32, -42, -32], [23, 33, 43, 33], [-24, -34, -44, -34]],
+            [
+                [21, 31, 41, 31],
+                [-22, -32, -42, -32],
+                [23, 33, 43, 33],
+                [-24, -34, -44, -34],
+                [None, None, None, None],
+            ],
         ),  # Multiple Controls with overlaps
         (
             [
@@ -603,15 +658,18 @@ def doe(
                 [21, 11],
                 [-22, -12],
                 [23, 13],
-                [-24, -14],  # SCG 1
+                [-24, -14],
+                [None, None],  # SCG 1
                 [None, 31],
                 [None, -32],
                 [None, 33],
-                [None, -34],  # SCG 2
+                [None, -34],
+                [None, None],  # SCG 2
                 [41, 41],
                 [-42, -42],
                 [43, 43],
-                [-44, -44],  # SCG 3
+                [-44, -44],
+                [None, None],  # SCG 3
             ],
         ),  # Multiple control groups - mix of overlapping
         (
@@ -652,7 +710,13 @@ def doe(
             BASIS,
             10,
             BASIS + timedelta(seconds=40),
-            [[21, 31, None, None], [-22, -32, None, None], [23, 33, None, None], [-24, -34, None, None]],
+            [
+                [21, 31, None, None],
+                [-22, -32, None, None],
+                [23, 33, None, None],
+                [-24, -34, None, None],
+                [None, None, None, None],
+            ],
         ),  # Long control that gets superseded by a short control that is cancelled partway through.
     ],
 )
@@ -665,11 +729,12 @@ async def test_generate_control_data_streams(
 
     expected has the form:
     [
-        # These 4 lists will be repeated for EACH distinct SiteControlGroup
+        # These 5 lists will be repeated for EACH distinct SiteControlGroup
         [opModImpLimW vals]
         [opModExpLimW vals]
         [opModLoadLimW vals]
         [opModGenLimW vals]
+        [opModStorageTargetW vals]  # all None when envoy schema lacks the column
     ]
     """
     # Arrange
@@ -729,7 +794,7 @@ def def_ctrl(
             BASIS - timedelta(seconds=5),
             5,
             BASIS + timedelta(seconds=10),
-            [[None, 1, 1], [None, -2, -2], [None, 3, 3], [None, -4, -4]],
+            [[None, 1, 1], [None, -2, -2], [None, 3, 3], [None, -4, -4], [None, None, None]],
         ),
         (
             [
@@ -756,7 +821,7 @@ def def_ctrl(
             BASIS,
             5,
             BASIS + timedelta(seconds=15),
-            [[None, 21, 11], [-32, None, -12], [None, 23, 13], [-34, None, -14]],
+            [[None, 21, 11], [-32, None, -12], [None, 23, 13], [-34, None, -14], [None, None, None]],
         ),
     ],
 )
