@@ -355,7 +355,7 @@ class SiteDERRating(JSONWizard):
             max_var_value=rating.max_var_value,
             max_var_multiplier=rating.max_var_multiplier,
             max_var_neg_value=rating.max_var_neg_value,
-            max_var_neg_multiplier=rating.max_var_neg_value,
+            max_var_neg_multiplier=rating.max_var_neg_multiplier,
             max_w_value=rating.max_w_value,
             max_w_multiplier=rating.max_w_multiplier,
             max_wh_value=rating.max_wh_value,
