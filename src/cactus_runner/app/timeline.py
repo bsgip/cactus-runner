@@ -216,7 +216,7 @@ async def generate_readings_data_stream(
         # Sum across all SRTs at each interval; None only when ALL phases have no reading
         offset_watt_values: list[int | None] = [
             None if all(v is None for v in phase_readings) else sum(v for v in phase_readings if v is not None)
-            for phase_readings in zip(*per_srt_values)
+            for phase_readings in zip(*per_srt_values, strict=False)
         ]
     else:
         # No SiteReadingTypes found — produce the correct count of None values via an empty tree
