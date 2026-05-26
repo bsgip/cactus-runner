@@ -90,11 +90,22 @@ class NonErrorFilter(logging.Filter):
         return record.levelno <= logging.INFO
 
 
-def read_log_file(log_file_path: str) -> str:
-    """Reads all text at the specified file path. Returns the resulting data or an error string.
+def read_log_file(log_file_path: str, tail_bytes: int | None = None) -> str:
+    """Reads text from the specified file path. Returns the resulting data or an error string.
 
-    Significantly large log files will be truncated"""
+    If tail_bytes is set, reads that many bytes from the end of the file (most recent entries).
+    Otherwise reads from the start, capped at 4MB."""
     try:
+        if tail_bytes is not None:
+            with open(log_file_path, "rb") as file:
+                file.seek(0, 2)  # Seek to end
+                size = file.tell()
+                file.seek(max(0, size - tail_bytes))
+                raw = file.read()
+                # Drop the first (potentially partial) line when seeking mid-file
+                if size > tail_bytes:
+                    raw = raw[raw.find(b"\n") + 1 :]
+                return raw.decode("utf-8", errors="replace")
         with open(log_file_path) as file:
             return file.read(1024 * 1024 * 4)  # Limit to 4MB so we don't over fetch - should be more than enough
     except Exception as exc:

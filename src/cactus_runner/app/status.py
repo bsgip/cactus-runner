@@ -343,7 +343,7 @@ async def get_active_runner_status(
         timestamp_initialise=active_test_procedure.initialised_at,
         timestamp_start=active_test_procedure.started_at,
         csip_aus_version=active_test_procedure.csip_aus_version.value,
-        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER),
+        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER, tail_bytes=64 * 1024),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
         criteria=await get_criteria_summary(session, active_test_procedure),
@@ -365,5 +365,5 @@ def get_runner_status(last_client_interaction: ClientInteraction) -> RunnerStatu
         csip_aus_version="",
         status_summary="No test procedure running",
         last_client_interaction=last_client_interaction,
-        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER),
+        log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER, tail_bytes=64 * 1024),
     )
