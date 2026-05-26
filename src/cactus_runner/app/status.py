@@ -324,7 +324,7 @@ async def get_active_runner_status(
                 basis = max(basis, crop_start)  # Don't go earlier than crop_start
 
             data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
-            now_offset = duration_to_label(((now - basis).seconds // interval_seconds) * interval_seconds)
+            now_offset = duration_to_label((int((now - basis).total_seconds()) // interval_seconds) * interval_seconds)
             timeline = TimelineStatus(data_streams=data_streams, set_max_w=set_max_w, now_offset=now_offset)
     except Exception as exc:
         logger.error("Error generating timeline", exc_info=exc)
