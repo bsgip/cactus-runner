@@ -3595,11 +3595,11 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
     "offsets_seconds, expected_passed, description_contains",
     [
         ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
-        ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: within upper bound of 6
-        ([0, 15, 30, 45, 60, 75, 90], False, "found 7"),  # Too many: 7 requests in first 3-minute window exceeds 6
+        ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: fine
+        ([0, 15, 30, 45, 60, 75, 90], False, "Total polls"),  # 7 requests in 90s: caught by global max (expected~2, max=5)
     ],
 )
-def test_check_all_polls_at_correct_time_poll_count(
+def test_check_all_polls_at_correct_time_per_window_minimum(
     offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
 ):
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -3630,6 +3630,87 @@ def test_check_all_polls_at_correct_time_poll_count(
     if description_contains is not None:
         assert result.description is not None
         assert description_contains in result.description
+
+
+@pytest.mark.parametrize(
+    "total_polls, test_duration_seconds, expected_passed",
+    [
+        # 5-min test (expected=5): max=min(15,8)=8
+        (8, 300, True),   # exactly at max
+        (9, 300, False),  # one over
+        # 30-min test (expected=30): max=min(90,33)=33
+        (33, 1800, True),   # exactly at max
+        (34, 1800, False),  # one over
+        # 1-min test (expected=1): max=min(3,4)=3
+        (3, 60, True),
+        (4, 60, False),
+    ],
+)
+def test_check_all_polls_at_correct_time_global_maximum(
+    total_polls: int, test_duration_seconds: int, expected_passed: bool
+):
+    """Global maximum: min(expected_total * 3, expected_total + 3) over the whole test."""
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # Space polls evenly so per-window minimum is always satisfied
+    offsets = [int(i * test_duration_seconds / (total_polls - 1)) for i in range(total_polls)] if total_polls > 1 else [0]
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/mup/1",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=offset),
+        )
+        for i, offset in enumerate(offsets)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+    )
+
+    assert_check_result(result, expected_passed)
+    if not expected_passed:
+        assert result.description is not None
+        assert "Total polls" in result.description
+
+
+def test_check_all_polls_at_correct_time_last_window_no_false_positive():
+    """A compliant client whose last poll falls just into a new window should not be penalised."""
+    base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # Polls at 0, 60, ..., 480s then one at 541s (1s into window 4 which starts at 540s)
+    offsets = list(range(0, 481, 60)) + [541]
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/mup/1",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=offset),
+        )
+        for i, offset in enumerate(offsets)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+    )
+
+    assert_check_result(result, True)
 
 
 def test_check_all_polls_at_correct_time_filters_by_request_type():
