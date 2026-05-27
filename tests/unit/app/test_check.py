@@ -3596,7 +3596,11 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
     [
         ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
         ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: fine
-        ([0, 15, 30, 45, 60, 75, 90], False, "Total polls"),  # 7 requests in 90s: caught by global max (expected~2, max=5)
+        (
+            [0, 15, 30, 45, 60, 75, 90],
+            False,
+            "Total polls",
+        ),  # 7 requests in 90s: caught by global max (expected~2, max=5)
     ],
 )
 def test_check_all_polls_at_correct_time_per_window_minimum(
@@ -3636,10 +3640,10 @@ def test_check_all_polls_at_correct_time_per_window_minimum(
     "total_polls, test_duration_seconds, expected_passed",
     [
         # 5-min test (expected=5): max=min(15,8)=8
-        (8, 300, True),   # exactly at max
+        (8, 300, True),  # exactly at max
         (9, 300, False),  # one over
         # 30-min test (expected=30): max=min(90,33)=33
-        (33, 1800, True),   # exactly at max
+        (33, 1800, True),  # exactly at max
         (34, 1800, False),  # one over
         # 1-min test (expected=1): max=min(3,4)=3
         (3, 60, True),
@@ -3658,7 +3662,9 @@ def test_check_all_polls_at_correct_time_global_maximum(
     )
 
     # Space polls evenly so per-window minimum is always satisfied
-    offsets = [int(i * test_duration_seconds / (total_polls - 1)) for i in range(total_polls)] if total_polls > 1 else [0]
+    offsets = (
+        [int(i * test_duration_seconds / (total_polls - 1)) for i in range(total_polls)] if total_polls > 1 else [0]
+    )
     request_history = [
         generate_class_instance(
             RequestEntry,
