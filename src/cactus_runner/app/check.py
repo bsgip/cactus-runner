@@ -1273,22 +1273,24 @@ def _check_poll_timing_for_path(
     poll_interval_seconds: int,
     test_started_at: datetime,
 ) -> CheckResult:
-    """Checks that requests in path_requests occur at the expected frequency using a window-based approach.
+    """Checks that requests in path_requests occur at the expected frequency.
 
-    For each window of 3x the poll interval, expects at least 2 requests and no more than min(expected*3, expected+3).
+    Per-window minimum: for each window of 3x the poll interval, expects at least 2 requests. This ensures
+    polls are distributed throughout the test rather than front- or back-loaded.
+
+    Global maximum: total polls must not exceed min(expected_total * 3, expected_total + 3), where expected_total
+    is based on actual test duration. This scales correctly — short tests get proportionally more slack, long tests
+    are held to a tight fixed buffer of +3 above expected.
     """
     sorted_requests = sorted(path_requests, key=lambda r: r.timestamp)
     last_request_time = sorted_requests[-1].timestamp
 
-    # Window of 3x poll interval: 2 interior polls always land in the window,
-    # 2 boundary polls may drift in/out with ±50% jitter, giving a range of 2 to min(expected*3, expected+3).
     window_seconds = poll_interval_seconds * 3
-    expected_polls_per_window = window_seconds // poll_interval_seconds
     min_polls_per_window = 2
-    max_polls_per_window = min(expected_polls_per_window * 3, expected_polls_per_window + 3)
 
     checker = SoftChecker()
 
+    # Per-window minimum check: ensures polls are spread throughout the test.
     window_start = test_started_at
     window_number = 0
 
@@ -1299,18 +1301,26 @@ def _check_poll_timing_for_path(
         requests_in_window = [r for r in sorted_requests if window_start <= r.timestamp < window_end]
         request_count = len(requests_in_window)
 
-        if request_count < min_polls_per_window:
+        # Only enforce the minimum on complete windows — the last partial window may naturally be sparse.
+        is_complete_window = window_end <= last_request_time
+        if is_complete_window and request_count < min_polls_per_window:
             checker.add(
                 f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
                 f"expected at least {min_polls_per_window} poll(s), found {request_count}",
             )
-        elif request_count > max_polls_per_window:
-            checker.add(
-                f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected at most {max_polls_per_window} poll(s), found {request_count}",
-            )
 
         window_start = window_end
+
+    # Global maximum check: catches excessive total polling over the whole test.
+    test_duration_seconds = (last_request_time - test_started_at).total_seconds()
+    expected_total = round(test_duration_seconds / poll_interval_seconds)
+    max_total = min(expected_total * 3, expected_total + 3)
+    total_count = len(sorted_requests)
+    if total_count > max_total:
+        checker.add(
+            f"Total polls {total_count} exceeds maximum {max_total} "
+            f"(expected ~{expected_total} over {int(test_duration_seconds)}s at {poll_interval_seconds}s interval)",
+        )
 
     return checker.finalize()
 
