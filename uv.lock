@@ -348,7 +348,7 @@ requires-dist = [
     { name = "assertical", marker = "extra == 'test'", specifier = ">=0.4.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cactus-schema", specifier = ">=0.0.23,<1" },
+    { name = "cactus-schema", specifier = ">=1.0.0,<2" },
     { name = "cactus-test-definitions", specifier = ">=1.13.0,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v2.1.1" },
@@ -377,15 +377,15 @@ provides-extras = ["dev", "test", "docs"]
 
 [[package]]
 name = "cactus-schema"
-version = "0.0.23"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cactus-test-definitions" },
     { name = "dataclass-wizard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/24/ea/ba86486f93571effc23037885dd4cb3e27ff3670cb6f64dd1230082ac69f/cactus_schema-0.0.23.tar.gz", hash = "sha256:327c3d3a6d79a0f11c7a30c01276d9dd9a041120d324e6debcf246acdc98e374", size = 11052, upload-time = "2026-05-27T01:18:23.516Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/87/702dfc5687937952289cc3e45a8ac54b75927875f6f9bd0b4817ac90dfa4/cactus_schema-1.0.0.tar.gz", hash = "sha256:e24dca856b20dccd7c1785d451e8f817b0355e54cdde729ba29df3f9626964d0", size = 11067, upload-time = "2026-06-17T04:21:59.931Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/c4/4e90ffe68c15812f361e04b73ec279d1d5b31164f5110d94cac7450d338b/cactus_schema-0.0.23-py3-none-any.whl", hash = "sha256:d9a2e3505ed83401f53ad026af94ff9bb46a08e4554a69102ad0ff1edf2022d7", size = 12729, upload-time = "2026-05-27T01:18:21.999Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/a3/78e60a8166a83d7ea3096363b03789499af4ca346834d7ee7eab9b976cb1/cactus_schema-1.0.0-py3-none-any.whl", hash = "sha256:d12321aae1142177dc44dd94e0b168cb248e3e7364337a1ab3b9bbe0ddeb9268", size = 12688, upload-time = "2026-06-17T04:21:58.66Z" },
 ]
 
 [[package]]
