@@ -456,7 +456,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
 
     body = InitResponseBody(
         status="Test procedure initialised.",
-        test_procedure=run_request.test_definition.test_procedure_id.value,
+        test_procedure=run_request.test_definition.test_procedure_id,
         timestamp=datetime.now(UTC),
         is_started=is_started,
     )
@@ -576,7 +576,7 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
                                 logger.error(f"Unable to trigger immediate start: {start_result.content}")
 
                     logger.info(
-                        f"Initialized next playlist test: {next_run_request.test_definition.test_procedure_id.value}"
+                        f"Initialized next playlist test: {next_run_request.test_definition.test_procedure_id}"
                     )
                 except Exception as exc:
                     logger.error(f"Failed to initialize next playlist test: {exc}", exc_info=exc)
