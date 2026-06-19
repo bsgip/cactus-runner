@@ -24,6 +24,7 @@ from cactus_runner.app.env import (
     ENVOY_ADMIN_BASICAUTH_PASSWORD,
     ENVOY_ADMIN_BASICAUTH_USERNAME,
     ENVOY_ADMIN_URL,
+    ENVOY_PROXY_PREFIX,
     MOUNT_POINT,
     SERVER_URL,
 )
@@ -40,6 +41,7 @@ from cactus_runner.app.shared import (
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
+from cactus_runner.app.uri import uri_path_join
 from cactus_runner.models import InitialisedCertificates, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -138,22 +140,23 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[log_error_middleware])
 
     # Add routes for Test Runner
-    mount = MOUNT_POINT.rstrip("/") if MOUNT_POINT else ""  # Ensure MOUNT_POINT ends with / for concatenation
-    app.router.add_route("GET", mount + uri.Health, handler.health_handler)
-    app.router.add_route("GET", mount + uri.Status, handler.status_handler)
-    app.router.add_route("POST", mount + uri.Initialise, handler.initialise_handler)
-    app.router.add_route("POST", mount + uri.Start, handler.start_handler)
-    app.router.add_route("POST", mount + uri.Finalize, handler.finalize_handler)
+    app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Health), handler.health_handler)
+    app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Status), handler.status_handler)
+    app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Initialise), handler.initialise_handler)
+    app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Start), handler.start_handler)
+    app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Finalize), handler.finalize_handler)
 
     # For retrieving request logs
-    app.router.add_route("GET", mount + uri.Request, handler.get_request_raw_data_handler)
-    app.router.add_route("GET", mount + uri.RequestList, handler.list_request_ids_handler)
+    app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Request), handler.get_request_raw_data_handler)
+    app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.RequestList), handler.list_request_ids_handler)
 
     # For manual 'proceed' signal sent from UI
-    app.router.add_route("GET", mount + uri.Proceed, handler.proceed_handler)
+    app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Proceed), handler.proceed_handler)
 
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
-    app.router.add_route("*", mount + "/{proxyPath:.*}", handler.proxied_request_handler)
+    app.router.add_route(
+        "*", uri_path_join(MOUNT_POINT, ENVOY_PROXY_PREFIX, "/{proxyPath:.*}"), handler.proxied_request_handler
+    )
 
     # Set up shared state
     app[APPKEY_INITIALISED_CERTS] = InitialisedCertificates()

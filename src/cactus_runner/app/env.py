@@ -4,6 +4,15 @@ import os
 DEFAULT_SERVER_URL = "http://localhost:8000"
 SERVER_URL = os.getenv("SERVER_URL", DEFAULT_SERVER_URL)
 
+# Any traffic with this path prefix will be redirected to the SERVER_URL with the ENVOY_PROXY_PREFIX stripped.
+# If set to a value (eg "/envoy/api/") a request for dcap would need to sent to runner as "/envoy/api/dcap" and would
+# be received at envoy as "/dcap".
+ENVOY_PROXY_PREFIX: str = os.getenv("ENVOY_PROXY_PREFIX", "/").strip()
+if ENVOY_PROXY_PREFIX != "/":
+    ENVOY_PROXY_PREFIX = ENVOY_PROXY_PREFIX.rstrip("/")
+if not ENVOY_PROXY_PREFIX.startswith("/"):
+    ENVOY_PROXY_PREFIX = "/" + ENVOY_PROXY_PREFIX
+
 # envoy-admin configurations - this is the upstream admin api for manipulating envoy-db.
 DEFAULT_ENVOY_ADMIN_URL = "http://localhost:8001"
 ENVOY_ADMIN_URL = os.getenv("ENVOY_ADMIN_URL", DEFAULT_ENVOY_ADMIN_URL)
@@ -20,7 +29,11 @@ DEFAULT_APP_PORT = 8080  # This is the aiohttp default
 APP_PORT = int(os.getenv("APP_PORT", DEFAULT_APP_PORT))
 
 # MOUNT_POINT is the base path for all endpoints
-MOUNT_POINT = "/"
+MOUNT_POINT = os.getenv("MOUNT_POINT", "/").strip()
+if MOUNT_POINT != "/":
+    MOUNT_POINT = MOUNT_POINT.rstrip("/")
+if not MOUNT_POINT.startswith("/"):
+    MOUNT_POINT = "/" + MOUNT_POINT
 
 # If true skips verifying the forwarded certificate in requests
 DEV_SKIP_AUTHORIZATION_CHECK = os.getenv("DEV_SKIP_AUTHORIZATION_CHECK", "false").lower() in ["true", "1", "t"]
