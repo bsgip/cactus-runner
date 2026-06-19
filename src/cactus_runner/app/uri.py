@@ -1,5 +1,7 @@
+from dataclasses import dataclass
+
 from aiohttp.web import Request
-from attr import dataclass
+from multidict import MultiMapping
 
 WILDCARD = "*"
 
@@ -47,7 +49,7 @@ def uri_path_join(*parts: str) -> str:
     return f"{first}/{rest}" if rest else first
 
 
-@dataclass
+@dataclass(frozen=True)
 class MountedProxyPathParts:
     """Given an incoming request like /runner/envoy/edev/123/derp splits it out into the mount_point, proxy_prefix and
     downstream proxy path"""
@@ -56,6 +58,8 @@ class MountedProxyPathParts:
     proxy_prefix: str  # Given /runner/envoy/edev/123/derp - This would be /envoy
     path: str  # The path of the request (sans mount point / proxy prefix) - NO query string. eg: /edev/123/derp
     path_qs: str  # Similar to path but also includes the query string. eg: /edev/123/derp?l=100&s=0
+    query: MultiMapping[str]
+    method: str
 
 
 def uri_proxy_path_extract(mount_point: str, proxy_prefix: str, request: Request) -> MountedProxyPathParts:
@@ -82,4 +86,6 @@ def uri_proxy_path_extract(mount_point: str, proxy_prefix: str, request: Request
         proxy_prefix=proxy_prefix,
         path=path,
         path_qs=path_qs,
+        query=request.query,
+        method=request.method,
     )

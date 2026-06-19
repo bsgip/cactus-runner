@@ -763,7 +763,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     async with request.app[APPKEY_PROXY_LOCK]:
         async with begin_session() as session:
             trigger_handled = await event.handle_event_trigger(
-                trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
+                trigger=event.generate_client_request_trigger(
+                    proxy_parts, mount_point=MOUNT_POINT, before_serving=True
+                ),
                 runner_state=runner_state,
                 session=session,
                 envoy_client=envoy_client,
@@ -780,7 +782,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
             async with begin_session() as session:
                 trigger_handled = await event.handle_event_trigger(
                     trigger=event.generate_client_request_trigger(
-                        request, mount_point=MOUNT_POINT, before_serving=False
+                        proxy_parts, mount_point=MOUNT_POINT, before_serving=False
                     ),
                     runner_state=runner_state,
                     session=session,

@@ -4,14 +4,13 @@ from datetime import UTC, datetime
 from enum import IntEnum, auto
 from http import HTTPMethod
 
-from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.uri import does_endpoint_match
+from cactus_runner.app.uri import MountedProxyPathParts, does_endpoint_match
 from cactus_runner.models import Listener, RunnerState
 
 logger = logging.getLogger(__name__)
@@ -195,9 +194,11 @@ def generate_time_trigger() -> EventTrigger:
     return EventTrigger(type=EventTriggerType.TIME, time=datetime.now(UTC), single_listener=False, client_request=None)
 
 
-def generate_client_request_trigger(request: web.Request, mount_point: str, before_serving: bool) -> EventTrigger:
+def generate_client_request_trigger(
+    request: MountedProxyPathParts, mount_point: str, before_serving: bool
+) -> EventTrigger:
     """
-    Generates an EventTrigger representing the specified web.Request
+    Generates an EventTrigger representing the specified MountedProxyPathParts
 
     Args:
         request: The request to interrogate (body will NOT be read)
