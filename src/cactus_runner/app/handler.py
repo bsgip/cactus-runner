@@ -28,6 +28,7 @@ from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
+    ENVOY_PROXY_PREFIX,
     HEADER_MEDIA_ALL,
     HEADER_MEDIA_PARAM_NAME,
     HEADER_MEDIA_PARAM_VALUE,
@@ -51,6 +52,7 @@ from cactus_runner.app.shared import (
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
+from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
@@ -855,8 +857,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
         runner_state.client_interactions.append(new_interaction)
 
     # Determine paths, url and HTTP method
-    relative_url = request.path
-    remote_url = SERVER_URL + request.path_qs
+    proxy_parts = uri_proxy_path_extract(MOUNT_POINT, ENVOY_PROXY_PREFIX, request)
+    relative_url = proxy_parts.path
+    remote_url = SERVER_URL + proxy_parts.path_qs
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 

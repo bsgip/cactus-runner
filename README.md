@@ -41,6 +41,8 @@ The cactus runner application uses the following environment variables,
 | ENVOY_ADMIN_BASICAUTH_USERNAME | - | Username used for HTTP Basic Authentication when accessing the envoy-admin API.  |
 | ENVOY_ADMIN_BASICAUTH_PASSWORD | - | Password used for HTTP Basic Authentication when accessing the envoy-admin API. Must be used in conjunction with ENVOY_ADMIN_BASICAUTH_USERNAME. |
 | SERVER_URL | `http://localhost:8000` | The URL of an envoy server. |
+| ENVOY_PROXY_PREFIX | `/` | If set to a value (eg "/envoy/api/") a request for dcap would need to sent to runner as "/envoy/api/dcap" and would be received at envoy as "/dcap". This will also be stripped for endpoint listeners. |
+| MOUNT_POINT | `/` | If set - this path will prefix ALL runner routes. If set to "/runner" then the "/health" route (along with all other routes) would become "/runner/health". This will also be stripped for endpoint listeners. |
 | APP_HOST | `0.0.0.0` | The host IP of the cactus runner application. |
 | APP_PORT | 8000 | The port the cactus runner application listens on. |
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
