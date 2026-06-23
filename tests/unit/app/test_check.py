@@ -25,7 +25,6 @@ from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
     Site,
-    SiteDER,
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
@@ -442,7 +441,7 @@ def der_bool_param_scenario(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER, site_der_rating=der_props[der_key])],
+                    site_der_rating=der_props[der_key],
                 )
             ],
             {param: evaluator.ResolvedParam(param_value)},
@@ -456,7 +455,7 @@ def der_bool_param_scenario(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER, site_der_setting=der_props[der_key])],
+                    site_der_setting=der_props[der_key],
                 )
             ],
             {param: evaluator.ResolvedParam(param_value)},
@@ -543,9 +542,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_setting=generate_class_instance(SiteDERSetting))
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting),
                 )
             ],
             {},
@@ -557,31 +554,26 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(
-                                SiteDERSetting,
-                                optional_is_none=True,
-                                max_charge_rate_w_value=0,
-                                max_charge_rate_w_multiplier=0,
-                                max_discharge_rate_w_value=0,
-                                max_discharge_rate_w_multiplier=0,
-                                max_va_value=0,
-                                max_va_multiplier=0,
-                                max_var_value=0,
-                                max_var_multiplier=0,
-                                max_var_neg_value=0,
-                                max_var_neg_multiplier=0,
-                                max_w_value=0,
-                                max_w_multiplier=0,
-                                min_pf_over_excited_displacement=0,
-                                min_pf_over_excited_multiplier=0,
-                                min_pf_under_excited_displacement=0,
-                                min_pf_under_excited_multiplier=0,
-                            ),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(
+                        SiteDERSetting,
+                        optional_is_none=True,
+                        max_charge_rate_w_value=0,
+                        max_charge_rate_w_multiplier=0,
+                        max_discharge_rate_w_value=0,
+                        max_discharge_rate_w_multiplier=0,
+                        max_va_value=0,
+                        max_va_multiplier=0,
+                        max_var_value=0,
+                        max_var_multiplier=0,
+                        max_var_neg_value=0,
+                        max_var_neg_multiplier=0,
+                        max_w_value=0,
+                        max_w_multiplier=0,
+                        min_pf_over_excited_displacement=0,
+                        min_pf_over_excited_multiplier=0,
+                        min_pf_under_excited_displacement=0,
+                        min_pf_under_excited_multiplier=0,
+                    ),
                 )
             ],
             {
@@ -602,11 +594,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
                 )
             ],
             {"setGradW": evaluator.ResolvedParam(12345, variable_expressions.Constant(12345))},
@@ -618,11 +606,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
                 )
             ],
             {"setGradW": evaluator.ResolvedParam(1234)},
@@ -634,9 +618,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_rating=generate_class_instance(SiteDERRating))
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating),
                 )
             ],
             {},
@@ -648,7 +630,6 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
             {},
@@ -671,12 +652,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
                 )
             ],
             {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
@@ -688,12 +664,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
                 )
             ],
             {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
@@ -705,12 +676,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
                 )
             ],
             {"modesEnabled_set": evaluator.ResolvedParam("03")},
@@ -722,12 +688,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
                 )
             ],
             {"modesEnabled_set": evaluator.ResolvedParam("03")},
@@ -739,12 +700,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fc", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fc", 16)),
                 )
             ],
             {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -756,12 +712,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
                 )
             ],
             {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -773,12 +724,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fc", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fc", 16)),
                 )
             ],
             {"modesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -790,12 +736,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
                 )
             ],
             {"modesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -853,9 +794,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_rating=generate_class_instance(SiteDERRating))
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating),
                 )
             ],
             {},
@@ -867,31 +806,26 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(
-                                SiteDERRating,
-                                optional_is_none=True,
-                                max_charge_rate_w_value=0,
-                                max_charge_rate_w_multiplier=0,
-                                max_discharge_rate_w_value=0,
-                                max_discharge_rate_w_multiplier=0,
-                                max_va_value=0,
-                                max_va_multiplier=0,
-                                max_var_value=0,
-                                max_var_multiplier=0,
-                                max_var_neg_value=0,
-                                max_var_neg_multiplier=0,
-                                max_w_value=0,
-                                max_w_multiplier=0,
-                                min_pf_over_excited_displacement=0,
-                                min_pf_over_excited_multiplier=0,
-                                min_pf_under_excited_displacement=0,
-                                min_pf_under_excited_multiplier=0,
-                            ),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(
+                        SiteDERRating,
+                        optional_is_none=True,
+                        max_charge_rate_w_value=0,
+                        max_charge_rate_w_multiplier=0,
+                        max_discharge_rate_w_value=0,
+                        max_discharge_rate_w_multiplier=0,
+                        max_va_value=0,
+                        max_va_multiplier=0,
+                        max_var_value=0,
+                        max_var_multiplier=0,
+                        max_var_neg_value=0,
+                        max_var_neg_multiplier=0,
+                        max_w_value=0,
+                        max_w_multiplier=0,
+                        min_pf_over_excited_displacement=0,
+                        min_pf_over_excited_multiplier=0,
+                        min_pf_under_excited_displacement=0,
+                        min_pf_under_excited_multiplier=0,
+                    ),
                 )
             ],
             {
@@ -912,9 +846,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_setting=generate_class_instance(SiteDERSetting))
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting),
                 )
             ],
             {},
@@ -926,7 +858,6 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
             {},
@@ -949,12 +880,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
                 )
             ],
             {"doeModesSupported_set": evaluator.ResolvedParam("03")},
@@ -966,12 +892,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
                 )
             ],
             {"doeModesSupported_set": evaluator.ResolvedParam("03")},
@@ -983,12 +904,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
                 )
             ],
             {"modesSupported_set": evaluator.ResolvedParam("03")},
@@ -1000,12 +916,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
                 )
             ],
             {"modesSupported_set": evaluator.ResolvedParam("03")},
@@ -1017,12 +928,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
                 )
             ],
             {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
@@ -1034,12 +940,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
                 )
             ],
             {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
@@ -1051,12 +952,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fc", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fc", 16)),
                 )
             ],
             {"modesSupported_unset": evaluator.ResolvedParam("03")},
@@ -1068,12 +964,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
                 )
             ],
             {"modesSupported_unset": evaluator.ResolvedParam("03")},
@@ -1105,9 +996,7 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_status=generate_class_instance(SiteDERStatus))
-                    ],
+                    site_der_status=generate_class_instance(SiteDERStatus),
                 )
             ],
             {},
@@ -1119,14 +1008,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit0": True, "genConnectStatus_bit1": False, "genConnectStatus_bit2": True},
@@ -1138,14 +1022,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit0": False},
@@ -1157,14 +1036,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit1": False},
@@ -1176,14 +1050,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=None, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=None, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit2": False},
@@ -1195,14 +1064,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit0": False, "genConnectStatus_bit1": False, "genConnectStatus_bit2": True},
@@ -1214,14 +1078,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit0": True, "genConnectStatus_bit1": True, "genConnectStatus_bit2": True},
@@ -1233,14 +1092,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=5, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=5, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus_bit0": True, "genConnectStatus_bit1": False, "genConnectStatus_bit2": False},
@@ -1252,14 +1106,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus": 999},
@@ -1271,14 +1120,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus": 888, "operationalModeStatus": 999},
@@ -1290,14 +1134,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus": 999, "operationalModeStatus": 999},
@@ -1309,14 +1148,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999
+                    ),
                 )
             ],
             {"genConnectStatus": 888, "operationalModeStatus": 888},
@@ -1328,9 +1162,7 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_setting=generate_class_instance(SiteDERSetting))
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting),
                 )
             ],
             {},
@@ -1342,7 +1174,6 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
             {},
@@ -1365,14 +1196,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                    ),
                 )
             ],
             {"alarmStatus": 0},
@@ -1384,14 +1210,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=1
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=1
+                    ),
                 )
             ],
             {"alarmStatus": 0},
@@ -1403,14 +1224,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=0
+                    ),
                 )
             ],
             {"alarmStatus": 1},
@@ -1422,14 +1238,9 @@ async def test_check_der_capability_contents(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_status=generate_class_instance(
-                                SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=3
-                            ),
-                        )
-                    ],
+                    site_der_status=generate_class_instance(
+                        SiteDERStatus, generator_connect_status=888, operational_mode_status=999, alarm_status=3
+                    ),
                 )
             ],
             {"alarmStatus": 3},
@@ -3081,11 +2892,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER, site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345)
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
                 )
             ],
             {"setGradW": evaluator.ResolvedParam(1234)},
@@ -3098,9 +2905,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_rating=generate_class_instance(SiteDERRating))
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating),
                 )
             ],
             {},
@@ -3113,7 +2918,6 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
             {},
@@ -3138,12 +2942,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
                 )
             ],
             {"doeModesEnabled_set": evaluator.ResolvedParam("03")},
@@ -3156,12 +2955,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
                 )
             ],
             {"modesEnabled_set": evaluator.ResolvedParam("03")},
@@ -3174,12 +2968,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
                 )
             ],
             {"doeModesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -3192,12 +2981,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
                 )
             ],
             {"modesEnabled_unset": evaluator.ResolvedParam("03")},
@@ -3210,12 +2994,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
                 )
             ],
             {
@@ -3239,12 +3018,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
-                        )
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
                 )
             ],
             {
@@ -3285,9 +3059,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(SiteDER, site_der_setting=generate_class_instance(SiteDERSetting))
-                    ],
+                    site_der_setting=generate_class_instance(SiteDERSetting),
                 )
             ],
             {},
@@ -3300,7 +3072,6 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[generate_class_instance(SiteDER)],
                 )
             ],
             {},
@@ -3325,12 +3096,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
                 )
             ],
             {"doeModesSupported_set": evaluator.ResolvedParam("03")},
@@ -3343,12 +3109,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
                 )
             ],
             {"modesSupported_set": evaluator.ResolvedParam("03")},
@@ -3361,12 +3122,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
                 )
             ],
             {"doeModesSupported_unset": evaluator.ResolvedParam("03")},
@@ -3379,12 +3135,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
                 )
             ],
             {"modesSupported_unset": evaluator.ResolvedParam("03")},
@@ -3397,12 +3148,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
                 )
             ],
             {
@@ -3426,12 +3172,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
                     Site,
                     seed=101,
                     aggregator_id=1,
-                    site_ders=[
-                        generate_class_instance(
-                            SiteDER,
-                            site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
-                        )
-                    ],
+                    site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
                 )
             ],
             {

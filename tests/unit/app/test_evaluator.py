@@ -14,7 +14,7 @@ from cactus_test_definitions.variable_expressions import (
     NamedVariableType,
     OperationType,
 )
-from envoy.server.model.site import Site, SiteDER, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERSetting
 from freezegun import freeze_time
 
 from cactus_runner.app.database import begin_session
@@ -113,19 +113,13 @@ async def test_resolve_variable_expected_use(
                 Site,
                 site_id=None,
                 aggregator_id=1,
-                site_ders=[
-                    generate_class_instance(
-                        SiteDER,
-                        site_id=None,
-                        site_der_setting=generate_class_instance(
-                            SiteDERSetting,
-                            site_der_setting_id=None,
-                            site_der_id=None,
-                            max_w_value=DATABASE_SET_MAX_W,
-                            max_w_multiplier=0,
-                        ),
-                    )
-                ],
+                site_der_setting=generate_class_instance(
+                    SiteDERSetting,
+                    site_der_setting_id=None,
+                    site_id=None,
+                    max_w_value=DATABASE_SET_MAX_W,
+                    max_w_multiplier=0,
+                ),
             )
         )
         await session.commit()

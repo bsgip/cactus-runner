@@ -16,7 +16,7 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Check
-from envoy.server.model.site import Site, SiteDER, SiteDERRating, SiteDERSetting, SiteDERStatus
+from envoy.server.model.site import Site, SiteDERRating, SiteDERSetting, SiteDERStatus
 from freezegun import freeze_time
 
 from cactus_runner.app import status
@@ -201,12 +201,10 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
         inverter_status=2,  # InverterStatusType.SLEEPING
         alarm_status=None,
     )
-    site_der = generate_class_instance(SiteDER, seed=301)
-    site_der.site_der_setting = site_der_setting
-    site_der.site_der_rating = site_der_rating
-    site_der.site_der_status = site_der_status
     site = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=42)
-    site.site_ders = [site_der]
+    site.site_der_setting = site_der_setting
+    site.site_der_rating = site_der_rating
+    site.site_der_status = site_der_status
     mock_get_active_site.return_value = site
 
     active_test_procedure = generate_class_instance(
