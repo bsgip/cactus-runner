@@ -5,7 +5,7 @@ from aiohttp import ClientSession, ClientTimeout
 from cactus_schema.runner import RequestData, RequestList, RunRequest
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from fastapi.testclient import TestClient
+from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app import env
 from cactus_runner.client import RunnerClient
@@ -39,16 +39,16 @@ async def test_request_data_retrieval_endpoints(
 
     result = await cactus_runner_client.post(
         "/mup",
-        data=(xml_data_dir / "mup.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+        data=(xml_data_dir / "mup.xml").read_text().strip(),
         headers=xml_headers,
     )
     await assert_success_response(result)
-    mup_id = result.headers.get("Location").split("/")[-1]  # Get mup id for next post
+    mup_id = result.headers.get("Location", "").split("/")[-1]  # Get mup id for next post
 
     await assert_success_response(
         await cactus_runner_client.post(
             f"/mup/{mup_id}",
-            data=(xml_data_dir / "mmr.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+            data=(xml_data_dir / "mmr.xml").read_text().strip(),
             headers=xml_headers,
         )
     )
