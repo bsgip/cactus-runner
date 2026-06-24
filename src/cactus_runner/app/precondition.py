@@ -107,7 +107,7 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
     Unlike reset_db() which truncates ALL tables, this preserves:
     - aggregator, aggregator_certificate_assignment, aggregator_domain
     - certificate
-    - site, site_der, site_der_rating, site_der_setting, site_der_availability, site_der_status
+    - site, site_der_rating, site_der_setting, site_der_availability, site_der_status
     - runtime_server_config
     - subscription, subscription_condition (kept so devices don't need to re-register, and so
       cancellation notifications can be delivered before the archive is cleared)
@@ -159,8 +159,10 @@ async def reset_playlist_db(envoy_client: EnvoyAdminClient) -> None:
         "calculation_log_label_value",
         "calculation_log_variable_metadata",
         "calculation_log_variable_value",
-        # Subscriptions and notifications
+        # Subscriptions and notifications (keep check and transmit so that clients are notified of cancelled controls)
+        # Remove the log tables for simplicity
         "transmit_notification_log",
+        "notification_dead_letter",
         # DOE/Control archives (after the admin API call)
         # archive_dynamic_operating_envelope must be truncated here: select_active_does_include_deleted queries BOTH
         # the live table and the archive (to surface cancellations via the change-feed). The admin API call moves

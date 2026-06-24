@@ -12,7 +12,7 @@ from envoy.server.model.doe import (
     SiteControlGroup,
     SiteControlGroupDefault,
 )
-from envoy.server.model.site import Site, SiteDER
+from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -41,7 +41,7 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
 
     Args:
         session: Database session
-        include_der_settings: If True, eagerly load SiteDER and related settings
+        include_der_settings: If True, eagerly load the site's DER sub-resources (rating/setting/status)
 
     Returns:
         The most recently modified Site, or None if no sites exist
@@ -50,9 +50,9 @@ async def get_active_site(session: AsyncSession, include_der_settings: bool = Fa
 
     if include_der_settings:
         stmt = stmt.options(
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_rating),
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
+            selectinload(Site.site_der_rating),
+            selectinload(Site.site_der_setting),
+            selectinload(Site.site_der_status),
         )
 
     site = (await session.execute(stmt)).scalar_one_or_none()
@@ -186,10 +186,10 @@ async def get_sites(session: AsyncSession) -> Sequence[Site]:
         select(Site)
         .order_by(Site.site_id.asc())
         .options(
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_availability),
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_rating),
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
-            selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
+            selectinload(Site.site_der_availability),
+            selectinload(Site.site_der_rating),
+            selectinload(Site.site_der_setting),
+            selectinload(Site.site_der_status),
         )
     )
     response = await session.execute(statement)
