@@ -363,7 +363,7 @@ requires-dist = [
     { name = "assertical", marker = "extra == 'test'", specifier = ">=0.4.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cactus-schema", specifier = ">=1.0.0,<2" },
+    { name = "cactus-schema", specifier = ">=1.1.0,<2" },
     { name = "cactus-test-definitions", specifier = ">=1.14.7,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.4.1" },
@@ -392,15 +392,15 @@ provides-extras = ["dev", "test", "docs"]
 
 [[package]]
 name = "cactus-schema"
-version = "1.0.0"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cactus-test-definitions" },
     { name = "dataclass-wizard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f3/87/702dfc5687937952289cc3e45a8ac54b75927875f6f9bd0b4817ac90dfa4/cactus_schema-1.0.0.tar.gz", hash = "sha256:e24dca856b20dccd7c1785d451e8f817b0355e54cdde729ba29df3f9626964d0", size = 11067, upload-time = "2026-06-17T04:21:59.931Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ce/ed/6995c1b04a6a84b65249fe3ba47ad5d0ad71a248d5987074ac7f9dc96d63/cactus_schema-1.1.0.tar.gz", hash = "sha256:36a23715155370e54a5078b3b28aa8ccfbf6794ab12faa1157d9e337a495726a", size = 11056, upload-time = "2026-06-24T00:56:25.138Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/a3/78e60a8166a83d7ea3096363b03789499af4ca346834d7ee7eab9b976cb1/cactus_schema-1.0.0-py3-none-any.whl", hash = "sha256:d12321aae1142177dc44dd94e0b168cb248e3e7364337a1ab3b9bbe0ddeb9268", size = 12688, upload-time = "2026-06-17T04:21:58.66Z" },
+    { url = "https://files.pythonhosted.org/packages/68/25/1f68f0851e76e018e24aba2778eb27e53b9f65a8f9cc18e1a5eac86e6d38/cactus_schema-1.1.0-py3-none-any.whl", hash = "sha256:428e893f58feb3cd11cf0fc45aa12322406a6fb03f351ba0cf70c1d90000f7a3", size = 12677, upload-time = "2026-06-24T00:56:23.835Z" },
 ]
 
 [[package]]
