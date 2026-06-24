@@ -337,7 +337,7 @@ requires-dist = [
     { name = "assertical", marker = "extra == 'test'", specifier = ">=0.4.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cactus-schema", specifier = ">=1.1.0,<2" },
+    { name = "cactus-schema", specifier = ">=0.0.24,<2" },
     { name = "cactus-test-definitions", specifier = ">=1.14.7,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.5.0" },
