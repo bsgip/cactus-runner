@@ -1,7 +1,7 @@
 import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
-from envoy.server.model.site import Site, SiteDER, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERSetting
 
 from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
@@ -13,18 +13,12 @@ def _add_der_setting(session, **der_setting_kwargs) -> None:
             Site,
             site_id=None,
             aggregator_id=1,
-            site_ders=[
-                generate_class_instance(
-                    SiteDER,
-                    site_id=None,
-                    site_der_setting=generate_class_instance(
-                        SiteDERSetting,
-                        site_der_setting_id=None,
-                        site_der_id=None,
-                        **der_setting_kwargs,
-                    ),
-                )
-            ],
+            site_der_setting=generate_class_instance(
+                SiteDERSetting,
+                site_der_setting_id=None,
+                site_der_id=None,
+                **der_setting_kwargs,
+            ),
         )
     )
 
