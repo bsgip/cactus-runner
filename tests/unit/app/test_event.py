@@ -12,6 +12,7 @@ from cactus_schema.runner import RequestEntry
 from cactus_test_definitions.client import Event
 
 from cactus_runner.app import evaluator, event
+from cactus_runner.app.uri import MountedProxyPathParts
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 
 
@@ -47,12 +48,9 @@ def test_generate_client_request_trigger(
 ):
     """Checks basic parsing of AIOHttp requests with and without mount points"""
 
-    mock_request = MagicMock()
-    mock_request.method = request_method
-    mock_request.path = request_path
-    mock_request.query = {}
+    path_parts = generate_class_instance(MountedProxyPathParts, method=request_method, path=request_path, query={})
 
-    trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving)
+    trigger = event.generate_client_request_trigger(path_parts, mount_point, before_serving)
     assert isinstance(trigger, event.EventTrigger)
     assert_nowish(trigger.time)
     assert trigger.time.tzinfo
@@ -109,12 +107,9 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
     NOTE: This function trusts that the aiohttp router has already validated that request_path is under mount_point.
     """
 
-    mock_request = MagicMock()
-    mock_request.method = "GET"
-    mock_request.path = request_path
-    mock_request.query = {}
+    path_parts = generate_class_instance(MountedProxyPathParts, method="GET", path=request_path, query={})
 
-    trigger = event.generate_client_request_trigger(mock_request, mount_point, before_serving=True)
+    trigger = event.generate_client_request_trigger(path_parts, mount_point, before_serving=True)
 
     assert isinstance(trigger, event.EventTrigger)
     assert trigger.client_request is not None
@@ -135,12 +130,10 @@ def test_generate_client_request_trigger_mount_point_stripping(mount_point: str,
     ],
 )
 def test_generate_client_request_trigger_query_start(query: dict, expected_query_start: int | None):
-    mock_request = MagicMock()
-    mock_request.method = "GET"
-    mock_request.path = "/edev/1/derp"
-    mock_request.query = query
 
-    trigger = event.generate_client_request_trigger(mock_request, mount_point="", before_serving=True)
+    path_parts = generate_class_instance(MountedProxyPathParts, method="GET", path="/edev/1/derp", query=query)
+
+    trigger = event.generate_client_request_trigger(path_parts, mount_point="", before_serving=True)
 
     assert trigger.client_request is not None
     assert trigger.client_request.query_start == expected_query_start

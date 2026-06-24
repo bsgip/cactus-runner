@@ -348,8 +348,8 @@ requires-dist = [
     { name = "assertical", marker = "extra == 'test'", specifier = ">=0.4.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cactus-schema", specifier = ">=0.0.23,<1" },
     { name = "cactus-test-definitions", specifier = ">=1.14.7,<2" },
+    { name = "cactus-schema", specifier = ">=1.0.0,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.4.1" },
     { name = "freezegun", marker = "extra == 'test'" },
@@ -377,29 +377,39 @@ provides-extras = ["dev", "test", "docs"]
 
 [[package]]
 name = "cactus-schema"
-version = "0.0.23"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cactus-test-definitions" },
     { name = "dataclass-wizard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/24/ea/ba86486f93571effc23037885dd4cb3e27ff3670cb6f64dd1230082ac69f/cactus_schema-0.0.23.tar.gz", hash = "sha256:327c3d3a6d79a0f11c7a30c01276d9dd9a041120d324e6debcf246acdc98e374", size = 11052, upload-time = "2026-05-27T01:18:23.516Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/87/702dfc5687937952289cc3e45a8ac54b75927875f6f9bd0b4817ac90dfa4/cactus_schema-1.0.0.tar.gz", hash = "sha256:e24dca856b20dccd7c1785d451e8f817b0355e54cdde729ba29df3f9626964d0", size = 11067, upload-time = "2026-06-17T04:21:59.931Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/c4/4e90ffe68c15812f361e04b73ec279d1d5b31164f5110d94cac7450d338b/cactus_schema-0.0.23-py3-none-any.whl", hash = "sha256:d9a2e3505ed83401f53ad026af94ff9bb46a08e4554a69102ad0ff1edf2022d7", size = 12729, upload-time = "2026-05-27T01:18:21.999Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/a3/78e60a8166a83d7ea3096363b03789499af4ca346834d7ee7eab9b976cb1/cactus_schema-1.0.0-py3-none-any.whl", hash = "sha256:d12321aae1142177dc44dd94e0b168cb248e3e7364337a1ab3b9bbe0ddeb9268", size = 12688, upload-time = "2026-06-17T04:21:58.66Z" },
 ]
 
 [[package]]
 name = "cactus-test-definitions"
+<<<<<<< asymmetric_DERControls
 version = "1.14.7"
+=======
+version = "1.14.6"
+>>>>>>> main
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dataclass-wizard" },
     { name = "pyyaml" },
     { name = "pyyaml-include" },
 ]
+<<<<<<< asymmetric_DERControls
 sdist = { url = "https://files.pythonhosted.org/packages/d3/c2/11af4cebe135bdba2672ed2a54bdbe6502f4d43a492a0af732b7a5848f09/cactus_test_definitions-1.14.7.tar.gz", hash = "sha256:3cf0b7a07541de5560fd1ebb492191b0a16d854a461b9ddbc202fe83d9765442", size = 168707, upload-time = "2026-06-23T23:28:01.362Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ac/ce/eaebb5ad11bc8dfd2dcc1f1adb7cf773f1ce02fbd7e080df86d4a9bd724a/cactus_test_definitions-1.14.7-py3-none-any.whl", hash = "sha256:359c8324b2e41e5d266f258690ade143e171249b332e0e061ffab600e1a185fb", size = 320521, upload-time = "2026-06-23T23:27:59.564Z" },
+=======
+sdist = { url = "https://files.pythonhosted.org/packages/a8/5a/3e3d10fc72bab90470edc3585d28d94ee09314a53d6e4e4737a022e9fa52/cactus_test_definitions-1.14.6.tar.gz", hash = "sha256:7be86a1c9d9f257d9261ac89fe751f736c01737f621c716735c42009a055013a", size = 166823, upload-time = "2026-06-05T05:16:32.047Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/21/335d1430373271572be39a9372b34b33506aa221a63910c6c86d00544590/cactus_test_definitions-1.14.6-py3-none-any.whl", hash = "sha256:4934e49e42d3af985e3ebb7f881dd16fa659c3dcfd69c86ec985ef960f16e551", size = 318707, upload-time = "2026-06-05T05:16:30.248Z" },
+>>>>>>> main
 ]
 
 [[package]]
