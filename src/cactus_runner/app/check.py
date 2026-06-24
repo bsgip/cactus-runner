@@ -25,7 +25,6 @@ from envoy.server.model.response import (
     TariffGeneratedRateResponse,
 )
 from envoy.server.model.site import (
-    SiteDER,
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
@@ -407,9 +406,7 @@ async def check_der_settings_contents(  # noqa: C901
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(
-        select(SiteDERSetting).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
-    )
+    response = await session.execute(select(SiteDERSetting).where(SiteDERSetting.site_id == site.site_id).limit(1))
     der_settings = response.scalar_one_or_none()
     if der_settings is None:
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
@@ -472,9 +469,7 @@ async def check_der_capability_contents(
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(
-        select(SiteDERRating).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
-    )
+    response = await session.execute(select(SiteDERRating).where(SiteDERRating.site_id == site.site_id).limit(1))
     der_rating = response.scalar_one_or_none()
     if der_rating is None:
         return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}.")
@@ -539,9 +534,7 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(
-        select(SiteDERStatus).join(SiteDER).where(SiteDER.site_id == site.site_id).limit(1)
-    )
+    response = await session.execute(select(SiteDERStatus).where(SiteDERStatus.site_id == site.site_id).limit(1))
     der_status = response.scalar_one_or_none()
     if der_status is None:
         return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}.")

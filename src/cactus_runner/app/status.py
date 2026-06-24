@@ -265,15 +265,13 @@ async def _get_end_device_metadata(session: AsyncSession, set_max_w: int | None)
         der_capability = None
         der_settings = None
         der_status = None
-        if active_site.site_ders:
-            first_site_der = active_site.site_ders[0]
-            if first_site_der.site_der_setting is not None:
-                doe_modes_enabled = first_site_der.site_der_setting.doe_modes_enabled
-                der_settings = _build_der_settings(first_site_der.site_der_setting)
-            if first_site_der.site_der_rating is not None:
-                der_capability = _build_der_capability(first_site_der.site_der_rating)
-            if first_site_der.site_der_status is not None:
-                der_status = _build_der_status(first_site_der.site_der_status)
+        if active_site.site_der_setting is not None:
+            doe_modes_enabled = active_site.site_der_setting.doe_modes_enabled
+            der_settings = _build_der_settings(active_site.site_der_setting)
+        if active_site.site_der_rating is not None:
+            der_capability = _build_der_capability(active_site.site_der_rating)
+        if active_site.site_der_status is not None:
+            der_status = _build_der_status(active_site.site_der_status)
         return EndDeviceMetadata(
             edevid=active_site.site_id,
             lfdi=active_site.lfdi,

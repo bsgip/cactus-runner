@@ -26,7 +26,7 @@ async def test_request_data_retrieval_endpoints(
     run_request: RunRequest = run_request_generator(
         TestProcedureId.ALL_01, agg_cert, device_cert, CSIPAusVersion.RELEASE_1_2, None
     )
-    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:  # ty:ignore[unresolved-attribute]
+    async with ClientSession(base_url=cactus_runner_client.make_url("/"), timeout=ClientTimeout(30)) as session:
         await RunnerClient.initialise(session, run_request)
 
     headers = {"ssl-client-cert": URI_ENCODED_CERT}

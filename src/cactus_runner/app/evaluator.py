@@ -63,6 +63,10 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                 return await resolvers.resolve_named_variable_der_setting_min_pf_under_excited(session)
             case NamedVariableType.DERSETTING_SET_MAX_WH:
                 return await resolvers.resolve_named_variable_der_setting_max_wh(session)
+            case NamedVariableType.DERSETTING_MAX_IMPORT_W:
+                return await resolvers.resolve_named_variable_der_setting_max_import_w(session)
+            case NamedVariableType.DERSETTING_MAX_EXPORT_W:
+                return await resolvers.resolve_named_variable_der_setting_max_export_w(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_W:
                 return await resolvers.resolve_named_variable_der_rating_max_w(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_VA:

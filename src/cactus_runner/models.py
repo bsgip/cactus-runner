@@ -16,7 +16,6 @@ from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Event, TestProcedure
 from dataclass_wizard import JSONWizard
 from envoy.server.model.site import Site as EnvoySite
-from envoy.server.model.site import SiteDER as EnvoySiteDER
 from envoy.server.model.site import SiteDERAvailability as EnvoySiteDERAvailability
 from envoy.server.model.site import SiteDERRating as EnvoySiteDERRating
 from envoy.server.model.site import SiteDERSetting as EnvoySiteDERSetting
@@ -282,7 +281,7 @@ class PackedReadings(JSONWizard):
 @dataclass(frozen=True)
 class SiteDERRating(JSONWizard):
     site_der_rating_id: int
-    site_der_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
 
@@ -341,7 +340,7 @@ class SiteDERRating(JSONWizard):
             return None
         return cls(
             site_der_rating_id=rating.site_der_rating_id,
-            site_der_id=rating.site_der_id,
+            site_id=rating.site_id,
             created_time=rating.created_time,
             changed_time=rating.changed_time,
             modes_supported=rating.modes_supported,
@@ -398,7 +397,7 @@ class SiteDERRating(JSONWizard):
 @dataclass(frozen=True)
 class SiteDERSetting(JSONWizard):
     site_der_setting_id: int
-    site_der_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     modes_enabled: DERControlType | None
@@ -459,7 +458,7 @@ class SiteDERSetting(JSONWizard):
 
         return cls(
             site_der_setting_id=setting.site_der_setting_id,
-            site_der_id=setting.site_der_id,
+            site_id=setting.site_id,
             created_time=setting.created_time,
             changed_time=setting.changed_time,
             modes_enabled=setting.modes_enabled,
@@ -518,7 +517,7 @@ class SiteDERSetting(JSONWizard):
 @dataclass(frozen=True)
 class SiteDERAvailability(JSONWizard):
     site_der_availability_id: int
-    site_der_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     availability_duration_sec: int | None
@@ -536,7 +535,7 @@ class SiteDERAvailability(JSONWizard):
             return None
         return cls(
             site_der_availability_id=availability.site_der_availability_id,
-            site_der_id=availability.site_der_id,
+            site_id=availability.site_id,
             created_time=availability.created_time,
             changed_time=availability.changed_time,
             availability_duration_sec=availability.availability_duration_sec,
@@ -553,7 +552,7 @@ class SiteDERAvailability(JSONWizard):
 @dataclass(frozen=True)
 class SiteDERStatus(JSONWizard):
     site_der_status_id: int
-    site_der_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     alarm_status: AlarmStatusType | None
@@ -583,7 +582,9 @@ class SiteDERStatus(JSONWizard):
 
 @dataclass(frozen=True)
 class SiteDER(JSONWizard):
-    site_der_id: int
+    """The virtual DER for a site. Envoy has now dropped the site_der table
+    and we should probably update this, but for now keeps reporting, orchestrator and ui interfaces the same"""
+
     site_id: int
     created_time: datetime
     changed_time: datetime
@@ -593,16 +594,22 @@ class SiteDER(JSONWizard):
     site_der_status: SiteDERStatus | None
 
     @classmethod
-    def from_site_der(cls, site_der: EnvoySiteDER) -> Self:
+    def from_site(cls, site: EnvoySite) -> Self:
+        rating = SiteDERRating.from_site_der_rating(site.site_der_rating)
+        setting = SiteDERSetting.from_site_der_setting(site.site_der_setting)
+        availability = SiteDERAvailability.from_site_der_availability(site.site_der_availability)
+        status = SiteDERStatus.from_site_der_status(site.site_der_status)
+
+        # The DER has no row of its own anymore - its "changed time" is the most recent change across its sub-resources
+        changed_times = [d.changed_time for d in (rating, setting, availability, status) if d is not None]
         return cls(
-            site_der_id=site_der.site_der_id,
-            site_id=site_der.site_id,
-            created_time=site_der.created_time,
-            changed_time=site_der.changed_time,
-            site_der_rating=SiteDERRating.from_site_der_rating(site_der.site_der_rating),
-            site_der_setting=SiteDERSetting.from_site_der_setting(site_der.site_der_setting),
-            site_der_availability=SiteDERAvailability.from_site_der_availability(site_der.site_der_availability),
-            site_der_status=SiteDERStatus.from_site_der_status(site_der.site_der_status),
+            site_id=site.site_id,
+            created_time=site.created_time,
+            changed_time=max(changed_times) if changed_times else site.changed_time,
+            site_der_rating=rating,
+            site_der_setting=setting,
+            site_der_availability=availability,
+            site_der_status=status,
         )
 
 
@@ -623,6 +630,15 @@ class Site(JSONWizard):
 
     @classmethod
     def from_site(cls, site: EnvoySite) -> Self:
+        # The DER sub-resources now hang directly off the site
+        der_sub_resources = (
+            site.site_der_rating,
+            site.site_der_setting,
+            site.site_der_availability,
+            site.site_der_status,
+        )
+        site_ders = [SiteDER.from_site(site)] if any(sub is not None for sub in der_sub_resources) else []
+
         return cls(
             site_id=site.site_id,
             nmi=site.nmi,
@@ -635,7 +651,7 @@ class Site(JSONWizard):
             device_category=site.device_category,
             registration_pin=site.registration_pin,
             post_rate_seconds=site.post_rate_seconds,
-            site_ders=[SiteDER.from_site_der(site_der) for site_der in site.site_ders],
+            site_ders=site_ders,
         )
 
 

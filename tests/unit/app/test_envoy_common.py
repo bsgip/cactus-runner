@@ -16,7 +16,7 @@ from envoy.server.model.doe import (
     SiteControlGroup,
     SiteControlGroupDefault,
 )
-from envoy.server.model.site import Site, SiteDER, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
@@ -67,17 +67,14 @@ async def test_get_active_site_many_sites(pg_base_config):
 
 @pytest.mark.anyio
 async def test_get_active_site_with_der_settings(pg_base_config):
-    """Test that include_der_settings=True eagerly loads most recently changed SiteDER and settings"""
+    """Test that include_der_settings=True eagerly loads the most recently changed site's DER settings"""
     async with generate_async_session(pg_base_config) as session:
         site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10))
         site2 = generate_class_instance(Site, seed=202, aggregator_id=1, site_id=2, changed_time=datetime(2022, 11, 11))
 
         # Give site 2 der settings
-        site_der = generate_class_instance(SiteDER, seed=301)
-        site_der.site = site2  # Link to site2
-
         site_der_setting = generate_class_instance(SiteDERSetting, seed=401)
-        site_der_setting.site_der = site_der  # Link to site_der
+        site_der_setting.site = site2  # Link to site2
 
         session.add(site1)
         session.add(site2)
@@ -89,8 +86,7 @@ async def test_get_active_site_with_der_settings(pg_base_config):
 
         assert isinstance(site, Site)
         assert site.site_id == 2
-        assert len(site.site_ders) > 0
-        assert site.site_ders[0].site_der_setting is not None, "site_der_setting should be eagerly loaded"
+        assert site.site_der_setting is not None, "site_der_setting should be eagerly loaded"
 
     # Test with include_der_settings=False (default)
     async with generate_async_session(pg_base_config) as session:
@@ -98,7 +94,7 @@ async def test_get_active_site_with_der_settings(pg_base_config):
         assert isinstance(site, Site)
         assert site.site_id == 2
         with pytest.raises(sqlalchemy.exc.InvalidRequestError, match="is not available due to lazy='raise'"):
-            _ = site.site_ders
+            _ = site.site_der_setting
 
 
 @pytest.mark.anyio

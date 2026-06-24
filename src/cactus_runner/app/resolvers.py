@@ -116,6 +116,34 @@ async def resolve_named_variable_der_setting_max_discharge_rate_w(session: Async
     return float(set_max_discharge_rate_w)
 
 
+async def resolve_named_variable_der_setting_max_import_w(session: AsyncSession) -> float:
+    # Directional import limit: prefer the asymmetric setMaxChargeRateW, falling back to the mandatory setMaxW
+    site_der_setting = await _select_single_site_der_setting(session, "maxImportW")
+    max_import_w = common.pow10_to_decimal_value(
+        site_der_setting.max_charge_rate_w_value, site_der_setting.max_charge_rate_w_multiplier
+    )
+    if max_import_w is None:
+        max_import_w = common.pow10_to_decimal_value(site_der_setting.max_w_value, site_der_setting.max_w_multiplier)
+    if max_import_w is None:
+        raise errors.UnresolvableVariableError("Unable to extract setMaxChargeRateW or setMaxW from DERSetting")
+
+    return float(max_import_w)
+
+
+async def resolve_named_variable_der_setting_max_export_w(session: AsyncSession) -> float:
+    # Directional export limit: prefer the asymmetric setMaxDischargeRateW, falling back to the mandatory setMaxW
+    site_der_setting = await _select_single_site_der_setting(session, "maxExportW")
+    max_export_w = common.pow10_to_decimal_value(
+        site_der_setting.max_discharge_rate_w_value, site_der_setting.max_discharge_rate_w_multiplier
+    )
+    if max_export_w is None:
+        max_export_w = common.pow10_to_decimal_value(site_der_setting.max_w_value, site_der_setting.max_w_multiplier)
+    if max_export_w is None:
+        raise errors.UnresolvableVariableError("Unable to extract setMaxDischargeRateW or setMaxW from DERSetting")
+
+    return float(max_export_w)
+
+
 async def resolve_named_variable_der_setting_min_pf_over_excited(session: AsyncSession) -> float:
     site_der_setting = await _select_single_site_der_setting(session, "setMinPFOverExcited")
     set_min_pf_over_excited = common.pow10_to_decimal_value(

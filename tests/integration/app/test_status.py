@@ -7,7 +7,7 @@ from assertical.fixtures.postgres import generate_async_session
 from cactus_schema.runner import RunnerStatus, RunRequest
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from envoy.server.model.site import Site, SiteDER, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
@@ -19,7 +19,7 @@ from tests.integration.certificate1 import (
 @pytest.mark.slow
 @pytest.mark.anyio
 async def test_status_end_device_metadata(cactus_runner_client: TestClient, pg_base_config, run_request_generator):
-    """Tests that end_device_metadata is correctly populated with eager loading of site_ders"""
+    """Tests that end_device_metadata is correctly populated with eager loading of the site's DER sub-resources"""
 
     aggregator_cert = TEST_CERTIFICATE_1_PEM.decode()
 
@@ -46,11 +46,8 @@ async def test_status_end_device_metadata(cactus_runner_client: TestClient, pg_b
         )
         db_session.add(new_site)
 
-        new_der = generate_class_instance(SiteDER, site=new_site)
-        db_session.add(new_der)
-
         new_der_settings = generate_class_instance(
-            SiteDERSetting, site_der=new_der, max_w_value=5000, max_w_multiplier=0, doe_modes_enabled=7
+            SiteDERSetting, site=new_site, max_w_value=5000, max_w_multiplier=0, doe_modes_enabled=7
         )
         db_session.add(new_der_settings)
 

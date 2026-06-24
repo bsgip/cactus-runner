@@ -23,7 +23,7 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from envoy.server.model.site import Site, SiteDER, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERSetting
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app.database import remove_database_connection
@@ -85,10 +85,13 @@ async def test_client_interactions(
         new_site = generate_class_instance(Site, aggregator_id=agg_id, site_id=None)
         session.add(new_site)
 
-        new_der = generate_class_instance(SiteDER, site=new_site)
-        session.add(new_der)
-
-        new_der_settings = generate_class_instance(SiteDERSetting, site_der=new_der, max_w_multiplier=0)
+        new_der_settings = generate_class_instance(
+            SiteDERSetting,
+            site=new_site,
+            max_w_multiplier=0,
+            max_charge_rate_w_multiplier=0,
+            max_discharge_rate_w_multiplier=0,
+        )
         session.add(new_der_settings)
 
         await session.commit()
