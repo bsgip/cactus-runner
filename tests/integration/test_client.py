@@ -88,7 +88,13 @@ async def test_client_interactions(
         new_der = generate_class_instance(SiteDER, site=new_site)
         session.add(new_der)
 
-        new_der_settings = generate_class_instance(SiteDERSetting, site_der=new_der, max_w_multiplier=0)
+        new_der_settings = generate_class_instance(
+            SiteDERSetting,
+            site_der=new_der,
+            max_w_multiplier=0,
+            max_charge_rate_w_multiplier=0,
+            max_discharge_rate_w_multiplier=0,
+        )
         session.add(new_der_settings)
 
         await session.commit()

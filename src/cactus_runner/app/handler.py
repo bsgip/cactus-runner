@@ -26,6 +26,7 @@ from cactus_runner.app.check import first_failing_check
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
+    ENVOY_PROXY_PREFIX,
     MAX_REQUEST_PAIRS,
     MOUNT_POINT,
     SERVER_URL,
@@ -45,6 +46,7 @@ from cactus_runner.app.shared import (
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
+from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
@@ -747,8 +749,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
         runner_state.client_interactions.append(new_interaction)
 
     # Determine paths, url and HTTP method
-    relative_url = request.path
-    remote_url = SERVER_URL + request.path_qs
+    proxy_parts = uri_proxy_path_extract(MOUNT_POINT, ENVOY_PROXY_PREFIX, request)
+    relative_url = proxy_parts.path
+    remote_url = SERVER_URL + proxy_parts.path_qs
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
@@ -758,7 +761,9 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     async with request.app[APPKEY_PROXY_LOCK]:
         async with begin_session() as session:
             trigger_handled = await event.handle_event_trigger(
-                trigger=event.generate_client_request_trigger(request, mount_point=MOUNT_POINT, before_serving=True),
+                trigger=event.generate_client_request_trigger(
+                    proxy_parts, mount_point=MOUNT_POINT, before_serving=True
+                ),
                 runner_state=runner_state,
                 session=session,
                 envoy_client=envoy_client,
@@ -775,7 +780,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
             async with begin_session() as session:
                 trigger_handled = await event.handle_event_trigger(
                     trigger=event.generate_client_request_trigger(
-                        request, mount_point=MOUNT_POINT, before_serving=False
+                        proxy_parts, mount_point=MOUNT_POINT, before_serving=False
                     ),
                     runner_state=runner_state,
                     session=session,

@@ -32,6 +32,7 @@ from multidict import CIMultiDict
 from cactus_runner.app import action, handler
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import APPKEY_ENVOY_ADMIN_CLIENT, APPKEY_PROXY_LOCK, APPKEY_RUNNER_STATE
+from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
@@ -719,7 +720,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
 
     # ... verify we triggered the "before" handler, but not the after handler
     mock_generate_client_request_trigger.assert_called_once_with(
-        request, mount_point=handler.MOUNT_POINT, before_serving=True
+        uri_proxy_path_extract("/", "/", request), mount_point=handler.MOUNT_POINT, before_serving=True
     )
     mock_handle_event_trigger.assert_called_once()
 
@@ -851,8 +852,8 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     # ... verify we triggered the "before" handler, but not the after handler
     mock_generate_client_request_trigger.assert_has_calls(
         [
-            call(request, mount_point=handler.MOUNT_POINT, before_serving=True),
-            call(request, mount_point=handler.MOUNT_POINT, before_serving=False),
+            call(uri_proxy_path_extract("/", "/", request), mount_point=handler.MOUNT_POINT, before_serving=True),
+            call(uri_proxy_path_extract("/", "/", request), mount_point=handler.MOUNT_POINT, before_serving=False),
         ]
     )
     assert mock_handle_event_trigger.call_count == 2
