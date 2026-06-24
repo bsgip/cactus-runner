@@ -16,7 +16,7 @@ def _add_der_setting(session, **der_setting_kwargs) -> None:
             site_der_setting=generate_class_instance(
                 SiteDERSetting,
                 site_der_setting_id=None,
-                site_der_id=None,
+                site_id=None,
                 **der_setting_kwargs,
             ),
         )
