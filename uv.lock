@@ -364,7 +364,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
     { name = "cactus-schema", specifier = ">=1.1.0,<2" },
-    { name = "cactus-test-definitions", specifier = ">=1.13.0,<2" },
+    { name = "cactus-test-definitions", specifier = "==1.14.6" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.4.1" },
     { name = "freezegun", marker = "extra == 'test'" },
@@ -405,16 +405,16 @@ wheels = [
 
 [[package]]
 name = "cactus-test-definitions"
-version = "1.14.7"
+version = "1.14.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dataclass-wizard" },
     { name = "pyyaml" },
     { name = "pyyaml-include" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/c2/11af4cebe135bdba2672ed2a54bdbe6502f4d43a492a0af732b7a5848f09/cactus_test_definitions-1.14.7.tar.gz", hash = "sha256:3cf0b7a07541de5560fd1ebb492191b0a16d854a461b9ddbc202fe83d9765442", size = 168707, upload-time = "2026-06-23T23:28:01.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/5a/3e3d10fc72bab90470edc3585d28d94ee09314a53d6e4e4737a022e9fa52/cactus_test_definitions-1.14.6.tar.gz", hash = "sha256:7be86a1c9d9f257d9261ac89fe751f736c01737f621c716735c42009a055013a", size = 166823, upload-time = "2026-06-05T05:16:32.047Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/ce/eaebb5ad11bc8dfd2dcc1f1adb7cf773f1ce02fbd7e080df86d4a9bd724a/cactus_test_definitions-1.14.7-py3-none-any.whl", hash = "sha256:359c8324b2e41e5d266f258690ade143e171249b332e0e061ffab600e1a185fb", size = 320521, upload-time = "2026-06-23T23:27:59.564Z" },
+    { url = "https://files.pythonhosted.org/packages/50/21/335d1430373271572be39a9372b34b33506aa221a63910c6c86d00544590/cactus_test_definitions-1.14.6-py3-none-any.whl", hash = "sha256:4934e49e42d3af985e3ebb7f881dd16fa659c3dcfd69c86ec985ef960f16e551", size = 318707, upload-time = "2026-06-05T05:16:30.248Z" },
 ]
 
 [[package]]
