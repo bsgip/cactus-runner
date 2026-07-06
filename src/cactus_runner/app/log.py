@@ -8,7 +8,6 @@ from typing import Any, override
 # common use case
 LOG_FILE_ENVOY_SERVER = "/shared/envoy.server.log"
 LOG_FILE_ENVOY_ADMIN = "/shared/envoy.admin.log"
-LOG_FILE_ENVOY_NOTIFICATION = "/shared/envoy.notification.log"
 LOG_FILE_CACTUS_RUNNER = "/shared/cactus_runner.log"
 
 LOG_RECORD_BUILTIN_ATTRS = {
