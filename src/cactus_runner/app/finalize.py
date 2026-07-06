@@ -29,7 +29,6 @@ from cactus_runner.app.envoy_common import (
 from cactus_runner.app.log import (
     LOG_FILE_CACTUS_RUNNER,
     LOG_FILE_ENVOY_ADMIN,
-    LOG_FILE_ENVOY_NOTIFICATION,
     LOG_FILE_ENVOY_SERVER,
 )
 from cactus_runner.app.readings import (
@@ -378,7 +377,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         log_file_paths=[
             LOG_FILE_ENVOY_SERVER,
             LOG_FILE_ENVOY_ADMIN,
-            LOG_FILE_ENVOY_NOTIFICATION,
             LOG_FILE_CACTUS_RUNNER,
         ],
         filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
