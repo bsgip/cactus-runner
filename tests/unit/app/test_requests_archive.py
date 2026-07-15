@@ -9,6 +9,7 @@ from multidict import CIMultiDict
 
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.requests_archive import (
+    parse_request_start_header,
     prune_old_request_response_pairs,
     read_request_response_files,
     write_request_response_files,
@@ -67,15 +68,55 @@ def test_write_request_response_files_success_with_text_bodies(proxy_result, ent
     assert request_data.response is not None, "Response content should exist"
 
     # Verify request file content
+    assert f"# Epoch: {entry.timestamp.timestamp()}" in request_data.request
+    assert f"# UTC: {entry.timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}" in request_data.request
+    assert "# Time source: runner (request received)" in request_data.request
     assert "POST /dcap HTTP/1.1" in request_data.request
     assert "Host: localhost" in request_data.request
     assert "Content-Type: application/xml" in request_data.request
     assert "<RequestBody>test data</RequestBody>" in request_data.request
 
     # Verify response file content
+    assert f"# Epoch: {proxy_result.response_timestamp.timestamp()}" in request_data.response
+    assert f"# UTC: {proxy_result.response_timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}" in request_data.response
+    assert "# Time source: runner (envoy response received)" in request_data.response
     assert "HTTP/1.1 200 OK" in request_data.response
     assert "Content-Type: application/xml" in request_data.response
     assert "<ResponseBody>response data</ResponseBody>" in request_data.response
+
+
+@pytest.mark.parametrize(
+    "raw_value, expected",
+    [
+        ("t=1752537600.123", datetime.fromtimestamp(1752537600.123, tz=UTC)),
+        ("1752537600.123", datetime.fromtimestamp(1752537600.123, tz=UTC)),
+        ("t=abc", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_parse_request_start_header(raw_value, expected):
+    headers = CIMultiDict({} if raw_value is None else {"X-Request-Start": raw_value})
+    assert parse_request_start_header(headers) == expected
+
+
+def test_write_request_response_files_prefers_nginx_request_time(proxy_result, entry):
+    """The nginx X-Request-Start time should be used over entry.timestamp when present"""
+    proxy_result.request_headers["X-Request-Start"] = "t=1752537600.123"
+    nginx_timestamp = datetime.fromtimestamp(1752537600.123, tz=UTC)
+
+    # Act
+    request_id = 104
+    write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=entry)
+    request_content, response_content = read_request_response_files(request_id)
+
+    # Assert
+    assert f"# Epoch: {nginx_timestamp.timestamp()}" in request_content
+    assert f"# UTC: {nginx_timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}" in request_content
+    assert "# Time source: nginx ingress" in request_content
+    assert f"# Epoch: {entry.timestamp.timestamp()}" not in request_content
+    # Response file still uses the runner-side response timestamp
+    assert f"# Epoch: {proxy_result.response_timestamp.timestamp()}" in response_content
 
 
 def test_write_request_response_files_with_binary_request_body(proxy_result, entry):
