@@ -103,8 +103,7 @@ async def test_request_data_retrieval_endpoints(
             assert "Content-Type: application/sep+xml" in data.request
             assert "MirrorMeterReading" in body
             assert any(
-                line in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"]
-                for line in data.response.split("\n")
+                line in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"] for line in data.response.split("\n")
             )
             break
     assert post_mup_id_found
