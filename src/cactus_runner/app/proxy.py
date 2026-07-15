@@ -1,5 +1,6 @@
 import http
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from aiohttp import client, web
 from multidict import CIMultiDict
@@ -18,6 +19,7 @@ class ProxyResult:
     request_headers: CIMultiDict[str]
 
     response: web.Response
+    response_timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 async def do_proxy(method: str, headers: CIMultiDict[str], remote_url: str, request_body: bytes) -> web.Response:
@@ -50,4 +52,5 @@ async def proxy_request(
         request_encoding=request.charset,
         request_headers=request_headers,
         response=response,
+        response_timestamp=datetime.now(UTC),
     )
