@@ -11,7 +11,7 @@ from cactus_runner.models import RequestEntry
 
 logger = logging.getLogger(__name__)
 
-# Set by nginx (proxy_set_header X-Request-Start "t=${msec}") when it starts proxying upstream
+# Set by nginx (proxy_set_header X-Request-Start "t=${msec}")
 REQUEST_START_HEADER = "X-Request-Start"
 
 # nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
@@ -46,7 +46,7 @@ def clear_request_data_dir() -> None:
 def parse_request_start_header(headers: CIMultiDict[str]) -> datetime | None:
     """Parse the nginx X-Request-Start header (format "t=1234567890.123") into a datetime.
 
-    Returns None if the header is absent or malformed (e.g. requests that bypassed nginx).
+    Returns None if the header is absent or malformed.
     """
     raw_value = headers.get(REQUEST_START_HEADER)
     if not raw_value:
@@ -107,8 +107,7 @@ def write_request_response_files(  # noqa: C901
         sanitised_path = sanitise_url_to_filename(entry.path)
         base_name = f"{request_id:03d}-{entry.step_name}-{sanitised_path}"
 
-        # Write .request file - prefer the nginx receipt time (true arrival, before proxy hops)
-        # falling back to when the runner received the request (e.g. dev setups without nginx)
+        # Write .request file - nginx receipt time, falling back to when the runner received the request
         nginx_timestamp = parse_request_start_header(proxy_result.request_headers)
         request_timestamp = nginx_timestamp or entry.timestamp
         request_file = storage_dir / f"{base_name}.request"
