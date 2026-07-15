@@ -109,6 +109,8 @@ def test_write_request_response_files_prefers_nginx_request_time(proxy_result, e
     request_id = 104
     write_request_response_files(request_id=request_id, proxy_result=proxy_result, entry=entry)
     request_content, response_content = read_request_response_files(request_id)
+    assert request_content is not None
+    assert response_content is not None
 
     # Assert
     assert f"# Epoch: {nginx_timestamp.timestamp()}" in request_content
