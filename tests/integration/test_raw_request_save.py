@@ -80,12 +80,14 @@ async def test_request_data_retrieval_endpoints(
     assert request_data.response is not None
 
     request_lines = request_data.request.split("\n")
-    assert request_lines[0] == "GET /dcap HTTP/1.1"
+    assert any(line.startswith("# Epoch:") for line in request_lines)
+    assert "GET /dcap HTTP/1.1" in request_lines
     assert any("Host:" in line for line in request_lines)
     assert any("ssl-client-cert:" in line for line in request_lines)
 
     response = request_data.response
-    assert response.startswith("HTTP/1.1 200 OK\n")
+    assert any(line.startswith("# Epoch:") for line in response.split("\n"))
+    assert "HTTP/1.1 200 OK" in response
     assert "content-type: application/sep+xml" in response.lower()
     assert all(s in response for s in ["<DeviceCapability", 'href="/dcap"', 'pollRate="60"'])
 
@@ -94,13 +96,15 @@ async def test_request_data_retrieval_endpoints(
     for req_id in request_ids:
         result = await cactus_runner_client.get(f"/request/{req_id}")
         data = RequestData.from_dict(await result.json())
-        request_line = data.request.split("\n")[0]
-        if request_line.startswith("POST /mup/"):
+        request_lines = data.request.split("\n")
+        if any(line.startswith("POST /mup/") for line in request_lines):
             post_mup_id_found = True
-            headers_section, body = data.request.split("\n\n", 1)
+            _, body = data.request.split("\n\n", 1)
             assert "Content-Type: application/sep+xml" in data.request
             assert "MirrorMeterReading" in body
-            assert data.response.split("\n")[0] in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"]
+            assert any(
+                line in ["HTTP/1.1 201 Created", "HTTP/1.1 204 No Content"] for line in data.response.split("\n")
+            )
             break
     assert post_mup_id_found
 

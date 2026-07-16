@@ -1,12 +1,18 @@
 import logging
 import re
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
+
+from multidict import CIMultiDict
 
 from cactus_runner.app import proxy
 from cactus_runner.models import RequestEntry
 
 logger = logging.getLogger(__name__)
+
+# Set by nginx (proxy_set_header X-Request-Start "t=${msec}")
+REQUEST_START_HEADER = "X-Request-Start"
 
 # nosec B108: Safe in short lived K8s pods (one per test, destroyed after run)
 # Alternatives tried: hardcoded paths (permission errors), tempfile (failed on write to zip, issue on finalise?)
@@ -35,6 +41,21 @@ def clear_request_data_dir() -> None:
             logger.info("Cleared request data directory")
     except Exception as exc:
         logger.error("Failed to clear request data directory", exc_info=exc)
+
+
+def parse_request_start_header(headers: CIMultiDict[str]) -> datetime | None:
+    """Parse the nginx X-Request-Start header (format "t=1234567890.123") into a datetime.
+
+    Returns None if the header is absent or malformed.
+    """
+    raw_value = headers.get(REQUEST_START_HEADER)
+    if not raw_value:
+        return None
+    try:
+        return datetime.fromtimestamp(float(raw_value.removeprefix("t=")), tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        logger.warning(f"Failed to parse {REQUEST_START_HEADER} header: {raw_value!r}")
+        return None
 
 
 def sanitise_url_to_filename(url: str) -> str:
@@ -86,10 +107,17 @@ def write_request_response_files(  # noqa: C901
         sanitised_path = sanitise_url_to_filename(entry.path)
         base_name = f"{request_id:03d}-{entry.step_name}-{sanitised_path}"
 
-        # Write .request file
+        # Write .request file - nginx receipt time, falling back to when the runner received the request
+        nginx_timestamp = parse_request_start_header(proxy_result.request_headers)
+        request_timestamp = nginx_timestamp or entry.timestamp
         request_file = storage_dir / f"{base_name}.request"
         with open(request_file, "w", encoding="utf-8", errors="replace") as fp:
-            lines = [f"{entry.method.value} {entry.path} HTTP/1.1"]
+            lines = [
+                f"# Epoch: {request_timestamp.timestamp()}",
+                f"# UTC: {request_timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}",
+                f"# Time source: {'nginx ingress' if nginx_timestamp else 'runner (request received)'}",
+                f"{entry.method.value} {entry.path} HTTP/1.1",
+            ]
             for header, value in proxy_result.request_headers.items():
                 lines.append(f"{header}: {value}")
             if request_body:
@@ -100,7 +128,12 @@ def write_request_response_files(  # noqa: C901
         # Write .response file
         response_file = storage_dir / f"{base_name}.response"
         with open(response_file, "w", encoding="utf-8", errors="replace") as fp:
-            lines = [f"HTTP/1.1 {entry.status.value} {entry.status.phrase}"]
+            lines = [
+                f"# Epoch: {proxy_result.response_timestamp.timestamp()}",
+                f"# UTC: {proxy_result.response_timestamp.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}",
+                "# Time source: runner (envoy response received)",
+                f"HTTP/1.1 {entry.status.value} {entry.status.phrase}",
+            ]
             for header, value in proxy_result.response.headers.items():
                 lines.append(f"{header}: {value}")
             if response_body:
