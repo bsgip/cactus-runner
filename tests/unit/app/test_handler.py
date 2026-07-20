@@ -494,9 +494,7 @@ async def test_next_test_handler_success(mocker):
     request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     set_initialised_certs(request)
 
-    mock_reset_playlist_db = mocker.patch(
-        "cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock()
-    )
+    mock_reset_playlist_db = mocker.patch("cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock())
     mock_initialize_next_test = mocker.patch(
         "cactus_runner.app.handler.initialize_next_test", new=AsyncMock(return_value=True)
     )
