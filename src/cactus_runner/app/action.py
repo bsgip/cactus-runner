@@ -493,7 +493,9 @@ async def apply_action(  # noqa: C901
     if not active_test_procedure:
         return
 
-    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(session, action.parameters)
+    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
+        session, active_test_procedure, action.parameters
+    )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     logger.info(f"Executing action {action} with parameters {resolved_parameters}")
     try:

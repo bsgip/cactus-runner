@@ -68,6 +68,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "cancel-time-tariff-intervals": None,  # Not supported in v1.2
     "delete-rate-component": None,  # Not supported in v1.2
     "remove-function-set-assignment": "action_remove_function_set_assignment",
+    "create-wellknown-route": None,  # Not supported in v1.2
 }
 
 

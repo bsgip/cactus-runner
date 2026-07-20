@@ -94,6 +94,14 @@ class ResourceAnnotations:
 
 
 @dataclass
+class RandomValues:
+    """Random values as used within a test"""
+
+    # All values will be distinct - there will be NO collisions in values
+    random_uri_by_key: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
@@ -119,6 +127,7 @@ class ActiveTestProcedure:
         None  # Path to finalised ZIP file on disk. If not None this test is "done" and shouldn't update events/state
     )
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
+    random_values: RandomValues = field(default_factory=RandomValues)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to
