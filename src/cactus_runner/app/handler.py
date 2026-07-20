@@ -865,3 +865,12 @@ async def proceed_handler(request: web.Request) -> web.Response:
 
     body = ProceedResponse(handled=bool(trigger_handled)).to_json()
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=body)
+
+
+async def csipaus_wellknown_handler(request: web.Request) -> web.Response:
+    """Handler for .well-known requests. This is a stub as v1.2 CSIP-Aus does NOT describe a .well-known file
+
+    Returns:
+        aiohttp.web.Response: HTTP 503.
+    """
+    return web.Response(status=http.HTTPStatus.GONE, text="CSIP-Aus v1.2 has no .well-known file.")
