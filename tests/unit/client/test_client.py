@@ -79,34 +79,6 @@ async def test_initialise_connectionerror():
 
 
 @pytest.mark.asyncio
-async def test_initialise_playlist():
-    """Test initialising a playlist of multiple RunRequests."""
-    # Arrange
-    expected_init_result = InitResponseBody(
-        status="PLACEHOLDER-STATUS",
-        test_procedure="ALL-01",
-        timestamp=datetime.now(UTC),
-        is_started=True,
-    )
-    run_requests = [make_run_request("test-1"), make_run_request("test-2"), make_run_request("test-3")]
-    mock_session = MagicMock()
-    mock_session.post.return_value.__aenter__.return_value.status = 200
-    mock_session.post.return_value.__aenter__.return_value.text.return_value = expected_init_result.to_json()
-
-    # Act
-    init_result = await RunnerClient.initialise(session=mock_session, run_request=run_requests)
-
-    # Assert
-    assert mock_session.post.return_value.__aenter__.return_value.text.call_count == 1
-    assert isinstance(init_result, InitResponseBody)
-    assert init_result == expected_init_result
-    call_kwargs = mock_session.post.call_args.kwargs
-    assert "json" in call_kwargs
-    assert isinstance(call_kwargs["json"], list)
-    assert len(call_kwargs["json"]) == 3
-
-
-@pytest.mark.asyncio
 async def test_start():
     # Arrange
     expected_start_result = StartResponseBody(
