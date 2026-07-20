@@ -56,22 +56,11 @@ class RunnerClient:
     @staticmethod
     async def initialise(
         session: ClientSession,
-        run_request: RunRequest | list[RunRequest],
-        start_index: int | None = None,
+        run_request: RunRequest,
     ) -> InitResponseBody:
-        """Initialize a test procedure or playlist.
-
-        Args:
-            session: The aiohttp client session
-            run_request: A single RunRequest or list of RunRequests (playlist)
-            start_index: Optional 0-based index to start execution. If provided, tests before this index are skipped.
-        """
+        """Initialize a test procedure."""
         try:
-            json_data = [asdict(rr) for rr in run_request] if isinstance(run_request, list) else asdict(run_request)
-            url = uri.Initialise
-            if start_index is not None:
-                url = f"{uri.Initialise}?start_index={start_index}"
-            async with session.post(url=url, json=json_data) as response:
+            async with session.post(url=uri.Initialise, json=asdict(run_request)) as response:
                 await ensure_success_response(response)
                 response_json = await response.text()
                 init_response_body = InitResponseBody.from_json(response_json)
@@ -82,6 +71,28 @@ class RunnerClient:
                 return init_response_body
         except Exception as err:
             raise RunnerClientError(f"Unexpected failure while initialising test {err}.") from err
+
+    @staticmethod
+    async def next_test(session: ClientSession, run_request: RunRequest) -> InitResponseBody:
+        """Advance a playlist to the next test procedure. The current test must have been finalized first.
+
+        Raises RunnerClientError on failure - http_status_code will be preserved where a response was received
+        (404 indicates a legacy runner without the /next-test endpoint, 409 indicates an active/uninitialised runner).
+        """
+        try:
+            async with session.post(url=uri.NextTest, json=asdict(run_request)) as response:
+                await ensure_success_response(response)
+                response_json = await response.text()
+                init_response_body = InitResponseBody.from_json(response_json)
+                if isinstance(init_response_body, list):
+                    raise RunnerClientError(
+                        "Unexpected response from server. Expected a single object, but received a list."
+                    )
+                return init_response_body
+        except RunnerClientError:
+            raise  # Don't re-wrap - the orchestrator branches on http_status_code
+        except Exception as err:
+            raise RunnerClientError(f"Unexpected failure while advancing to next test {err}.") from err
 
     @staticmethod
     async def start(session: ClientSession) -> StartResponseBody:

@@ -145,6 +145,7 @@ def create_app() -> web.Application:
     app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Initialise), handler.initialise_handler)
     app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Start), handler.start_handler)
     app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.Finalize), handler.finalize_handler)
+    app.router.add_route("POST", uri_path_join(MOUNT_POINT, uri.NextTest), handler.next_test_handler)
 
     # For retrieving request logs
     app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Request), handler.get_request_raw_data_handler)
