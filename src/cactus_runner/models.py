@@ -102,6 +102,14 @@ class RandomValues:
 
 
 @dataclass
+class ProxyRouteOverride:
+    """Overrides a specific client proxy to the underlying utility server"""
+
+    route: str  # The route to be matched - sans any MOUNT_PREFIX
+    proxy_to: str  # The route on the utility server that the matched request should be redirected to
+
+
+@dataclass
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
@@ -128,6 +136,7 @@ class ActiveTestProcedure:
     )
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
+    proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to

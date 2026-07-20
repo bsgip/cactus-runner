@@ -46,7 +46,7 @@ from cactus_runner.app.shared import (
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
-from cactus_runner.app.uri import uri_proxy_path_extract
+from cactus_runner.app.uri import calculate_proxy_uri, uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
@@ -751,7 +751,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     # Determine paths, url and HTTP method
     proxy_parts = uri_proxy_path_extract(MOUNT_POINT, ENVOY_PROXY_PREFIX, request)
     relative_url = proxy_parts.path
-    remote_url = SERVER_URL + proxy_parts.path_qs
+    remote_url = calculate_proxy_uri(SERVER_URL, proxy_parts, active_test_procedure.proxy_route_overrides)
     method = request.method
     logger.debug(f"{relative_url=} {remote_url=} {method=}")
 
