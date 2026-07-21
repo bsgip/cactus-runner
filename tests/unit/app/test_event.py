@@ -567,10 +567,13 @@ async def test_is_listener_triggerable(
     """Tests various combinations of listeners and events to see if they could potentially trigger"""
 
     # Arrange
+    atp = generate_class_instance(ActiveTestProcedure, optional_is_none=True)
     mock_session = create_mock_session()
-    mock_resolve_variable_expressions_from_parameters.side_effect = lambda session, parameters: parameters
+    mock_resolve_variable_expressions_from_parameters.side_effect = lambda session, active_test_procedure, parameters: (
+        parameters
+    )
 
-    result = await event.is_listener_triggerable(listener, trigger, mock_session)
+    result = await event.is_listener_triggerable(listener, trigger, mock_session, atp)
 
     # Assert
     assert isinstance(result, bool)
@@ -665,9 +668,10 @@ async def test_handle_event_trigger_normal_operation(
         return None
 
     # Mock is_listener_triggerable to return True if the listener is in trigger_indexes
-    def do_mock_is_listener_triggerable(listener, trigger, session):
+    def do_mock_is_listener_triggerable(listener, trigger, session, active_test_procedure):
         assert session is mock_session
         assert trigger is input_trigger
+        assert active_test_procedure is input_runner_state.active_test_procedure
 
         idx = find_index(listener, listeners)
         assert idx is not None, f"Couldn't find listener {listener}. This is a test setup issue."

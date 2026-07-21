@@ -1,7 +1,12 @@
+import logging
 from dataclasses import dataclass
 
 from aiohttp.web import Request
 from multidict import MultiMapping
+
+from cactus_runner.models import ProxyRouteOverride
+
+logger = logging.getLogger(__name__)
 
 WILDCARD = "*"
 
@@ -59,6 +64,7 @@ class MountedProxyPathParts:
     path: str  # The path of the request (sans mount point / proxy prefix) - NO query string. eg: /edev/123/derp
     path_qs: str  # Similar to path but also includes the query string. eg: /edev/123/derp?l=100&s=0
     query: MultiMapping[str]
+    query_string: str
     method: str
 
 
@@ -87,5 +93,23 @@ def uri_proxy_path_extract(mount_point: str, proxy_prefix: str, request: Request
         path=path,
         path_qs=path_qs,
         query=request.query,
+        query_string=request.query_string,
         method=request.method,
     )
+
+
+def calculate_proxy_uri(server_url: str, proxy: MountedProxyPathParts, overrides: list[ProxyRouteOverride]) -> str:
+    """Given a server_url (just base URL) and an incoming proxy request - calculate the resulting URI that a client
+    request should be proxied to."""
+
+    # Check for any overrides first
+    for override in overrides:
+        if override.route == proxy.path:
+            logger.info(f"ProxyOverride - Request to {proxy.path} will instead route to {override.proxy_to}")
+            if proxy.query_string:
+                return uri_path_join(server_url, override.proxy_to) + f"?{proxy.query_string}"
+            else:
+                return uri_path_join(server_url, override.proxy_to)
+
+    # No override
+    return uri_path_join(server_url, proxy.path_qs)

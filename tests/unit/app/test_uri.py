@@ -2,8 +2,16 @@ from unittest.mock import Mock
 
 import pytest
 from aiohttp.web import Request
+from multidict import MultiDict
 
-from cactus_runner.app.uri import MountedProxyPathParts, does_endpoint_match, uri_path_join, uri_proxy_path_extract
+from cactus_runner.app.uri import (
+    MountedProxyPathParts,
+    calculate_proxy_uri,
+    does_endpoint_match,
+    uri_path_join,
+    uri_proxy_path_extract,
+)
+from cactus_runner.models import ProxyRouteOverride
 
 
 @pytest.mark.parametrize(
@@ -65,24 +73,33 @@ def test_uri_path_join(parts: list[str], expected: str):
 
 
 @pytest.mark.parametrize(
-    "mount_point, proxy_prefix, input_path_qs, expected_path, expected_path_qs",
+    "mount_point, proxy_prefix, input_path_qs, expected_path, expected_path_qs, expected_qs",
     [
-        ("/", "/", "/edev/123/derp", "/edev/123/derp", "/edev/123/derp"),
-        ("/", "/", "/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2"),
-        ("/", "/envoy", "/envoy/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2"),
-        ("/foo", "/bar", "/foo/bar/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2"),
-        ("/foo", "/bar", "/foo/bar/dcap", "/dcap", "/dcap"),
-        ("/fooDNE", "/barDNE", "/foo/bar/dcap", "/foo/bar/dcap", "/foo/bar/dcap"),  # Don't strip if we don't find
-        ("/foo", "/barDNE", "/foo/bar/dcap", "/bar/dcap", "/bar/dcap"),  # Don't strip if we don't find
-        ("/fooDNE", "/bar", "/foo/bar/dcap", "/foo/bar/dcap", "/foo/bar/dcap"),  # Don't strip if we don't find
+        ("/", "/", "/edev/123/derp", "/edev/123/derp", "/edev/123/derp", ""),
+        ("/", "/", "/edev/123/derp?", "/edev/123/derp", "/edev/123/derp?", ""),
+        ("/", "/", "/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2", "l=1&s=2"),
+        ("/", "/envoy", "/envoy/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2", "l=1&s=2"),
+        ("/foo", "/bar", "/foo/bar/edev/123/derp?l=1&s=2", "/edev/123/derp", "/edev/123/derp?l=1&s=2", "l=1&s=2"),
+        ("/foo", "/bar", "/foo/bar/dcap", "/dcap", "/dcap", ""),
+        ("/fooDNE", "/barDNE", "/foo/bar/dcap", "/foo/bar/dcap", "/foo/bar/dcap", ""),  # Don't strip if we don't find
+        ("/foo", "/barDNE", "/foo/bar/dcap", "/bar/dcap", "/bar/dcap", ""),  # Don't strip if we don't find
+        ("/fooDNE", "/bar", "/foo/bar/dcap", "/foo/bar/dcap", "/foo/bar/dcap", ""),  # Don't strip if we don't find
     ],
 )
 def test_uri_proxy_path_extract(
-    mount_point: str, proxy_prefix: str, input_path_qs: str, expected_path: str, expected_path_qs: str
+    mount_point: str, proxy_prefix: str, input_path_qs: str, expected_path: str, expected_path_qs: str, expected_qs: str
 ):
+
+    path_parts = input_path_qs.split("?")
+
     mock_request = Mock(Request)
-    mock_request.path = input_path_qs.split("?")[0]
+    mock_request.path = path_parts[0]
     mock_request.path_qs = input_path_qs
+
+    if len(path_parts) == 1:
+        mock_request.query_string = ""
+    else:
+        mock_request.query_string = path_parts[-1]
 
     actual = uri_proxy_path_extract(mount_point, proxy_prefix, mock_request)
     assert isinstance(actual, MountedProxyPathParts)
@@ -90,3 +107,72 @@ def test_uri_proxy_path_extract(
     assert actual.proxy_prefix == proxy_prefix
     assert actual.path == expected_path
     assert actual.path_qs == expected_path_qs
+    assert actual.query_string == expected_qs
+
+
+@pytest.mark.parametrize(
+    "server_url, request_path_qs, overrides, expected",
+    [
+        ("https://example.com:1234", "/dcap", [], "https://example.com:1234/dcap"),
+        ("https://example.com:1234/", "/dcap", [], "https://example.com:1234/dcap"),
+        ("https://example.com:1234/", "/dcap?a=1&b=2", [], "https://example.com:1234/dcap?a=1&b=2"),
+        ("https://example.com:1234", "dcap", [], "https://example.com:1234/dcap"),
+        ("https://example.com:1234", "dcap", [ProxyRouteOverride("/foo", "/bar")], "https://example.com:1234/dcap"),
+        (
+            "https://example.com:1234/",
+            "/dcap/?a=1",
+            [ProxyRouteOverride("/foo", "/bar")],
+            "https://example.com:1234/dcap/?a=1",
+        ),
+        (
+            "https://example.com:1234/",
+            "/dcap?a=1",
+            [ProxyRouteOverride("/foo", "/bar"), ProxyRouteOverride("/dcap", "/remapped/path")],
+            "https://example.com:1234/remapped/path?a=1",
+        ),
+        (
+            "https://example.com:1234/",
+            "/dcap?",
+            [ProxyRouteOverride("/foo", "/bar"), ProxyRouteOverride("/dcap", "/remapped/path")],
+            "https://example.com:1234/remapped/path",
+        ),
+        (
+            "https://example.com:1234",
+            "dcap",
+            [ProxyRouteOverride("/foo", "/bar"), ProxyRouteOverride("dcap", "/remapped/path")],
+            "https://example.com:1234/remapped/path",
+        ),
+        (
+            "https://example.com:1234",
+            "dcap",
+            [ProxyRouteOverride("/foo", "/bar"), ProxyRouteOverride("dcap", "remapped/path")],
+            "https://example.com:1234/remapped/path",
+        ),
+        (
+            "https://example.com:1234/",
+            "/dcap",
+            [ProxyRouteOverride("/foo", "/bar"), ProxyRouteOverride("/dcap", "/remapped/path")],
+            "https://example.com:1234/remapped/path",
+        ),
+    ],
+)
+def test_calculate_proxy_uri(server_url: str, request_path_qs: str, overrides: list[ProxyRouteOverride], expected: str):
+
+    # Arrange
+    parts = request_path_qs.split("?")
+    proxy = MountedProxyPathParts(
+        method="GET",
+        mount_point="/",
+        proxy_prefix="/",
+        path=parts[0],
+        path_qs=request_path_qs,
+        query=MultiDict(),
+        query_string="" if len(parts) == 1 else parts[-1],
+    )
+
+    # Act
+    result = calculate_proxy_uri(server_url, proxy, overrides)
+
+    # Assert
+    assert isinstance(result, str)
+    assert result == expected

@@ -36,6 +36,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
     Listener,
+    ProxyRouteOverride,
     RunnerState,
 )
 
@@ -475,6 +476,20 @@ async def action_remove_function_set_assignment(
             await envoy_client.put_site_control_group(scg.site_control_group_id, request)
 
 
+def action_add_proxy_route(resolved_parameters: dict[str, Any], active_test_procedure: ActiveTestProcedure) -> None:
+    route: str = resolved_parameters["route"]  # Mandatory param
+    proxy_to: str = resolved_parameters["proxy_to"]  # Mandatory param
+
+    # Look for a proxy to update
+    for override in active_test_procedure.proxy_route_overrides:
+        if override.route == route:
+            logger.info(f"Updating proxy route override '{route}' from '{override.proxy_to}' to '{proxy_to}'")
+            override.proxy_to = proxy_to
+            return
+
+    active_test_procedure.proxy_route_overrides.append(ProxyRouteOverride(route=route, proxy_to=proxy_to))
+
+
 async def apply_action(  # noqa: C901
     action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
 ) -> None:
@@ -493,7 +508,9 @@ async def apply_action(  # noqa: C901
     if not active_test_procedure:
         return
 
-    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(session, action.parameters)
+    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
+        session, active_test_procedure, action.parameters
+    )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     logger.info(f"Executing action {action} with parameters {resolved_parameters}")
     try:
@@ -533,6 +550,9 @@ async def apply_action(  # noqa: C901
                 return
             case "remove-function-set-assignment":
                 await action_remove_function_set_assignment(resolved_parameters, session, envoy_client)
+                return
+            case "add-proxy-route":
+                action_add_proxy_route(resolved_parameters, active_test_procedure)
                 return
 
     except Exception as exc:
