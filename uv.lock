@@ -338,7 +338,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
     { name = "cactus-schema", specifier = ">=1.2.0,<2" },
-    { name = "cactus-test-definitions", specifier = ">=1.14.7,<2" },
+    { name = "cactus-test-definitions", specifier = ">=1.15.0,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.5.0" },
     { name = "freezegun", marker = "extra == 'test'" },
@@ -379,16 +379,16 @@ wheels = [
 
 [[package]]
 name = "cactus-test-definitions"
-version = "1.14.8"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dataclass-wizard" },
     { name = "pyyaml" },
     { name = "pyyaml-include" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/eb/da/e4079226df18d0b79bf41a6718d79fb2bb303f968db1ae10724f67298907/cactus_test_definitions-1.14.8.tar.gz", hash = "sha256:8a82e8366c13102a4b868f977a6207cdce4ad7e4585ef31391f4626c9730df29", size = 169065, upload-time = "2026-07-02T04:11:00.853Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/3e/2761a13c8c20736eaaca13bd2e964f39ae64ee69302bb256f43645befa2b/cactus_test_definitions-1.15.0.tar.gz", hash = "sha256:b6f8783579c8d76184be9c9150e30dd8c57b248a6afe6344dcbb5beb64692d75", size = 178077, upload-time = "2026-07-21T01:52:26.593Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/26/157445ce0e3d4b4743d263f900f7dbbe69306d7e6a4e4f9a66e75363436f/cactus_test_definitions-1.14.8-py3-none-any.whl", hash = "sha256:4d07593aaa84120cd0e3310ec1823f585399b1349a8d3b8e89b5217304738b1c", size = 321033, upload-time = "2026-07-02T04:10:59.223Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/b9/cb06d1585ec4917e1cdd491e65f3e11763b6cddddaf058ba4171324c35e8/cactus_test_definitions-1.15.0-py3-none-any.whl", hash = "sha256:c4276362faa32a8049b8b720f7823eb4670d8f9116fbba532f3896df71b7ec32", size = 352224, upload-time = "2026-07-21T01:52:24.661Z" },
 ]
 
 [[package]]
