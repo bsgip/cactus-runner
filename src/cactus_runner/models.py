@@ -114,6 +114,17 @@ class ProxyRouteOverride:
 
 
 @dataclass
+class WellKnownEntry:
+    """Represents an entry in the csip-aus .well-known file"""
+
+    version: str  # The "version" label associated with the entry - normally references the CSIP-Aus version label
+
+    dcap_paths: list[
+        str
+    ]  # The list of DeviceCapability path URIs (eg /dcap). Exclusive of mount points/server prefixes
+
+
+@dataclass
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
@@ -141,6 +152,7 @@ class ActiveTestProcedure:
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
     proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
+    well_known_entries: list[WellKnownEntry] = field(default_factory=list)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to

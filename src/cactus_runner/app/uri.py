@@ -2,9 +2,11 @@ import logging
 from dataclasses import dataclass
 
 from aiohttp.web import Request
+from cactus_test_definitions import CSIPAusVersion
+from envoy_schema.server.schema import uri
 from multidict import MultiMapping
 
-from cactus_runner.models import ProxyRouteOverride
+from cactus_runner.models import ProxyRouteOverride, WellKnownEntry
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +115,31 @@ def calculate_proxy_uri(server_url: str, proxy: MountedProxyPathParts, overrides
 
     # No override
     return uri_path_join(server_url, proxy.path_qs)
+
+
+def generate_default_well_known_file(version: CSIPAusVersion, mount_point: str, envoy_prefix: str) -> dict:
+    """Generates a basic csip-aus well-known file that will redirect the specified version to a utility server
+    mounted behind a specific path prefix.
+
+    return value as per generate_well_known_file"""
+
+    default_entries: list[WellKnownEntry] = [
+        WellKnownEntry(
+            version=f"https://csipaus.org/ns/{version}",
+            dcap_paths=[uri_path_join(mount_point, envoy_prefix, uri.DeviceCapabilityUri)],
+        )
+    ]
+    return generate_well_known_file(default_entries, mount_point, envoy_prefix)
+
+
+def generate_well_known_file(entries: list[WellKnownEntry], mount_point: str, envoy_prefix: str) -> dict:
+    """Generates a csip-aus well-known file as a dictionary suitable for JSON encoding. Will render all paths
+    relative to the specified mount_point and utility server prefix"""
+    supported_schema_versions = {}
+
+    for entry in entries:
+        supported_schema_versions[entry.version] = {
+            "dcap": [uri_path_join(mount_point, envoy_prefix, path) for path in entry.dcap_paths]
+        }
+
+    return {"supportedSchemaVersions": supported_schema_versions}

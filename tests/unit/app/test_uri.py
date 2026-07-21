@@ -1,17 +1,21 @@
+import json
 from unittest.mock import Mock
 
+import jsonschema
 import pytest
 from aiohttp.web import Request
+from assertical.fake.generator import generate_class_instance
 from multidict import MultiDict
 
 from cactus_runner.app.uri import (
     MountedProxyPathParts,
     calculate_proxy_uri,
     does_endpoint_match,
+    generate_well_known_file,
     uri_path_join,
     uri_proxy_path_extract,
 )
-from cactus_runner.models import ProxyRouteOverride
+from cactus_runner.models import ProxyRouteOverride, WellKnownEntry
 
 
 @pytest.mark.parametrize(
@@ -176,3 +180,26 @@ def test_calculate_proxy_uri(server_url: str, request_path_qs: str, overrides: l
     # Assert
     assert isinstance(result, str)
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        [generate_class_instance(WellKnownEntry, dcap_paths=[])],
+        [generate_class_instance(WellKnownEntry, dcap_paths=["/foo"])],
+        [
+            generate_class_instance(WellKnownEntry, seed=101, optional_is_none=False, dcap_paths=[]),
+            generate_class_instance(WellKnownEntry, seed=202, optional_is_none=True, dcap_paths=[]),
+            generate_class_instance(WellKnownEntry, seed=303, optional_is_none=False, dcap_paths=["a"]),
+            generate_class_instance(WellKnownEntry, seed=404, optional_is_none=True, dcap_paths=["/foo", "/bar/baz"]),
+        ],
+    ],
+)
+def test_generate_well_known_file_valid_json(entries):
+    contents = generate_well_known_file(entries, "/pfx1", "/pfx2/pfx3")
+    assert isinstance(contents, dict)
+
+    with open("tests/data/json/wellknown.schema.json", "rb") as fp:
+        schema = json.load(fp)
+
+    jsonschema.validate(instance=contents, schema=schema)

@@ -1,0 +1,24 @@
+{
+    "type": "object",
+    "properties": {
+        "supportedSchemaVersions": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "dcap": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "required": ["dcap"],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": ["supportedSchemaVersions"],
+    "additionalProperties": false
+}

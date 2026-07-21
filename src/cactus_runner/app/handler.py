@@ -11,6 +11,7 @@ from aiohttp import ContentTypeError, web
 from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
+    CSIPAusVersion,
     InitResponseBody,
     ProceedResponse,
     RequestData,
@@ -52,7 +53,12 @@ from cactus_runner.app.shared import (
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
-from cactus_runner.app.uri import calculate_proxy_uri, uri_proxy_path_extract
+from cactus_runner.app.uri import (
+    calculate_proxy_uri,
+    generate_default_well_known_file,
+    generate_well_known_file,
+    uri_proxy_path_extract,
+)
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
@@ -974,9 +980,32 @@ async def proceed_handler(request: web.Request) -> web.Response:
 
 
 async def csipaus_wellknown_handler(request: web.Request) -> web.Response:
-    """Handler for .well-known requests. This is a stub as v1.2 CSIP-Aus does NOT describe a .well-known file
+    """Handler for .well-known requests. Returns the .well-known file for the current active test (or prefills in a
+    suitable default)
 
     Returns:
         aiohttp.web.Response: HTTP 503.
     """
-    return web.Response(status=http.HTTPStatus.GONE, text="CSIP-Aus v1.2 has no .well-known file.")
+    runner_state: RunnerState = request.app[APPKEY_RUNNER_STATE]
+    active_test_procedure = runner_state.active_test_procedure
+
+    # It shouldn't be possible to send a 'proceed' if there is no active test procedure
+    if active_test_procedure is None:
+        msg = "Test has not finished initialising..."
+        logger.error(msg)
+        return web.Response(status=http.HTTPStatus.INTERNAL_SERVER_ERROR, text=msg)
+
+    if active_test_procedure.csip_aus_version == CSIPAusVersion.RELEASE_1_2:
+        msg = f"CSIP-Aus {CSIPAusVersion.RELEASE_1_2} does NOT guarantee the existence of the .well-known file."
+        logger.error(msg)
+        return web.Response(status=http.HTTPStatus.GONE, text=msg)
+
+    # Serve a "default"
+    if not active_test_procedure.well_known_entries:
+        contents = generate_default_well_known_file(
+            active_test_procedure.csip_aus_version, MOUNT_POINT, ENVOY_PROXY_PREFIX
+        )
+    else:
+        contents = generate_well_known_file(active_test_procedure.well_known_entries, MOUNT_POINT, ENVOY_PROXY_PREFIX)
+
+    return web.json_response(status=http.HTTPStatus.OK, data=contents)
