@@ -13,6 +13,7 @@ from cactus_test_definitions.variable_expressions import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import resolvers
+from cactus_runner.models import ActiveTestProcedure
 
 
 @dataclasses.dataclass
@@ -28,7 +29,9 @@ def is_resolvable_variable(v: Any) -> bool:  # noqa: ANN401
     return isinstance(v, NamedVariable) or isinstance(v, Expression) or isinstance(v, Constant)
 
 
-async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression | Constant) -> Any:  # noqa: C901, ANN401
+async def resolve_variable(  # noqa: C901
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, v: NamedVariable | Expression | Constant
+) -> Any:  # noqa: ANN401
     """Attempts to resolve the specified variable (potentially from the database)
 
     raises UnresolvableVariableError if any errors are encountered
@@ -85,6 +88,12 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                 return await resolvers.resolve_named_variable_der_rating_min_pf_under_excited(session)
             case NamedVariableType.DERCAPABILITY_RTG_MAX_WH:
                 return await resolvers.resolve_named_variable_der_rating_max_wh(session)
+            case NamedVariableType.RANDURI_1:
+                return resolvers.resolve_random_uri(active_test_procedure, "1")
+            case NamedVariableType.RANDURI_2:
+                return resolvers.resolve_random_uri(active_test_procedure, "2")
+            case NamedVariableType.RANDURI_3:
+                return resolvers.resolve_random_uri(active_test_procedure, "3")
             # Storage extension
             case NamedVariableType.DERSETTING_SET_MIN_WH:
                 return await resolvers.resolve_named_variable_der_setting_min_wh(session)
@@ -92,8 +101,8 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
                 return await resolvers.resolve_named_variable_neg_der_rating_max_charge_rate_w(session)
         raise UnresolvableVariableError(f"Unable to resolve NamedVariable of type {v.variable} ({int(v.variable)})")
     elif isinstance(v, Expression):
-        lhs = await resolve_variable(session, v.lhs_operand)
-        rhs = await resolve_variable(session, v.rhs_operand)
+        lhs = await resolve_variable(session, active_test_procedure, v.lhs_operand)
+        rhs = await resolve_variable(session, active_test_procedure, v.rhs_operand)
 
         try:
             match v.operation:
@@ -126,7 +135,7 @@ async def resolve_variable(session: AsyncSession, v: NamedVariable | Expression 
 
 
 async def resolve_variable_expressions_from_parameters(
-    session: AsyncSession, parameters: dict[str, Any]
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, parameters: dict[str, Any]
 ) -> dict[str, ResolvedParam]:
     """Iterates parameters, finding any resolvable variables and then calling resolve_variable on it.
 
@@ -137,7 +146,9 @@ async def resolve_variable_expressions_from_parameters(
     output_parameters: dict[str, ResolvedParam] = {}
     for k, v in parameters.items():
         if is_resolvable_variable(v):
-            output_parameters[k] = ResolvedParam(value=await resolve_variable(session, v), original_expression=v)
+            output_parameters[k] = ResolvedParam(
+                value=await resolve_variable(session, active_test_procedure, v), original_expression=v
+            )
         else:
             output_parameters[k] = ResolvedParam(value=v)
 

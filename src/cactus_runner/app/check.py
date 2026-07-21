@@ -1779,7 +1779,9 @@ async def run_check(  # noqa: C901
         UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
         FailedCheckError: Raised if this function encounters an exception while running the check.
     """
-    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(session, check.parameters)
+    resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
+        session, active_test_procedure, check.parameters
+    )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen

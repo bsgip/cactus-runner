@@ -153,6 +153,9 @@ def create_app() -> web.Application:
     # For manual 'proceed' signal sent from UI
     app.router.add_route("GET", uri_path_join(MOUNT_POINT, uri.Proceed), handler.proceed_handler)
 
+    # For the well-known file route - must ALWAYS be accessible via root path
+    app.router.add_route("GET", uri.CSIPAusWellKnown, handler.csipaus_wellknown_handler)
+
     # Add catch-all route for proxying all other requests to CSIP-AUS reference server
     app.router.add_route(
         "*", uri_path_join(MOUNT_POINT, ENVOY_PROXY_PREFIX, "/{proxyPath:.*}"), handler.proxied_request_handler

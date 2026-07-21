@@ -40,6 +40,7 @@ from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     Listener,
+    ProxyRouteOverride,
     RunnerState,
 )
 from tests.integration.certificate1 import (
@@ -884,6 +885,44 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     assert request_entry.status == response.status
     assert request_entry.step_name == handling_listener.step
     assert request_entry.body_xml_errors == expected_validate_result
+
+
+@pytest.mark.asyncio
+async def test_proxied_request_handler_handles_proxy_overrides(pg_base_config, mocker):
+
+    # Arrange
+    request = MagicMock()
+    request.path = "/dcap"
+    request.path_qs = "/dcap?foo=bar"
+    request.query_string = "foo=bar"
+    request.method = "GET"
+    mock_active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        communications_disabled=False,
+        finished_zip_path=None,
+        step_status={"1": StepStatus.PENDING},
+        proxy_route_overrides=[ProxyRouteOverride("/dcap", "/my/proxy")],
+    )
+    request.app = {}
+    request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
+    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
+
+    handler.SERVER_URL = "http://example.com:1234"
+    handler.DEV_SKIP_AUTHORIZATION_CHECK = True
+    mocker.patch("cactus_runner.app.handler.event.handle_event_trigger", return_value=[])
+    mocker.patch("cactus_runner.app.handler.event.generate_client_request_trigger", return_value=MagicMock())
+    mock_proxy_request: MagicMock = mocker.patch("cactus_runner.app.proxy.proxy_request")
+    mock_proxy_request.return_value = mocked_ProxyResult(200)
+    mocker.patch("cactus_runner.app.handler.validate_proxy_request_schema", return_value=[])
+
+    # Act
+    await handler.proxied_request_handler(request=request)
+
+    # Assert - proxy_to has been rewritten
+    assert mock_proxy_request.call_count == 1
+    assert mock_proxy_request.call_args_list[0].kwargs["remote_url"] == "http://example.com:1234/my/proxy?foo=bar"
+    assert_nowish(request.app[APPKEY_RUNNER_STATE].last_client_interaction.timestamp)
 
 
 @pytest.mark.asyncio

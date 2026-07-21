@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from assertical.asserts.time import assert_nowish
+from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
@@ -28,6 +29,7 @@ from cactus_runner.app.action import (
     INT16_MAX,
     UnknownActionError,
     _effective_pow10_multiplier,
+    action_add_proxy_route,
     action_cancel_active_controls,
     action_cancel_time_tariff_intervals,
     action_communications_status,
@@ -52,6 +54,7 @@ from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
     Listener,
+    ProxyRouteOverride,
     ResourceAnnotations,
     RunnerState,
     StepInfo,
@@ -78,6 +81,8 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "cancel-time-tariff-intervals": "action_cancel_time_tariff_intervals",
     "delete-rate-component": "action_delete_rate_component",
     "remove-function-set-assignment": "action_remove_function_set_assignment",
+    "create-wellknown-route": None,  # Not supported in v1.2
+    "add-proxy-route": "action_add_proxy_route",  # Not supported in v1.2
 }
 
 
@@ -1319,6 +1324,80 @@ async def test_action_remove_function_set_assignment(
                 assert_nowish(site_control_group.changed_time)
             else:
                 assert site_control_group.fsa_id == original_fsa_id
+
+
+def test_action_add_proxy_route_empty():
+
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        proxy_route_overrides=[],
+    )
+    resolved_params = {
+        "route": "/abc123",
+        "proxy_to": "/def456",
+    }
+
+    # Act
+    action_add_proxy_route(resolved_params, atp)
+
+    # Assert
+    assert_list_type(ProxyRouteOverride, atp.proxy_route_overrides, count=1)
+    assert atp.proxy_route_overrides[0].route == "/abc123"
+    assert atp.proxy_route_overrides[0].proxy_to == "/def456"
+
+
+def test_action_add_proxy_route_update():
+    """Specifying an existing proxy override updates the list"""
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        proxy_route_overrides=[
+            ProxyRouteOverride("/r1", "/11"),
+            ProxyRouteOverride("/r2", "/22"),
+            ProxyRouteOverride("/r3", "/33"),
+        ],
+    )
+    resolved_params = {
+        "route": "/r2",
+        "proxy_to": "/aaa",
+    }
+
+    # Act
+    action_add_proxy_route(resolved_params, atp)
+
+    # Assert
+    assert_list_type(ProxyRouteOverride, atp.proxy_route_overrides, count=3)
+    assert [o.route for o in atp.proxy_route_overrides] == ["/r1", "/r2", "/r3"]
+    assert [o.proxy_to for o in atp.proxy_route_overrides] == ["/11", "/aaa", "/33"]
+
+
+def test_action_add_proxy_route_insert():
+    """Adding a new proxy override appends to the list"""
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        proxy_route_overrides=[
+            ProxyRouteOverride("/r1", "/11"),
+            ProxyRouteOverride("/r2", "/22"),
+            ProxyRouteOverride("/r3", "/33"),
+        ],
+    )
+    resolved_params = {
+        "route": "/r4",
+        "proxy_to": "/aaa",
+    }
+
+    # Act
+    action_add_proxy_route(resolved_params, atp)
+
+    # Assert
+    assert_list_type(ProxyRouteOverride, atp.proxy_route_overrides, count=4)
+    assert [o.route for o in atp.proxy_route_overrides] == ["/r1", "/r2", "/r3", "/r4"]
+    assert [o.proxy_to for o in atp.proxy_route_overrides] == ["/11", "/22", "/33", "/aaa"]
 
 
 @pytest.mark.anyio
