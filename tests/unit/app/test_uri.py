@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 from aiohttp.web import Request
-from multidict import MultiDict, MultiMapping, MutableMultiMapping
+from multidict import MultiDict
 
 from cactus_runner.app.uri import (
     MountedProxyPathParts,
