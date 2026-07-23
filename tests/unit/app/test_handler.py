@@ -896,6 +896,7 @@ async def test_proxied_request_handler_handles_proxy_overrides(pg_base_config, m
     request.path_qs = "/dcap?foo=bar"
     request.query_string = "foo=bar"
     request.method = "GET"
+    request.headers = {"accept": env.HEADER_MEDIA_ALL}
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         communications_disabled=False,
