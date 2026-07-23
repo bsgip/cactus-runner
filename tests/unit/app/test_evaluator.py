@@ -4,10 +4,12 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from assertical.asserts.type import assert_dict_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_test_definitions.errors import UnresolvableVariableError
 from cactus_test_definitions.variable_expressions import (
+    BaseExpression,
     Constant,
     Expression,
     NamedVariable,
@@ -19,6 +21,7 @@ from freezegun import freeze_time
 
 from cactus_runner.app.database import begin_session
 from cactus_runner.app.evaluator import (
+    ResolvedParam,
     is_resolvable_variable,
     resolve_variable,
     resolve_variable_expressions_from_parameters,
@@ -190,17 +193,72 @@ async def test_resolve_variable_expressions_from_parameters(
     mock_resolve_variable.return_value = MOCK_RESOLVED_VALUE
 
     actual_dict = await resolve_variable_expressions_from_parameters(mock_session, atp, input_dict)
+    assert_dict_type(str, ResolvedParam, actual_dict, count=len(input_dict))
 
-    assert isinstance(actual_dict, dict)
     assert actual_dict is not input_dict, "Should be different dict instances"
     assert len(input_dict) == len(actual_dict)
     for k, input_val in input_dict.items():
         assert k in actual_dict
         if k in variable_keys:
             assert actual_dict[k].value is MOCK_RESOLVED_VALUE, "Resolved variables should be... resolved"
+            assert actual_dict[k].original_expression is not None and isinstance(
+                actual_dict[k].original_expression, BaseExpression
+            )
         else:
-            assert actual_dict[k].value is input_val, "All other variables/params should be shallow copied across"
+            if isinstance(input_val, list):
+                assert all([i is a for i, a in zip(input_val, actual_dict[k].value, strict=True)])
+            else:
+                assert actual_dict[k].value is input_val, "All other variables/params should be shallow copied across"
+            assert actual_dict[k].original_expression is None
 
     assert_mock_session(mock_session)
     assert mock_resolve_variable.call_count == len(variable_keys)
+    assert all([a.args[0] == mock_session for a in mock_resolve_variable.call_args_list])
+
+
+@mock.patch("cactus_runner.app.evaluator.resolve_variable")
+@pytest.mark.parametrize(
+    "input_list, variable_indexes",
+    [
+        ([], []),
+        (["abc", "def", "now"], []),
+        ([NamedVariable(NamedVariableType.NOW), "abc", "def", NamedVariable(NamedVariableType.NOW)], [0, 3]),
+        (["abc", "def", NamedVariable(NamedVariableType.NOW)], [2]),
+        (["abc", NamedVariable(NamedVariableType.RANDURI_1), NamedVariable(NamedVariableType.NOW)], [1, 2]),
+        ([NamedVariable(NamedVariableType.RANDURI_1)], [0]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_resolve_variable_expressions_from_parameters_lists(
+    mock_resolve_variable: mock.Mock, input_list: list, variable_indexes: list[int]
+):
+    """There can be lists of variables - each entry in the list needs to be resolved"""
+    atp = generate_class_instance(ActiveTestProcedure, optional_is_none=True)
+    MOCK_RESOLVED_VALUE = mock.Mock()
+
+    mock_session = create_mock_session()
+    mock_resolve_variable.return_value = MOCK_RESOLVED_VALUE
+
+    actual_dict: dict[str, ResolvedParam] = await resolve_variable_expressions_from_parameters(
+        mock_session,
+        atp,
+        {
+            "my_key": input_list,
+        },
+    )
+
+    assert_dict_type(str, ResolvedParam, actual_dict, count=1)
+    actual_list: list = actual_dict["my_key"].value
+    assert isinstance(actual_list, list)
+    assert len(actual_list) == len(input_list)
+    assert actual_list is not input_list, "The original list should NOT be mutated directly"
+
+    for idx, item in enumerate(actual_list):
+        if idx in variable_indexes:
+            assert item is MOCK_RESOLVED_VALUE, "Resolved variables are resolved"
+        else:
+            assert item is input_list[idx], "Other list items should NOT be changed"
+
+    assert_mock_session(mock_session)
+    assert mock_resolve_variable.call_count == len(variable_indexes)
     assert all([a.args[0] == mock_session for a in mock_resolve_variable.call_args_list])

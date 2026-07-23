@@ -134,6 +134,17 @@ async def resolve_variable(  # noqa: C901
         raise UnresolvableVariableError(f"Unsupported variable type {type(v)}")
 
 
+async def _do_resolve(
+    session: AsyncSession,
+    active_test_procedure: ActiveTestProcedure,
+    v: Any,  # noqa: ANN401
+) -> tuple[ResolvedParam, BaseExpression | None]:
+    if is_resolvable_variable(v):
+        return (await resolve_variable(session, active_test_procedure, v), v)
+    else:
+        return (v, None)
+
+
 async def resolve_variable_expressions_from_parameters(
     session: AsyncSession, active_test_procedure: ActiveTestProcedure, parameters: dict[str, Any]
 ) -> dict[str, ResolvedParam]:
@@ -145,11 +156,14 @@ async def resolve_variable_expressions_from_parameters(
 
     output_parameters: dict[str, ResolvedParam] = {}
     for k, v in parameters.items():
-        if is_resolvable_variable(v):
-            output_parameters[k] = ResolvedParam(
-                value=await resolve_variable(session, active_test_procedure, v), original_expression=v
-            )
+        if isinstance(v, list):
+            resolved_list = []
+            for list_entry in v:
+                list_entry_value, _ = await _do_resolve(session, active_test_procedure, list_entry)
+                resolved_list.append(list_entry_value)
+            output_parameters[k] = ResolvedParam(value=resolved_list, original_expression=None)
         else:
-            output_parameters[k] = ResolvedParam(value=v)
+            value, original_expr = await _do_resolve(session, active_test_procedure, v)
+            output_parameters[k] = ResolvedParam(value=value, original_expression=original_expr)
 
     return output_parameters
