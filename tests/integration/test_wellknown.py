@@ -7,7 +7,7 @@ import pytest
 from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from cactus_schema.runner import RunGroup, RunRequest, TestCertificates, TestConfig, TestDefinition, TestUser
 from cactus_test_definitions import CSIPAusVersion
-from cactus_test_definitions.client import Action, Event, Preconditions, Step, TestProcedure, TestProcedureId
+from cactus_test_definitions.client import TestProcedureId
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.client import RunnerClient
