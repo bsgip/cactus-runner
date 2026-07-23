@@ -55,6 +55,7 @@ from cactus_runner.models import (
     Listener,
     ProxyRouteOverride,
     RunnerState,
+    WellKnownEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -688,6 +689,15 @@ def action_add_proxy_route(resolved_parameters: dict[str, Any], active_test_proc
     active_test_procedure.proxy_route_overrides.append(ProxyRouteOverride(route=route, proxy_to=proxy_to))
 
 
+def action_create_wellknown_route(
+    resolved_parameters: dict[str, Any], active_test_procedure: ActiveTestProcedure
+) -> None:
+    version: str = resolved_parameters["version"]  # Mandatory param
+    dcap_paths: list[str] = resolved_parameters["dcap_paths"]  # Mandatory param
+
+    active_test_procedure.well_known_entries.append(WellKnownEntry(version=version, dcap_paths=dcap_paths))
+
+
 async def apply_action(  # noqa: C901
     action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
 ) -> None:
@@ -770,6 +780,9 @@ async def apply_action(  # noqa: C901
                 return
             case "add-proxy-route":
                 action_add_proxy_route(resolved_parameters, active_test_procedure)
+                return
+            case "create-wellknown-route":
+                action_create_wellknown_route(resolved_parameters, active_test_procedure)
                 return
 
     except Exception as exc:
