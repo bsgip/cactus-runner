@@ -38,6 +38,7 @@ from cactus_runner.app.action import (
     action_create_rate_component,
     action_create_tariff_profile,
     action_create_time_tariff_interval,
+    action_create_wellknown_route,
     action_delete_rate_component,
     action_edev_registration_links,
     action_enable_steps,
@@ -59,6 +60,7 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
     StepStatus,
+    WellKnownEntry,
 )
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
@@ -81,8 +83,8 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "cancel-time-tariff-intervals": "action_cancel_time_tariff_intervals",
     "delete-rate-component": "action_delete_rate_component",
     "remove-function-set-assignment": "action_remove_function_set_assignment",
-    "create-wellknown-route": None,  # Not supported in v1.2
-    "add-proxy-route": "action_add_proxy_route",  # Not supported in v1.2
+    "create-wellknown-route": "action_create_wellknown_route",
+    "add-proxy-route": "action_add_proxy_route",
 }
 
 
@@ -1855,3 +1857,23 @@ async def test_action_delete_rate_component(
         else:
             assert tc_id_by_index[idx] not in deleted_tc_ids
             assert tc_id_by_index[idx] in remaining_tc_ids
+
+
+def test_action_create_wellknown_route():
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        well_known_entries=[],
+    )
+    resolved_params = {
+        "version": "my version",
+        "dcap_paths": ["/abc123", "foo/def456"],
+    }
+
+    # Act
+    action_create_wellknown_route(resolved_params, atp)
+
+    # Assert
+    assert_list_type(WellKnownEntry, atp.well_known_entries, count=1)
+    assert atp.well_known_entries[0].version == "my version"
+    assert atp.well_known_entries[0].dcap_paths == ["/abc123", "foo/def456"]

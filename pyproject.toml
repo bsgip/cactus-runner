@@ -67,6 +67,7 @@ test = [
   "freezegun",
   "pytest-env",
   "asgi_lifespan",
+  "jsonschema",
 ]
 docs = ["sphinx"]
 
