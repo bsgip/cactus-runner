@@ -337,7 +337,7 @@ requires-dist = [
     { name = "assertical", marker = "extra == 'test'", specifier = ">=0.4.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<1" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cactus-schema", specifier = ">=1.2.0,<2" },
+    { name = "cactus-schema", specifier = ">=1.2.1,<2" },
     { name = "cactus-test-definitions", specifier = ">=1.15.0,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.5.0" },
@@ -366,15 +366,15 @@ provides-extras = ["dev", "test", "docs"]
 
 [[package]]
 name = "cactus-schema"
-version = "1.2.0"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cactus-test-definitions" },
     { name = "dataclass-wizard" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/69/08f0c3301a5c37f02ef5333078efcae0047c2e86a349247a70986861f731/cactus_schema-1.2.0.tar.gz", hash = "sha256:2976d22a0a0ac91db582dc3fc71ab5e66696202e3f900d28ed7cddbbfe122176", size = 11111, upload-time = "2026-07-20T05:25:49.913Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/c3/19a23e66564f055f7c7660dd5a3c2e7e15c93a49eb708f45e75b1e4519d9/cactus_schema-1.2.1.tar.gz", hash = "sha256:edb30900c8b19c21cf50a29bf665010eb9c2246db0f09389d080f35ca2ca6d07", size = 11071, upload-time = "2026-07-24T00:15:05.633Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c0/44/fe366c7bb7ce20805b22926c3a815e1c76bcc168dc77e7ae74ff67b65352/cactus_schema-1.2.0-py3-none-any.whl", hash = "sha256:d15f2778bc51043deb2b1848946cab1b4e0873ddfb761a813fc0b9731940b34d", size = 12735, upload-time = "2026-07-20T05:25:48.579Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/6f/7ac1255bb0fd3a3b6afe5dcadf92bd9d3b2d01bb5081a6ea2a5013a6ac0c/cactus_schema-1.2.1-py3-none-any.whl", hash = "sha256:4089eb15bd039a3e9e7c426d655adf8b13ebbf6dc8f9c5dff73f01865d9c52bc", size = 12821, upload-time = "2026-07-24T00:15:04.343Z" },
 ]
 
 [[package]]
