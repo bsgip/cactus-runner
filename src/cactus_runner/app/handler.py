@@ -17,6 +17,7 @@ from cactus_schema.runner import (
     RunRequest,
     StartResponseBody,
 )
+from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Action, TestProcedure
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
@@ -190,7 +191,7 @@ async def setup_test_procedure_from_request(
     return ActiveTestProcedure(
         name=run_request.test_definition.test_procedure_id,
         definition=definition,
-        csip_aus_version=run_request.run_group.csip_aus_version,
+        csip_aus_version=CSIPAusVersion(run_request.run_group.csip_aus_version),
         initialised_at=datetime.now(tz=UTC),
         started_at=None,  # Test hasn't started yet
         listeners=listeners,
