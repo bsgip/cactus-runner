@@ -389,6 +389,7 @@ async def get_active_runner_status(
         request_history=request_history,
         timeline=timeline,
         end_device_metadata=end_device_metadata,
+        warnings=list(active_test_procedure.warnings.values()),
     )
 
 
