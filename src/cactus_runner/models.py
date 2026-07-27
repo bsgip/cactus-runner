@@ -9,7 +9,6 @@ from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
     RequestEntry,
-    RunRequest,
     StepStatus,
 )
 from cactus_test_definitions import CSIPAusVersion
@@ -60,10 +59,10 @@ class InitialisedCertificates:
     """Certificates shared with the runner during initialisation. These certs should be the ONLY certificates that can
     interact with the runner/underlying envoy instance"""
 
-    client_certificate_type: str | None = None  # Will read as either "aggregator" or "device"
+    client_certificate_type: ClientCertificateType | None = None
     client_certificate: str | None = None
     client_lfdi: str | None = None
-    client_aggregator_id: int | None = None  # Stored for reuse in playlist tests
+    client_aggregator_id: int | None = None  # Stored for reuse when advancing to the next playlist test
 
 
 @dataclass
@@ -165,16 +164,6 @@ class ActiveTestProcedure:
 
 
 @dataclass
-class PlaylistItem:
-    """A completed test in the playlist"""
-
-    test_name: str
-    zip_file_path: Path | None
-    completed_at: datetime
-    success: bool
-
-
-@dataclass
 class RunnerState:
     """Represents the current state of the Runner.
 
@@ -213,11 +202,6 @@ class RunnerState:
             ClientInteraction(interaction_type=ClientInteractionType.RUNNER_START, timestamp=datetime.now(UTC))
         ]
     )
-
-    # Playlist support
-    playlist: list[RunRequest] | None = None  # All tests in the playlist (full array)
-    playlist_index: int = 0  # Current position (0-based index into playlist)
-    completed_playlist_items: list[PlaylistItem] = field(default_factory=list)  # Completed tests with ZIP paths
 
     # Only set if this test has been explicitly failed by an action
     # a non empty value here implies that the test is FAILED despite what anything else says

@@ -33,12 +33,14 @@ from cactus_runner.app import action, env, handler
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
+    APPKEY_INITIALISED_CERTS,
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
 )
 from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
+    ClientCertificateType,
     Listener,
     ProxyRouteOverride,
     RunnerState,
@@ -140,144 +142,21 @@ async def test_initialise_handler(
 
 
 @pytest.mark.asyncio
-async def test_initialise_handler_playlist(mocker):
-    """Test that initializing with a list of RunRequests sets up the playlist correctly."""
-    # Arrange - create a playlist with 3 tests
+async def test_initialise_handler_list_body_bad_request(mocker):
+    """A JSON list body (the old playlist wire format) is no longer accepted - only a single RunRequest."""
     run_request_1 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_2 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_3 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-
-    # Serialize as JSON array (same as integration tests)
-    playlist_json = "[" + ",".join(rr.to_json() for rr in [run_request_1, run_request_2, run_request_3]) + "]"
+    list_json = "[" + run_request_1.to_json() + "]"
 
     mock_request = MagicMock()
-    mock_request.text = AsyncMock(return_value=playlist_json)
+    mock_request.text = AsyncMock(return_value=list_json)
     mock_request.raise_for_status = MagicMock()
-    mock_request.query.get = MagicMock(return_value=None)  # No start_index
-    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
-    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
-    mock_request.app[APPKEY_RUNNER_STATE].playlist = None
-    mock_request.app[APPKEY_RUNNER_STATE].playlist_index = 0
-
-    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
-    mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
-    start_result = MagicMock()
-    start_result.success = True
-    mocker.patch("cactus_runner.app.handler.attempt_start_for_state", return_value=start_result)
-
-    # Act
-    raw_response = await handler.initialise_handler(request=mock_request)
-
-    # Assert - response is successful
-    assert isinstance(raw_response, Response)
-    assert raw_response.status == http.HTTPStatus.CREATED
-
-    # Assert - playlist is set up with all tests
-    playlist = mock_request.app[APPKEY_RUNNER_STATE].playlist
-    assert playlist is not None
-    assert len(playlist) == 3  # All 3 tests in the full array
-
-    # Assert - playlist_index starts at 0 (first test is active)
-    assert mock_request.app[APPKEY_RUNNER_STATE].playlist_index == 0
-
-    # Assert - first test is set as active
-    assert mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure is not None
-
-
-@pytest.mark.asyncio
-async def test_initialise_handler_playlist_with_start_index(mocker):
-    """Test that initializing with start_index skips to the correct test."""
-    # Arrange - create a playlist with 4 tests
-    run_request_0 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_1 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_2 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_3 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-
-    # Assign unique run_ids to distinguish tests
-    run_request_0.run_id = "test-0"
-    run_request_1.run_id = "test-1"
-    run_request_2.run_id = "test-2"
-    run_request_3.run_id = "test-3"
-
-    playlist_json = (
-        "[" + ",".join(rr.to_json() for rr in [run_request_0, run_request_1, run_request_2, run_request_3]) + "]"
-    )
-
-    mock_request = MagicMock()
-    mock_request.text = AsyncMock(return_value=playlist_json)
-    mock_request.raise_for_status = MagicMock()
-    mock_request.query.get = MagicMock(return_value="2")  # Start at index 2
-    mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
-    mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
-    mock_request.app[APPKEY_RUNNER_STATE].playlist = None
-    mock_request.app[APPKEY_RUNNER_STATE].playlist_index = 0
-
-    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
-    mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
-    start_result = MagicMock()
-    start_result.success = True
-    mocker.patch("cactus_runner.app.handler.attempt_start_for_state", return_value=start_result)
-
-    # Act
-    raw_response = await handler.initialise_handler(request=mock_request)
-
-    # Assert - response is successful
-    assert isinstance(raw_response, Response)
-    assert raw_response.status == http.HTTPStatus.CREATED
-
-    # Assert - playlist contains all 4 tests (full array)
-    playlist = mock_request.app[APPKEY_RUNNER_STATE].playlist
-    assert playlist is not None
-    assert len(playlist) == 4
-    assert playlist[0].run_id == "test-0"
-    assert playlist[2].run_id == "test-2"
-    assert playlist[3].run_id == "test-3"
-
-    # Assert - playlist_index is set to start_index (2)
-    assert mock_request.app[APPKEY_RUNNER_STATE].playlist_index == 2
-
-    # Assert - test at index 2 is set as active
-    assert mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure is not None
-    assert mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure.run_id == "test-2"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "start_index_value",
-    [
-        "3",  # Equal to playlist length (out of bounds)
-        "10",  # Greater than playlist length
-        "-1",  # Negative
-        "abc",  # Non-integer
-        "1.5",  # Float string
-    ],
-)
-async def test_initialise_handler_playlist_with_invalid_start_index(start_index_value: str, mocker):
-    """Test that invalid start_index values return 400 Bad Request."""
-    # Arrange - create a playlist with 3 tests
-    run_request_0 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_1 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-    run_request_2 = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
-
-    playlist_json = "[" + ",".join(rr.to_json() for rr in [run_request_0, run_request_1, run_request_2]) + "]"
-
-    mock_request = MagicMock()
-    mock_request.text = AsyncMock(return_value=playlist_json)
-    mock_request.raise_for_status = MagicMock()
-    mock_request.query.get = MagicMock(return_value=start_index_value)
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    # Act
     raw_response = await handler.initialise_handler(request=mock_request)
 
-    # Assert - 400 Bad Request
     assert isinstance(raw_response, Response)
     assert raw_response.status == http.HTTPStatus.BAD_REQUEST
-    assert raw_response.text is not None
-    assert "start_index" in raw_response.text
 
 
 @pytest.mark.asyncio
@@ -506,7 +385,6 @@ async def test_finalize_handler(mocker, tmp_path):
     """
 
     request = MagicMock()
-    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     zip_path = tmp_path / "test.zip"
     zip_path.write_bytes(bytes([99, 55]))
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
@@ -530,7 +408,6 @@ async def test_finalize_handler_finish_error(mocker):
     """
 
     request = MagicMock()
-    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.side_effect = Exception("mock exception")
 
@@ -552,7 +429,6 @@ async def test_finalize_handler_finish_error(mocker):
 async def test_finalize_handler_resets_runner_state(mocker):
     request = MagicMock()
     request.app[APPKEY_RUNNER_STATE].request_history = [None]  # a non-empty list stand-in
-    request.app[APPKEY_RUNNER_STATE].playlist = None  # No playlist for this test
     mocker.patch("cactus_runner.app.handler.begin_session")
     mocker.patch("cactus_runner.app.handler.status.get_active_runner_status").return_value = generate_class_instance(
         RunnerStatus, step_status={}
@@ -574,6 +450,86 @@ async def test_finalize_handler_handles_no_active_test_procedure():
 
     assert isinstance(response, Response)
     assert response.status == http.HTTPStatus.BAD_REQUEST
+
+
+def set_initialised_certs(request: MagicMock) -> None:
+    certs = request.app[APPKEY_INITIALISED_CERTS]
+    certs.client_certificate_type = ClientCertificateType.AGGREGATOR
+    certs.client_certificate = "cert-pem"
+    certs.client_lfdi = "lfdi-1"
+    certs.client_aggregator_id = 1
+
+
+@pytest.mark.asyncio
+async def test_next_test_handler_active_test_conflict():
+    request = MagicMock()
+    request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = MagicMock()  # still active
+
+    response = await handler.next_test_handler(request=request)
+
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_next_test_handler_not_initialised_conflict():
+    request = MagicMock()
+    request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    certs = request.app[APPKEY_INITIALISED_CERTS]  # never initialised
+    certs.client_lfdi = None
+    certs.client_aggregator_id = None
+    certs.client_certificate_type = None
+
+    response = await handler.next_test_handler(request=request)
+
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.CONFLICT
+
+
+@pytest.mark.asyncio
+async def test_next_test_handler_success(mocker):
+    request = MagicMock()
+    request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    set_initialised_certs(request)
+
+    mock_reset_playlist_db = mocker.patch("cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock())
+    mock_initialize_next_test = mocker.patch(
+        "cactus_runner.app.handler.initialize_next_test", new=AsyncMock(return_value=True)
+    )
+
+    response = await handler.next_test_handler(request=request)
+
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.CREATED
+    assert response.content_type == "application/json"
+    body = InitResponseBody.from_json(response.text)
+    assert isinstance(body, InitResponseBody)
+    assert body.is_started is True
+
+    mock_reset_playlist_db.assert_awaited_once()
+    mock_initialize_next_test.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_next_test_handler_immediate_start_failure(mocker):
+    request = MagicMock()
+    request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
+    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    set_initialised_certs(request)
+
+    mocker.patch("cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock())
+    mocker.patch(
+        "cactus_runner.app.handler.initialize_next_test",
+        new=AsyncMock(side_effect=RuntimeError("Unable to trigger immediate start: boom")),
+    )
+
+    response = await handler.next_test_handler(request=request)
+
+    assert isinstance(response, Response)
+    assert response.status == http.HTTPStatus.PRECONDITION_FAILED
 
 
 @pytest.mark.parametrize(

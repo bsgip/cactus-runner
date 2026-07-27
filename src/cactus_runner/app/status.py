@@ -313,6 +313,35 @@ async def get_active_runner_status(
     except Exception:
         set_max_w = None
 
+    # Resolve the effective device max for each direction, preferring the asymmetric
+    # setMaxDischargeRateW (export) / setMaxChargeRateW (import) over setMaxW.
+    upper_max_w: int | None = None
+    upper_max_label: str | None = None
+    lower_max_w: int | None = None
+    lower_max_label: str | None = None
+    try:
+        der_setting_site = await get_active_site(session, include_der_settings=True)
+        der_setting = der_setting_site.site_der_setting if der_setting_site else None
+        if der_setting is not None:
+            upper_max_w = set_max_w
+            upper_max_label = "setMaxW"
+            lower_max_w = set_max_w
+            lower_max_label = "setMaxW"
+            discharge_max_w = _resolve_value_multiplier(
+                der_setting.max_discharge_rate_w_value, der_setting.max_discharge_rate_w_multiplier
+            )
+            if discharge_max_w is not None:
+                upper_max_w = discharge_max_w
+                upper_max_label = "setMaxDischargeRateW"
+            charge_max_w = _resolve_value_multiplier(
+                der_setting.max_charge_rate_w_value, der_setting.max_charge_rate_w_multiplier
+            )
+            if charge_max_w is not None:
+                lower_max_w = charge_max_w
+                lower_max_label = "setMaxChargeRateW"
+    except Exception as exc:
+        logger.error("Error resolving device max for timeline", exc_info=exc)
+
     # Try and generate a timeline
     timeline = None
     try:
@@ -328,7 +357,15 @@ async def get_active_runner_status(
 
             data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
             now_offset = duration_to_label((int((now - basis).total_seconds()) // interval_seconds) * interval_seconds)
-            timeline = TimelineStatus(data_streams=data_streams, set_max_w=set_max_w, now_offset=now_offset)
+            timeline = TimelineStatus(
+                data_streams=data_streams,
+                set_max_w=set_max_w,
+                now_offset=now_offset,
+                upper_max_w=upper_max_w,
+                upper_max_label=upper_max_label,
+                lower_max_w=lower_max_w,
+                lower_max_label=lower_max_label,
+            )
     except Exception as exc:
         logger.error("Error generating timeline", exc_info=exc)
         timeline = None
