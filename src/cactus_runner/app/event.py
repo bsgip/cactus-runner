@@ -11,7 +11,7 @@ from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.uri import MountedProxyPathParts, does_endpoint_match
-from cactus_runner.models import Listener, RunnerState
+from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ async def is_listener_triggerable(  # noqa: C901
     listener: Listener,
     trigger: EventTrigger,
     session: AsyncSession,
+    active_test_procedure: ActiveTestProcedure,
 ) -> bool:
     """Returns True if the specified listener can be triggered by the specified trigger.
 
@@ -88,7 +89,7 @@ async def is_listener_triggerable(  # noqa: C901
             return False
 
         resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
-            session, listener.event.parameters
+            session, active_test_procedure, listener.event.parameters
         )
         endpoint = resolved_params.get("endpoint", evaluator.ResolvedParam(""))
         serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
@@ -109,7 +110,7 @@ async def is_listener_triggerable(  # noqa: C901
     # If this listener is a wait event and the current trigger is time based
     if listener.event.type == "wait" and trigger.type == EventTriggerType.TIME:
         resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
-            session, listener.event.parameters
+            session, active_test_procedure, listener.event.parameters
         )
         duration_seconds = resolved_params.get("duration_seconds", evaluator.ResolvedParam(0))
 
@@ -123,7 +124,7 @@ async def is_listener_triggerable(  # noqa: C901
             return True
         if trigger.type == EventTriggerType.TIME:
             resolved_params = await evaluator.resolve_variable_expressions_from_parameters(
-                session, listener.event.parameters
+                session, active_test_procedure, listener.event.parameters
             )
             timeout_seconds = resolved_params.get("timeout_seconds", evaluator.ResolvedParam(None))
             if timeout_seconds.value is not None:
@@ -167,7 +168,7 @@ async def handle_event_trigger(
     triggered_listeners: list[Listener] = []
     listeners_to_eval = active_test_procedure.listeners.copy()  # We copy this as the underlying list might mutate
     for listener in listeners_to_eval:
-        if await is_listener_triggerable(listener, trigger, session):
+        if await is_listener_triggerable(listener, trigger, session, active_test_procedure):
             logger.info(f"handle_event_trigger: Matched Step {listener.step} for {trigger}")
 
             if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
