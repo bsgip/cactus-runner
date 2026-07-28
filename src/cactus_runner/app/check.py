@@ -34,7 +34,6 @@ from sqlalchemy.orm import aliased
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     get_active_site,
-    get_all_sites,
     get_csip_aus_site_reading_types_partitioned,
     get_site_readings,
 )
@@ -49,6 +48,10 @@ from cactus_runner.models import (
     ClientCertificateType,
     RequestEntry,
 )
+from cactus_runner.plugin.backends.common import RunnerBackend
+
+# TEST: just for showing plugin architecture implementation potentially
+from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +230,7 @@ def check_all_steps_complete(
 
 
 async def check_end_device_contents(  # noqa: C901
-    active_test_procedure: ActiveTestProcedure, session: AsyncSession, resolved_parameters: dict[str, Any]
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any]
 ) -> CheckResult:
     """Implements the end-device-contents check
 
@@ -240,7 +243,7 @@ async def check_end_device_contents(  # noqa: C901
     - LFDI is only uppercase hexadecimal characters [0-9A-F]
     """
 
-    site = await get_active_site(session)
+    site = await backend.get_active_site()
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
@@ -288,7 +291,7 @@ async def check_end_device_contents(  # noqa: C901
     return CheckResult(True, None)
 
 
-async def check_end_device_count(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_end_device_count(backend: RunnerBackend, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the end-device-count check
 
     Returns pass if there are a specific number of EndDevice's registered for the current client"""
@@ -296,7 +299,7 @@ async def check_end_device_count(session: AsyncSession, resolved_parameters: dic
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     maximum_count: int | None = resolved_parameters.get("maximum_count", None)
 
-    sites = await get_all_sites(session)
+    sites = await backend.get_all_sites()
     total_sites = len(sites)
 
     if minimum_count is not None and total_sites < minimum_count:
@@ -1389,8 +1392,11 @@ def check_all_polls_at_correct_time(
 async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
+    # Will be replaced by backend in full plugin arch
     session: AsyncSession,
     request_history: list[RequestEntry] | None = None,
+    # This will no longer be an optional arg in full plugin arch implementation
+    backend: RunnerBackend | None = None,
 ) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -1410,16 +1416,23 @@ async def run_check(  # noqa: C901
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen
+
+    # TEST: Temporary backend creation for showing rough implementation
+    if backend is None:
+        backend = create_backend(session)
+
     try:
         match check.type:
             case "all-steps-complete":
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 
             case "end-device-contents":
-                check_result = await check_end_device_contents(active_test_procedure, session, resolved_parameters)
+                # Temporary assertion, this will be removed in full plugin arch implementation
+                check_result = await check_end_device_contents(active_test_procedure, backend, resolved_parameters)
 
             case "end-device-count":
-                check_result = await check_end_device_count(session, resolved_parameters)
+                # Temporary assertion, this will be removed in full plugin arch implementation
+                check_result = await check_end_device_count(backend, resolved_parameters)
 
             case "der-settings-contents":
                 check_result = await check_der_settings_contents(session, resolved_with_metadata_parameters)

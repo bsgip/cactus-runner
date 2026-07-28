@@ -85,6 +85,8 @@ from cactus_runner.models import (
     Listener,
     ResourceAnnotations,
 )
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import RunnerBackend
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
@@ -201,21 +203,20 @@ def test_check_all_steps_complete(
         (None, True, False),
         (None, False, False),
         (None, None, False),
-        (generate_class_instance(Site, nmi=None), True, False),
-        (generate_class_instance(Site, nmi=None), False, True),
-        (generate_class_instance(Site, nmi=None), None, True),  # Should default has_connection_point_id to False
-        (generate_class_instance(Site, nmi=""), True, False),
-        (generate_class_instance(Site, nmi=""), False, True),
-        (generate_class_instance(Site, nmi=""), None, True),  # Should default has_connection_point_id to False
-        (generate_class_instance(Site, nmi="abc123"), True, True),
-        (generate_class_instance(Site, nmi="abc123"), False, True),
-        (generate_class_instance(Site, nmi="abc123"), None, True),
+        (generate_class_instance(dtos.Site, nmi=None), True, False),
+        (generate_class_instance(dtos.Site, nmi=None), False, True),
+        (generate_class_instance(dtos.Site, nmi=None), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(dtos.Site, nmi=""), True, False),
+        (generate_class_instance(dtos.Site, nmi=""), False, True),
+        (generate_class_instance(dtos.Site, nmi=""), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(dtos.Site, nmi="abc123"), True, True),
+        (generate_class_instance(dtos.Site, nmi="abc123"), False, True),
+        (generate_class_instance(dtos.Site, nmi="abc123"), None, True),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_contents_connection_point(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
+    active_site: dtos.Site | None, has_connection_point_id: bool | None, expected: bool
 ):
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -225,16 +226,17 @@ async def test_check_end_device_contents_connection_point(
         step_status={},
         finished_zip_path=None,
     )
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if has_connection_point_id is not None:
         resolved_params["has_connection_point_id"] = has_connection_point_id
 
-    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_active_site.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -243,21 +245,20 @@ async def test_check_end_device_contents_connection_point(
         (None, "0", False),
         (None, "123", False),
         (None, None, False),
-        (generate_class_instance(Site), "0", True),
-        (generate_class_instance(Site), None, True),
-        (generate_class_instance(Site, device_category=DeviceCategory(0)), "0", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(0)), "1", False),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
+        (generate_class_instance(dtos.Site), "0", True),
+        (generate_class_instance(dtos.Site), None, True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(0)), "0", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(0)), "1", False),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_contents_device_category(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, deviceCategory_anyset: str | None, expected: bool
+    active_site: dtos.Site | None, deviceCategory_anyset: str | None, expected: bool
 ):
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -267,17 +268,17 @@ async def test_check_end_device_contents_device_category(
         step_status={},
         finished_zip_path=None,
     )
+    backend = mock.AsyncMock(spec=RunnerBackend)
 
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if deviceCategory_anyset is not None:
         resolved_params["deviceCategory_anyset"] = deviceCategory_anyset
 
-    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_active_site.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -391,10 +392,8 @@ async def test_check_end_device_contents_device_category(
         ),  # sfdi doesn't match lfdi
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_lfdi(
-    mock_get_active_site: mock.MagicMock,
     active_test_procedure: ActiveTestProcedure,
     site_lfdi: str,
     site_sfdi: int,
@@ -402,16 +401,18 @@ async def test_check_end_device_lfdi(
     expected: bool,
 ):
     active_site = generate_class_instance(
-        Site, device_category=DeviceCategory(int("22A8B", 16)), lfdi=site_lfdi, sfdi=site_sfdi
+        dtos.Site, device_category=DeviceCategory(int("22A8B", 16)), lfdi=site_lfdi, sfdi=site_sfdi
     )
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if check_lfdi is not None:
         resolved_params["check_lfdi"] = check_lfdi
 
-    result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
+
+    backend.get_active_site.assert_called_once()
 
 
 DERKey = Literal["site_der_setting", "site_der_rating"]
@@ -480,30 +481,28 @@ def der_bool_param_scenario(
         ([1, 2, 3], 4, 2, False),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_all_sites")
 @pytest.mark.anyio
 async def test_check_end_device_count(
-    mock_get_all_sites: mock.MagicMock,
     site_ids: list[int],
     min_count: int | None,
     max_count: int | None,
     expected: bool,
 ):
 
-    mock_get_all_sites.return_value = [
-        generate_class_instance(Site, seed=site_id, site_id=site_id) for site_id in site_ids
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_all_sites.return_value = [
+        generate_class_instance(dtos.Site, seed=site_id, site_id=site_id) for site_id in site_ids
     ]
-    mock_session = create_mock_session()
     resolved_params = {}
     if min_count is not None:
         resolved_params["minimum_count"] = min_count
     if max_count is not None:
         resolved_params["maximum_count"] = max_count
 
-    result = await check_end_device_count(mock_session, resolved_params)
+    result = await check_end_device_count(backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_all_sites.assert_called_once()
 
 
 DERSETTING_BOOL_PARAM_SCENARIOS = [
