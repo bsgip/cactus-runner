@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Sequence
 
-from envoy.server.model import Site, SiteDER
+from envoy.server.model import Site
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,7 +38,7 @@ class EnvoyBackend(RunnerBackend):
         Get the "active" site - interpreted as the last site created/modified by the client.
 
         Args:
-            include_der_settings: If True, eagerly load SiteDER and related settings
+            include_der_settings: If True, eagerly load the site's DER sub-resources (rating/setting/status)
 
         Returns:
             The most recently modified Site, or None if no sites exist
@@ -47,9 +47,9 @@ class EnvoyBackend(RunnerBackend):
 
         if include_der_settings:
             stmt = stmt.options(
-                selectinload(Site.site_ders).selectinload(SiteDER.site_der_rating),
-                selectinload(Site.site_ders).selectinload(SiteDER.site_der_setting),
-                selectinload(Site.site_ders).selectinload(SiteDER.site_der_status),
+                selectinload(Site.site_der_rating),
+                selectinload(Site.site_der_setting),
+                selectinload(Site.site_der_status),
             )
 
         site = (await self.session.execute(stmt)).scalar_one_or_none()
