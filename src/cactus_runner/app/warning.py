@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from cactus_schema.runner import RequestEntry, WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.site import SiteDERSetting
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.models import ActiveTestProcedure
@@ -44,21 +44,23 @@ async def _analyse_der_settings_varied(
     """Flags if setMaxW/setMaxChargeRateW/setMaxDischargeRateW (DERSettings) changed at least once during the
     test - any archived DER setting with a different value than the current value for the same site means it
     changed. The warning message names exactly which field(s) varied."""
-    varied_fields = []
-    for label, (current_column, archived_column) in _DER_SETTINGS_VARIED_FIELDS.items():
-        varied = (
-            await session.execute(
-                select(ArchiveSiteDERSetting.site_id)
-                .join(
-                    SiteDERSetting,
-                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                    & (current_column != archived_column),
+    labels = list(_DER_SETTINGS_VARIED_FIELDS.keys())
+    row = (
+        await session.execute(
+            select(
+                *(
+                    func.bool_or(current_column != archived_column)
+                    for current_column, archived_column in _DER_SETTINGS_VARIED_FIELDS.values()
                 )
-                .limit(1)
             )
-        ).scalar() is not None
-        if varied:
-            varied_fields.append(label)
+            .select_from(ArchiveSiteDERSetting)
+            .join(
+                SiteDERSetting,
+                SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id,  # Same DER (one per site)
+            )
+        )
+    ).one()
+    varied_fields = [label for label, is_varied in zip(labels, row, strict=True) if is_varied]
 
     if varied_fields:
         warn(
