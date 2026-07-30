@@ -4,7 +4,7 @@ from datetime import datetime
 __all__ = ["SiteReadingType", "SiteReading"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteReadingType:
     site_reading_type_id: str
     site_id: int
@@ -18,7 +18,7 @@ class SiteReadingType:
     power_of_ten_multiplier: int
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteReading:
     site_reading_id: str
     site_reading_type_id: int

@@ -5,7 +5,7 @@ from decimal import Decimal
 __all__ = ["SiteControlGroup", "SiteControl", "SiteControlGroupDefault"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteControlGroup:
     site_control_group_id: str | None
     description: str
@@ -14,7 +14,7 @@ class SiteControlGroup:
     display_id: int | None
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteControl:
     site_control_id: str | None
     site_id: str
@@ -32,7 +32,7 @@ class SiteControl:
     ramp_time_seconds: Decimal | None
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteControlGroupDefault:
     import_limit_watts: Decimal | None
     export_limit_watts: Decimal | None

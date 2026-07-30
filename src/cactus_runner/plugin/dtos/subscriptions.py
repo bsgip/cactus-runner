@@ -3,7 +3,7 @@ from dataclasses import dataclass
 __all__ = ["Subscription", "TransmitNotificationLog"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class Subscription:
     subscription_id: int
     aggregator_id: int
@@ -12,7 +12,7 @@ class Subscription:
     resource_id: int | None
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class TransmitNotificationLog:
     subscription_id: int
     http_status_code: int

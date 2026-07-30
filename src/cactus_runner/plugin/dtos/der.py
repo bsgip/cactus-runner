@@ -3,7 +3,7 @@ from dataclasses import dataclass
 __all__ = ["SiteDERSettings", "SiteDERCapability", "SiteDERStatus"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteDERSettings:
     modes_enabled: int | None
     doe_modes_enabled: int | None
@@ -16,7 +16,7 @@ class SiteDERSettings:
     grad_w: int | None
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteDERCapability:
     der_type: int | None
     modes_supported: int | None
@@ -29,7 +29,7 @@ class SiteDERCapability:
     max_discharge_rate_w: int | None
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class SiteDERStatus:
     alarm_status: int | None
     generator_connect_status: int | None

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 __all__ = ["RuntimeConfig"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class RuntimeConfig:
     dcap_pollrate_seconds: int | None = None
     edevl_pollrate_seconds: int | None = None

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 __all__ = ["Site"]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class Site:
     site_id: str
     nmi: str | None
