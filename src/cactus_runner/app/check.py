@@ -1,5 +1,6 @@
 import http
 import logging
+import math
 import re
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
@@ -1268,52 +1269,68 @@ def _check_poll_timing_for_path(
 ) -> CheckResult:
     """Checks that requests in path_requests occur at the expected frequency.
 
-    Per-window minimum: for each window of 3x the poll interval, expects at least 2 requests. This ensures
-    polls are distributed throughout the test rather than front- or back-loaded.
+    Under-polling (gap-based): the time between each pair of requests is expected to be no more than 1.5x the poll
+    interval. Isolated misses are tolerated (retries, brief disconnections). No more than 1 missed poll per 5 polls.
 
-    Global maximum: total polls must not exceed min(expected_total * 3, expected_total + 3), where expected_total
-    is based on actual test duration. This scales correctly — short tests get proportionally more slack, long tests
-    are held to a tight fixed buffer of +3 above expected.
+    Over-polling (window-based): for each 3x the poll interval, expects no more than floor(1.5 * 3 + 2) = 6 requests.
+    This allows for some re-fetching/retry behaviour while still catching hard bursts and sustained over-polling.
     """
     sorted_requests = sorted(path_requests, key=lambda r: r.timestamp)
     last_request_time = sorted_requests[-1].timestamp
 
-    window_seconds = poll_interval_seconds * 3
-    min_polls_per_window = 2
-
     checker = SoftChecker()
 
-    # Per-window minimum check: ensures polls are spread throughout the test.
+    # Under-polling: gap-based miss detection with a per-window miss tolerance.
+    miss_threshold_seconds = poll_interval_seconds * 1.5
+    miss_window_seconds = poll_interval_seconds * 5
+    max_misses_per_window = 1
+
+    missed_gap_times = [
+        curr.timestamp
+        for prev, curr in zip(sorted_requests, sorted_requests[1:], strict=False)
+        if (curr.timestamp - prev.timestamp).total_seconds() > miss_threshold_seconds
+    ]
+
     window_start = test_started_at
     window_number = 0
-
     while window_start < last_request_time:
-        window_end = window_start + timedelta(seconds=window_seconds)
+        window_end = window_start + timedelta(seconds=miss_window_seconds)
+        window_number += 1
+
+        misses_in_window = sum(1 for t in missed_gap_times if window_start <= t < window_end)
+
+        # Only enforce the tolerance on complete windows — the last partial window may naturally be sparse.
+        is_complete_window = window_end <= last_request_time
+        if is_complete_window and misses_in_window > max_misses_per_window:
+            checker.add(
+                f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
+                f"expected at most {max_misses_per_window} missed poll(s) (gap > {miss_threshold_seconds}s), "
+                f"found {misses_in_window}",
+            )
+
+        window_start = window_end
+
+    # Over-polling: per-window maximum, catches bursts and sustained over-polling.
+    burst_window_seconds = poll_interval_seconds * 3
+    expected_polls_per_window = burst_window_seconds / poll_interval_seconds
+    max_polls_per_window = math.floor(1.5 * expected_polls_per_window + 2)
+
+    window_start = test_started_at
+    window_number = 0
+    while window_start < last_request_time:
+        window_end = window_start + timedelta(seconds=burst_window_seconds)
         window_number += 1
 
         requests_in_window = [r for r in sorted_requests if window_start <= r.timestamp < window_end]
         request_count = len(requests_in_window)
 
-        # Only enforce the minimum on complete windows — the last partial window may naturally be sparse.
-        is_complete_window = window_end <= last_request_time
-        if is_complete_window and request_count < min_polls_per_window:
+        if request_count > max_polls_per_window:
             checker.add(
                 f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected at least {min_polls_per_window} poll(s), found {request_count}",
+                f"expected at most {max_polls_per_window} poll(s), found {request_count}",
             )
 
         window_start = window_end
-
-    # Global maximum check: catches excessive total polling over the whole test.
-    test_duration_seconds = (last_request_time - test_started_at).total_seconds()
-    expected_total = round(test_duration_seconds / poll_interval_seconds)
-    max_total = min(expected_total * 3, expected_total + 3)
-    total_count = len(sorted_requests)
-    if total_count > max_total:
-        checker.add(
-            f"Total polls {total_count} exceeds maximum {max_total} "
-            f"(expected ~{expected_total} over {int(test_duration_seconds)}s at {poll_interval_seconds}s interval)",
-        )
 
     return checker.finalize()
 
@@ -1325,8 +1342,8 @@ def check_all_polls_at_correct_time(
 ) -> CheckResult:
     """
     Validates that requests to a specific endpoint occur at the expected frequency throughout the test.
-    Uses a window-based approach - for each window of 3x the poll interval, checks that there are at least 2 requests
-    and no more than min(expected*3, expected+3) requests.
+    Under-polling is detected via inter-request gaps (a gap > 1.5x the poll interval is a missed poll, tolerating
+    at most 1 miss per 5x-interval window). Over-polling is detected via a per-3x-interval-window request cap.
 
     If the endpoint contains a wildcard ('*'), each distinct concrete path matching the pattern is checked
     independently, so multi-MUP clients (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
