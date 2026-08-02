@@ -3335,18 +3335,17 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
 @pytest.mark.parametrize(
     "offsets_seconds, expected_passed, description_contains",
     [
-        ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
-        ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: fine
-        (
-            [0, 15, 30, 45, 60, 75, 90],
-            False,
-            "Total polls",
-        ),  # 7 requests in 90s: caught by global max (expected~2, max=5)
+        ([0, 60, 120, 180, 240], True, None),  # Consistent 60s cadence: fine
+        # Two isolated misses (gap > 90s) both landing in the same 300s window: flagged
+        ([0, 310, 550, 600], False, "expected at most 1 missed poll(s)"),
+        # A single isolated miss is tolerated
+        ([0, 200, 260, 320, 380], True, None),
     ],
 )
-def test_check_all_polls_at_correct_time_per_window_minimum(
+def test_check_all_polls_at_correct_time_under_polling_gaps(
     offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
 ):
+    """Under-polling: a gap > 1.5x the poll interval is a missed poll; at most 1 miss is tolerated per 5x window."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     poll_interval = 60
 
@@ -3378,23 +3377,18 @@ def test_check_all_polls_at_correct_time_per_window_minimum(
 
 
 @pytest.mark.parametrize(
-    "total_polls, test_duration_seconds, expected_passed",
+    "offsets_seconds, expected_passed, description_contains",
     [
-        # 5-min test (expected=5): max=min(15,8)=8
-        (8, 300, True),  # exactly at max
-        (9, 300, False),  # one over
-        # 30-min test (expected=30): max=min(90,33)=33
-        (33, 1800, True),  # exactly at max
-        (34, 1800, False),  # one over
-        # 1-min test (expected=1): max=min(3,4)=3
-        (3, 60, True),
-        (4, 60, False),
+        # 6 requests within a single 180s window: exactly at max
+        ([0, 30, 60, 90, 120, 150, 400], True, None),
+        # 7 requests within a single 180s window: one over
+        ([0, 25, 50, 75, 100, 125, 150, 400], False, "expected at most 6 poll(s)"),
     ],
 )
-def test_check_all_polls_at_correct_time_global_maximum(
-    total_polls: int, test_duration_seconds: int, expected_passed: bool
+def test_check_all_polls_at_correct_time_over_polling_window(
+    offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
 ):
-    """Global maximum: min(expected_total * 3, expected_total + 3) over the whole test."""
+    """Over-polling: no more than floor(1.5 * 3 + 2) = 6 requests per 3x-interval (180s) window."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     poll_interval = 60
 
@@ -3402,10 +3396,6 @@ def test_check_all_polls_at_correct_time_global_maximum(
         ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
     )
 
-    # Space polls evenly so per-window minimum is always satisfied
-    offsets = (
-        [int(i * test_duration_seconds / (total_polls - 1)) for i in range(total_polls)] if total_polls > 1 else [0]
-    )
     request_history = [
         generate_class_instance(
             RequestEntry,
@@ -3414,7 +3404,7 @@ def test_check_all_polls_at_correct_time_global_maximum(
             method=http.HTTPMethod.GET,
             timestamp=base_time + timedelta(seconds=offset),
         )
-        for i, offset in enumerate(offsets)
+        for i, offset in enumerate(offsets_seconds)
     ]
 
     result = check_all_polls_at_correct_time(
@@ -3424,9 +3414,9 @@ def test_check_all_polls_at_correct_time_global_maximum(
     )
 
     assert_check_result(result, expected_passed)
-    if not expected_passed:
+    if description_contains is not None:
         assert result.description is not None
-        assert "Total polls" in result.description
+        assert description_contains in result.description
 
 
 def test_check_all_polls_at_correct_time_last_window_no_false_positive():
@@ -3469,18 +3459,37 @@ def test_check_all_polls_at_correct_time_filters_by_request_type():
         ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
     )
 
-    # Mix of GET and POST requests - only POSTs should count
+    # GETs are correctly spaced, but if wrongly counted alongside the POSTs they wouldn't change the POST-only
+    # outcome below - POSTs alone have two isolated misses (gap > 90s) landing in the same 300s window.
     request_history = [
         generate_class_instance(RequestEntry, seed=1, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time),
         generate_class_instance(
-            RequestEntry, seed=2, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time + timedelta(minutes=1)
+            RequestEntry, seed=2, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time + timedelta(seconds=60)
+        ),
+        generate_class_instance(RequestEntry, seed=3, path="/mup/1", method=http.HTTPMethod.POST, timestamp=base_time),
+        generate_class_instance(
+            RequestEntry,
+            seed=4,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=310),
         ),
         generate_class_instance(
-            RequestEntry, seed=3, path="/mup/1", method=http.HTTPMethod.POST, timestamp=base_time + timedelta(minutes=9)
+            RequestEntry,
+            seed=5,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=550),
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=6,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=600),
         ),
     ]
 
-    # only 1 POST exists, so earlier windows will be empty
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
@@ -3595,7 +3604,21 @@ def test_check_all_polls_at_correct_time_wildcard_fails_when_one_path_misses_pol
             seed=101,
             path="/mup/3",
             method=http.HTTPMethod.POST,
-            timestamp=base_time + timedelta(seconds=540),  # 9 minutes later — empty windows in between
+            timestamp=base_time + timedelta(seconds=310),  # gap > 90s: missed poll
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=102,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=550),  # another gap > 90s: second missed poll, same window
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=103,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=600),
         ),
     ]
 
