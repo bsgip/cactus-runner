@@ -6,11 +6,15 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
 from cactus_schema.runner import WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
+from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
 from envoy.server.model.site import Site, SiteDERSetting
+from envoy.server.model.site_reading import SiteReadingType
+from sqlalchemy import inspect
 
 from cactus_runner.app.warning import (
     POST_TEST_ANALYSERS,
     _analyse_der_settings_varied,
+    _analyse_reading_type_varied,
     run_post_test_analysers,
     warn,
 )
@@ -185,3 +189,75 @@ async def test_analyse_der_settings_varied_warns_when_any_value_changed(
 
 def test_analyse_der_settings_varied_is_registered():
     assert _analyse_der_settings_varied in POST_TEST_ANALYSERS
+
+
+@pytest.mark.anyio
+async def test_analyse_reading_type_varied_no_warning_when_unchanged(pg_base_config):
+    active_test_procedure = _make_active_test_procedure()
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        session.add(site)
+        await session.flush()
+
+        srt = generate_class_instance(SiteReadingType, seed=202, site=site, aggregator_id=1)
+        session.add(srt)
+        await session.flush()
+
+        # Archived entry copies every shared column from srt unchanged - not a change
+        shared_values = {c.key: getattr(srt, c.key) for c in inspect(SiteReadingType).mapper.column_attrs}
+        session.add(
+            generate_class_instance(
+                ArchiveSiteReadingType,
+                seed=303,
+                archive_id=1,
+                archive_time=datetime.now(UTC),
+                deleted_time=None,
+                **shared_values,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        await _analyse_reading_type_varied(session, active_test_procedure, [])
+
+    assert active_test_procedure.warnings == {}
+
+
+@pytest.mark.anyio
+async def test_analyse_reading_type_varied_warns_when_uom_changed(pg_base_config):
+    active_test_procedure = _make_active_test_procedure()
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        session.add(site)
+        await session.flush()
+
+        srt = generate_class_instance(SiteReadingType, seed=202, site=site, aggregator_id=1, uom=38)
+        session.add(srt)
+        await session.flush()
+
+        # Archived entry matches srt in every column except uom - the only real variation
+        shared_values = {c.key: getattr(srt, c.key) for c in inspect(SiteReadingType).mapper.column_attrs}
+        shared_values["uom"] = 61
+        session.add(
+            generate_class_instance(
+                ArchiveSiteReadingType,
+                seed=303,
+                archive_id=1,
+                archive_time=datetime.now(UTC),
+                deleted_time=None,
+                **shared_values,
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        await _analyse_reading_type_varied(session, active_test_procedure, [])
+
+    assert list(active_test_procedure.warnings.keys()) == ["reading-type.varied"]
+    assert "uom" in active_test_procedure.warnings["reading-type.varied"].message
+
+
+def test_analyse_reading_type_varied_is_registered():
+    assert _analyse_reading_type_varied in POST_TEST_ANALYSERS
