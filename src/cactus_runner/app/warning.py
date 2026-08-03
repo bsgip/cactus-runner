@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 
 from cactus_schema.runner import RequestEntry, WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
+from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
 from envoy.server.model.site import SiteDERSetting
-from sqlalchemy import func, select
+from envoy.server.model.site_reading import SiteReadingType
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.models import ActiveTestProcedure
@@ -73,7 +75,40 @@ async def _analyse_der_settings_varied(
         )
 
 
-POST_TEST_ANALYSERS: list[PostTestAnalyser] = [_analyse_der_settings_varied]
+async def _analyse_reading_type_varied(
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
+) -> None:
+    """Flags if a MirrorUsagePoint's ReadingType changed during the test."""
+    pairs = (
+        await session.execute(
+            select(SiteReadingType, ArchiveSiteReadingType).join(
+                ArchiveSiteReadingType,
+                ArchiveSiteReadingType.site_reading_type_id == SiteReadingType.site_reading_type_id,
+            )
+        )
+    ).all()
+
+    field_names = [c.key for c in inspect(SiteReadingType).mapper.column_attrs]
+    varied_fields = {
+        field
+        for current, archived in pairs
+        for field in field_names
+        if getattr(current, field) != getattr(archived, field)
+    }
+
+    if varied_fields:
+        warn(
+            active_test_procedure,
+            "reading-type.varied",
+            "A reading type changed during the test",
+            f"The {', '.join(sorted(varied_fields))} field(s) of a MirrorUsagePoint's ReadingType changed at "
+            "least once during the test. This updates the reading type for all associated readings, including "
+            "historical ones already submitted. Please ensure you do not update reading types unless your "
+            "previous readings were submitted incorrectly.",
+        )
+
+
+POST_TEST_ANALYSERS: list[PostTestAnalyser] = [_analyse_der_settings_varied, _analyse_reading_type_varied]
 
 
 async def run_post_test_analysers(
