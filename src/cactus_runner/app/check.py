@@ -1262,6 +1262,16 @@ def _is_first_page(url: str) -> bool:
     return parse_qs(urlparse(url).query).get("s", ["0"])[0] == "0"
 
 
+def _fmt_time(dt: datetime) -> str:
+    return dt.strftime("%H:%M:%S")
+
+
+def _fmt_times_capped(times: Sequence[datetime], limit: int = 4) -> str:
+    shown = ", ".join(_fmt_time(t) for t in times[:limit])
+    remaining = len(times) - limit
+    return f"{shown} (+{remaining} more)" if remaining > 0 else shown
+
+
 def _check_poll_timing_for_path(
     path_requests: list[RequestEntry],
     poll_interval_seconds: int,
@@ -1285,8 +1295,8 @@ def _check_poll_timing_for_path(
     miss_window_seconds = poll_interval_seconds * 5
     max_misses_per_window = 1
 
-    missed_gap_times = [
-        curr.timestamp
+    missed_gaps = [
+        (prev.timestamp, curr.timestamp, (curr.timestamp - prev.timestamp).total_seconds())
         for prev, curr in zip(sorted_requests, sorted_requests[1:], strict=False)
         if (curr.timestamp - prev.timestamp).total_seconds() > miss_threshold_seconds
     ]
@@ -1297,15 +1307,19 @@ def _check_poll_timing_for_path(
         window_end = window_start + timedelta(seconds=miss_window_seconds)
         window_number += 1
 
-        misses_in_window = sum(1 for t in missed_gap_times if window_start <= t < window_end)
+        gaps_in_window = [g for g in missed_gaps if window_start <= g[1] < window_end]
 
         # Only enforce the tolerance on complete windows — the last partial window may naturally be sparse.
         is_complete_window = window_end <= last_request_time
-        if is_complete_window and misses_in_window > max_misses_per_window:
+        if is_complete_window and len(gaps_in_window) > max_misses_per_window:
+            gap_details = "; ".join(
+                f"{gap_seconds:.0f}s @ {_fmt_time(gap_start)}->{_fmt_time(gap_end)}"
+                for gap_start, gap_end, gap_seconds in gaps_in_window[:4]
+            )
             checker.add(
-                f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected at most {max_misses_per_window} missed poll(s) (gap > {miss_threshold_seconds}s), "
-                f"found {misses_in_window}",
+                f"Window {window_number} ({_fmt_time(window_start)}-{_fmt_time(window_end)}): "
+                f"{len(gaps_in_window)} missed poll(s) > {max_misses_per_window} allowed "
+                f"(gap > {miss_threshold_seconds:.0f}s): {gap_details}",
             )
 
         window_start = window_end
@@ -1325,9 +1339,10 @@ def _check_poll_timing_for_path(
         request_count = len(requests_in_window)
 
         if request_count > max_polls_per_window:
+            request_times = _fmt_times_capped([r.timestamp for r in requests_in_window])
             checker.add(
-                f"Window {window_number} ({window_start.isoformat()} - {window_end.isoformat()}): "
-                f"expected at most {max_polls_per_window} poll(s), found {request_count}",
+                f"Window {window_number} ({_fmt_time(window_start)}-{_fmt_time(window_end)}): "
+                f"{request_count} poll(s) > {max_polls_per_window} allowed: {request_times}",
             )
 
         window_start = window_end
@@ -1399,7 +1414,12 @@ def check_all_polls_at_correct_time(
         path_requests = [r for r in endpoint_requests if r.path == path]
         path_result = _check_poll_timing_for_path(path_requests, poll_interval_seconds, test_started_at)
         if not path_result.passed and path_result.description:
-            checker.add(f"{path}: {path_result.description}")
+            # Only disambiguate which pattern matched when multiple were given - with one endpoint it's implied.
+            pattern_note = ""
+            if len(endpoints) > 1:
+                matched_patterns = [e for e in endpoints if does_endpoint_match(path, e)]
+                pattern_note = f" (matches {matched_patterns})"
+            checker.add(f"{path}{pattern_note}: {path_result.description}")
 
     result = checker.finalize()
     if result.passed:

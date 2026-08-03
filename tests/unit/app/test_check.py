@@ -3420,7 +3420,7 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
     [
         ([0, 60, 120, 180, 240], True, None),  # Consistent 60s cadence: fine
         # Two isolated misses (gap > 90s) both landing in the same 300s window: flagged
-        ([0, 310, 550, 600], False, "expected at most 1 missed poll(s)"),
+        ([0, 310, 550, 600], False, "missed poll(s) > 1 allowed"),
         # A single isolated miss is tolerated
         ([0, 200, 260, 320, 380], True, None),
     ],
@@ -3465,7 +3465,7 @@ def test_check_all_polls_at_correct_time_under_polling_gaps(
         # 6 requests within a single 180s window: exactly at max
         ([0, 30, 60, 90, 120, 150, 400], True, None),
         # 7 requests within a single 180s window: one over
-        ([0, 25, 50, 75, 100, 125, 150, 400], False, "expected at most 6 poll(s)"),
+        ([0, 25, 50, 75, 100, 125, 150, 400], False, "poll(s) > 6 allowed"),
     ],
 )
 def test_check_all_polls_at_correct_time_over_polling_window(
