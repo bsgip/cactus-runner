@@ -1341,24 +1341,26 @@ def check_all_polls_at_correct_time(
     resolved_parameters: dict[str, Any],
 ) -> CheckResult:
     """
-    Validates that requests to a specific endpoint occur at the expected frequency throughout the test.
+    Validates that requests to one or more endpoints occur at the expected frequency throughout the test.
     Under-polling is detected via inter-request gaps (a gap > 1.5x the poll interval is a missed poll, tolerating
     at most 1 miss per 5x-interval window). Over-polling is detected via a per-3x-interval-window request cap.
 
-    If the endpoint contains a wildcard ('*'), each distinct concrete path matching the pattern is checked
-    independently, so multi-MUP clients (e.g. /mup/2 and /mup/3) are each validated at the expected rate.
+    If an endpoint contains a wildcard ('*'), each distinct concrete path matching the pattern is checked
+    independently, so multi-MUP clients (e.g. /mup/2 and /mup/3) are each validated at the expected rate. This
+    also applies across multiple endpoints - each distinct concrete path across all given endpoints is checked
+    independently against the same poll_interval_seconds/request_type_str.
 
     Parameters:
-        endpoint: e.g., "/mup/*" or "/dcap"
+        endpoints: e.g., ["/mup/*"] or ["/dcap"] or ["/derp", "/derc"]
         poll_interval_seconds
         request_type_str: "GET", "POST", or "PUT"
     """
-    endpoint: str = resolved_parameters.get("endpoint", "")
+    endpoints: list[str] = resolved_parameters.get("endpoints", [])
     poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 0)
     request_type_str: str = resolved_parameters.get("request_type_str", "")
 
-    if not endpoint:
-        return CheckResult(False, "No endpoint specified for poll timing check")
+    if not endpoints:
+        return CheckResult(False, "No endpoints specified for poll timing check")
 
     if not poll_interval_seconds:
         return CheckResult(False, "No poll_interval_seconds specified for poll timing check")
@@ -1377,15 +1379,17 @@ def check_all_polls_at_correct_time(
     if test_started_at is None:
         return CheckResult(False, "Test has not started - cannot check poll timing")
 
-    # Filter requests by endpoint, method, and first pagination page (s=0 or absent)
+    # Filter requests by endpoint (any match), method, and first pagination page (s=0 or absent)
     endpoint_requests = [
         r
         for r in request_history
-        if r.method == request_type and does_endpoint_match(r.path, endpoint) and _is_first_page(r.url)
+        if r.method == request_type
+        and _is_first_page(r.url)
+        and any(does_endpoint_match(r.path, endpoint) for endpoint in endpoints)
     ]
 
     if not endpoint_requests:
-        return CheckResult(False, f"No {request_type_str} requests found for endpoint '{endpoint}'")
+        return CheckResult(False, f"No {request_type_str} requests found for endpoint(s) {endpoints}")
 
     # Group by concrete path and check each independently.
     # does_endpoint_match already handles wildcard filtering above, so with an exact endpoint
@@ -1399,7 +1403,7 @@ def check_all_polls_at_correct_time(
 
     result = checker.finalize()
     if result.passed:
-        return CheckResult(True, f"All poll timing checks passed for {request_type_str} '{endpoint}'")
+        return CheckResult(True, f"All poll timing checks passed for {request_type_str} {endpoints}")
     return result
 
 
