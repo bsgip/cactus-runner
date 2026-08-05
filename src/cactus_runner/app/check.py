@@ -853,7 +853,7 @@ async def do_check_readings_on_minute_boundary(
 
 
 def mrid_matches_pen(pen: int, mrid: str) -> bool:
-    # The last 32 bits (8 hex digits) of mrid should match the pen
+    # Per CSIP-AUS TS 5573 Section 4.2, the PEN is formatted as decimal (not hex) in the last 8 characters of the mrid
     try:
         pen_from_mrid = int(mrid[-8:])
     except ValueError:
