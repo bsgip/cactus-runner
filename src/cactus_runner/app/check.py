@@ -894,6 +894,12 @@ async def do_check_reading_type_mrids_match_pen(site_reading_types: Sequence[Sit
     return CheckResult(True, None)
 
 
+READING_LOCATION_DESCRIPTIONS: dict[ReadingLocation, str] = {
+    ReadingLocation.SITE_READING: "site level",
+    ReadingLocation.DEVICE_READING: "DER/device level",
+}
+
+
 async def do_check_site_readings_and_params(
     session: AsyncSession,
     resolved_parameters: dict[str, Any],
@@ -909,6 +915,14 @@ async def do_check_site_readings_and_params(
         session, uom, reading_location, kind, data_qualifier
     )
 
+    location_description = READING_LOCATION_DESCRIPTIONS.get(reading_location, reading_location.name)
+    # The not applicable qualifier is confusing, the rest are self explanatory so we can return directly
+    qualifier_description = (
+        "NOT_APPLICABLE (i.e. a cumulative/sample reading, NOT an interval average)"
+        if data_qualifier == DataQualifierType.NOT_APPLICABLE
+        else data_qualifier.name
+    )
+
     check_results: list[CheckResult] = []
     if incorrect_roleflags and not site_reading_types:
         actual_flags = ", ".join(f"0x{srt.role_flags:02X}" for srt in incorrect_roleflags)
@@ -916,7 +930,7 @@ async def do_check_site_readings_and_params(
             CheckResult(
                 False,
                 f"Found MUP(s) with unexpected roleFlags={actual_flags} "
-                f"(expected 0x{reading_location:02X}) for {data_qualifier.name}/{uom.name} readings.",
+                f"(expected {location_description}) for {data_qualifier.name}/{uom.name} readings.",
             )
         )
 
@@ -924,7 +938,8 @@ async def do_check_site_readings_and_params(
         check_results.append(
             CheckResult(
                 False,
-                f"No site level {data_qualifier.name}/{uom.name} MirrorUsagePoint for the active EndDevice.",
+                f"No {location_description} MirrorUsagePoint for the active EndDevice with "
+                f"{uom.name} readings using DataQualifier {qualifier_description}.",
             )
         )
         return merge_checks(check_results)
