@@ -1154,7 +1154,7 @@ def response_type_to_string(t: int | ResponseType | None) -> str:
     if t is None:
         return "N/A"
     elif isinstance(t, ResponseType):
-        return f"{t} ({t.value})"
+        return f"{t.name} ({t.value})"
     elif isinstance(t, int):
         try:
             return response_type_to_string(ResponseType(t))
