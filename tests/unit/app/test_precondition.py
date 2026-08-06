@@ -96,7 +96,7 @@ async def test_register_aggregator(pg_empty_config, subscription_domain: str | N
     lfdi = "abc123lfdi"
     async with generate_async_session(pg_empty_config) as session:
         returned_agg_id = await precondition.register_aggregator(lfdi, subscription_domain)
-        assert returned_agg_id > 0, "We should always be getting aggregator ID 1"
+        assert returned_agg_id == "1", "We should always be getting aggregator ID 1"
 
     async with generate_async_session(pg_empty_config) as session:
         null_agg = (
@@ -109,7 +109,7 @@ async def test_register_aggregator(pg_empty_config, subscription_domain: str | N
                 select(Aggregator).where(Aggregator.aggregator_id == 1).options(selectinload(Aggregator.domains))
             )
         ).scalar_one()
-        assert cactus_agg.aggregator_id == returned_agg_id
+        assert cactus_agg.aggregator_id == int(returned_agg_id)
 
         # Make sure domains are set (or not set)
         if subscription_domain is None:
@@ -135,14 +135,14 @@ async def test_register_no_aggregator(pg_empty_config, subscription_domain: str 
 
     async with generate_async_session(pg_empty_config) as session:
         returned_agg_id = await precondition.register_aggregator(None, subscription_domain)
-        assert returned_agg_id == 0, "Should be defaulting to the default aggregator ID"
+        assert returned_agg_id == "0", "Should be defaulting to the default aggregator ID"
 
     async with generate_async_session(pg_empty_config) as session:
         null_agg = (
             await session.execute(select(Aggregator).where(Aggregator.aggregator_id == NULL_AGGREGATOR_ID))
         ).scalar_one_or_none()
         assert null_agg is not None
-        assert null_agg.aggregator_id == returned_agg_id
+        assert null_agg.aggregator_id == int(returned_agg_id)
 
         assert (await session.execute(select(func.count()).select_from(Certificate))).scalar_one() == 0
         assert (await session.execute(select(func.count()).select_from(Aggregator))).scalar_one() == 1

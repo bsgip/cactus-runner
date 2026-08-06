@@ -506,7 +506,7 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
     if tag is not None:
         assert tag in active_test_procedure.resource_annotations.der_program_ids_by_alias
         expected_id = active_test_procedure.resource_annotations.der_program_ids_by_alias[tag]
-        assert isinstance(expected_id, int) and expected_id > 0
+        assert isinstance(expected_id, str) and expected_id != "0" and expected_id != "None"
     else:
         assert len(active_test_procedure.resource_annotations.der_program_ids_by_alias) == 0
         expected_id = None
@@ -587,7 +587,7 @@ async def test_action_create_der_control_existing_group_with_tag(pg_base_config,
         step_status={},
         finished_zip_path=None,
         resource_annotations=ResourceAnnotations(
-            der_program_ids_by_alias={(derp_tag + "foo"): existing_scg_id + 1, derp_tag: existing_scg_id}
+            der_program_ids_by_alias={(derp_tag + "foo"): f"{existing_scg_id + 1}", derp_tag: f"{existing_scg_id}"}
         ),
     )
     async with generate_async_session(pg_base_config) as session:
@@ -772,7 +772,7 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
     async with generate_async_session(pg_base_config) as session:
         doe = (await session.execute(select(DynamicOperatingEnvelope).limit(1))).scalar_one()
         tagged_control_id = active_test_procedure.resource_annotations.der_control_ids_by_alias[tag]
-        assert tagged_control_id == doe.dynamic_operating_envelope_id
+        assert tagged_control_id == f"{doe.dynamic_operating_envelope_id}"
 
 
 @pytest.mark.anyio
@@ -814,7 +814,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
         ActiveTestProcedure,
         step_status={},
         finished_zip_path=None,
-        resource_annotations=ResourceAnnotations(der_control_ids_by_alias={existing_derc_tag: existing_derc_id}),
+        resource_annotations=ResourceAnnotations(der_control_ids_by_alias={existing_derc_tag: f"{existing_derc_id}"}),
     )
 
     inserted_tag = "DERC-NEW"
@@ -834,8 +834,8 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
     # Verify the tag was added to the active test procedure
     derc_id_by_alias = active_test_procedure.resource_annotations.der_control_ids_by_alias
     assert inserted_tag in derc_id_by_alias
-    assert derc_id_by_alias[existing_derc_tag] == existing_derc_id
-    assert derc_id_by_alias[inserted_tag] != existing_derc_id
+    assert derc_id_by_alias[existing_derc_tag] == f"{existing_derc_id}"
+    assert derc_id_by_alias[inserted_tag] != f"{existing_derc_id}"
 
     # Verify the tagged control ID matches the created control
     async with generate_async_session(pg_base_config) as session:
@@ -857,8 +857,8 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
         assert existing.export_limit_watts == 123
         assert inserted.export_limit_watts == 456
 
-        assert derc_id_by_alias[existing_derc_tag] == existing.dynamic_operating_envelope_id
-        assert derc_id_by_alias[inserted_tag] == inserted.dynamic_operating_envelope_id
+        assert derc_id_by_alias[existing_derc_tag] == f"{existing.dynamic_operating_envelope_id}"
+        assert derc_id_by_alias[inserted_tag] == f"{inserted.dynamic_operating_envelope_id}"
 
 
 @pytest.mark.anyio

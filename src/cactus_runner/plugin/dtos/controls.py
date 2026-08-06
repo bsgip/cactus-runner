@@ -16,20 +16,8 @@ class SiteControlGroup:
 
 @dataclass(slots=True, frozen=True)
 class SiteControl:
-    site_control_id: str | None
-    site_id: str
-    start_time: datetime
-    duration_seconds: int
-    randomize_start_seconds: int | None
-    display_id: int | None
-    set_energized: bool | None
-    set_connect: bool | None
-    import_limit_watts: Decimal | None
-    export_limit_watts: Decimal | None
-    generation_limit_watts: Decimal | None
-    load_limit_watts: Decimal | None
-    set_point_percentage: Decimal | None
-    ramp_time_seconds: Decimal | None
+    site_control_id: str
+    deleted_time: datetime | None
 
 
 @dataclass(slots=True, frozen=True)

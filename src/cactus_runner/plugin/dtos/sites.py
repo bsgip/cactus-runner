@@ -9,6 +9,4 @@ class Site:
     nmi: str | None
     lfdi: str
     sfdi: int
-    aggregator_id: int | None
     device_category: int
-    timezone_id: str | None

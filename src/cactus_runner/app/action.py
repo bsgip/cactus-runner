@@ -203,7 +203,7 @@ async def action_create_der_program(
     )
 
     if tag is not None:
-        active_test_procedure.resource_annotations.der_program_ids_by_alias[tag] = site_control_group_id
+        active_test_procedure.resource_annotations.der_program_ids_by_alias[tag] = f"{site_control_group_id}"
 
 
 async def action_create_der_control(  # noqa: C901
@@ -248,7 +248,7 @@ async def action_create_der_control(  # noqa: C901
     # We need the parent SiteControlGroup.site_control_group_id to nest this control under. This can be resolved via
     # a direct tag reference - or it can be implied via primacy / fsa_id values.
     der_program_tag: str | None = resolved_parameters.get("der_program_tag", None)
-    site_control_group_id: int | None = None
+    site_control_group_id: str | None = None
     if der_program_tag is not None:
         site_control_group_id = active_test_procedure.resource_annotations.der_program_ids_by_alias.get(der_program_tag)
         if site_control_group_id is None:
@@ -262,16 +262,18 @@ async def action_create_der_control(  # noqa: C901
         if control_groups_response.site_control_groups:
             for g in control_groups_response.site_control_groups:
                 if g.primacy == primacy and (fsa_id is None or fsa_id == g.fsa_id):
-                    site_control_group_id = g.site_control_group_id
+                    site_control_group_id = f"{g.site_control_group_id}"
                     break
 
         # Create our site control group if we don't have an existing one
         if site_control_group_id is None:
-            site_control_group_id = await envoy_client.post_site_control_group(
+            site_control_group_id_int = await envoy_client.post_site_control_group(
                 SiteControlGroupRequest(
                     description=f"Primacy {primacy}", primacy=primacy, fsa_id=fsa_id if fsa_id is not None else 1
                 )
             )
+            # TODO: temporarily in place as part of plugin architecture implementation.
+            site_control_group_id = f"{site_control_group_id_int}"
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
     ramp_time_seconds: Decimal | None = resolved_parameters.get("ramp_time_seconds", None)
@@ -299,7 +301,8 @@ async def action_create_der_control(  # noqa: C901
 
     for site_id in site_ids:
         await envoy_client.create_site_controls(
-            site_control_group_id,
+            # TODO: Temporary int casting as stepped implementation to plugin architecture
+            int(site_control_group_id),
             [
                 SiteControlRequest(
                     calculation_log_id=None,
@@ -324,7 +327,10 @@ async def action_create_der_control(  # noqa: C901
     # Ideally this would be part of the admin client return functionality, but for now we will just grab the latest
     # control we made, and match it to the tag
     if annotation is not None:
-        controls: list[SiteControlResponse] = await envoy_client.get_all_site_controls(group_id=site_control_group_id)
+        # TODO: Temporary int casting as part of plugin implementation step
+        controls: list[SiteControlResponse] = await envoy_client.get_all_site_controls(
+            group_id=int(site_control_group_id)
+        )
 
         if controls:
             sorted_controls = sorted(controls, key=lambda c: c.created_time, reverse=True)
@@ -333,7 +339,7 @@ async def action_create_der_control(  # noqa: C901
             raise FailedActionError("No controls exist for this site control group despite creation in this action.")
 
         # We know due to an earlier check that if we have a tag annotation - there will ONLY be a single control created
-        active_test_procedure.resource_annotations.der_control_ids_by_alias[annotation] = latest_site_control_id
+        active_test_procedure.resource_annotations.der_control_ids_by_alias[annotation] = f"{latest_site_control_id}"
 
 
 async def action_cancel_active_controls(envoy_client: EnvoyAdminClient) -> None:
@@ -431,7 +437,7 @@ async def action_register_end_device(
     session.add(
         Site(
             nmi=nmi,
-            aggregator_id=active_test_procedure.client_aggregator_id,
+            aggregator_id=int(active_test_procedure.client_aggregator_id),
             timezone_id="Australia/Brisbane",
             created_time=now,
             changed_time=now,
@@ -557,7 +563,7 @@ async def apply_action(  # noqa: C901
 
     except Exception as exc:
         logger.error(f"Failed executing action {action}", exc_info=exc)
-        raise FailedActionError(f"Failed executing action {action.type}") from None
+        raise FailedActionError(f"Failed executing action '{action.type}'") from None
 
     raise UnknownActionError(f"Unrecognised action '{action.type}'. This is a problem with the test definition")
 
