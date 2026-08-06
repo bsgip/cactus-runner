@@ -62,7 +62,7 @@ class InitialisedCertificates:
     client_certificate_type: ClientCertificateType | None = None
     client_certificate: str | None = None
     client_lfdi: str | None = None
-    client_aggregator_id: int | None = None  # Stored for reuse when advancing to the next playlist test
+    client_aggregator_id: str | None = None  # Stored for reuse when advancing to the next playlist test
 
 
 @dataclass
@@ -89,8 +89,10 @@ class StepInfo:
 
 @dataclass
 class ResourceAnnotations:
-    der_program_ids_by_alias: dict[str, int] = field(default_factory=dict)
-    der_control_ids_by_alias: dict[str, int] = field(default_factory=dict)
+    """`Alias: ID` pairs."""
+
+    der_program_ids_by_alias: dict[str, str] = field(default_factory=dict)
+    der_control_ids_by_alias: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -119,7 +121,7 @@ class ActiveTestProcedure:
     listeners: list[Listener]
     step_status: dict[str, StepInfo]
     client_certificate_type: ClientCertificateType  # Human readable text to identify source of cert.
-    client_aggregator_id: int  # What aggregator ID will be the client operating as? (0 for device certs)
+    client_aggregator_id: str  # What aggregator ID will be the client operating as? (0 for device certs)
     client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
     client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)
     run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any

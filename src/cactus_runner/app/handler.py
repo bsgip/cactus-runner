@@ -154,7 +154,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 async def setup_test_procedure_from_request(
     run_request: RunRequest,
     client_lfdi: str,
-    client_aggregator_id: int,
+    client_aggregator_id: str,
     client_type: ClientCertificateType,
 ) -> ActiveTestProcedure:
     """Create an ActiveTestProcedure from a RunRequest.
@@ -214,7 +214,7 @@ async def setup_test_procedure_from_request(
 async def initialize_next_test(
     run_request: RunRequest,
     client_lfdi: str,
-    client_aggregator_id: int,
+    client_aggregator_id: str,
     client_certificate_type: ClientCertificateType,
     runner_state: RunnerState,
     envoy_client: EnvoyAdminClient,
