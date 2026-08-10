@@ -20,6 +20,7 @@ from envoy.server.model.site import Site, SiteDERRating, SiteDERSetting, SiteDER
 from freezegun import freeze_time
 
 from cactus_runner.app import status
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
 
@@ -105,12 +106,15 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     request_history = Mock()
     last_client_interaction = Mock()
 
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
+
     # Act
     runner_status = await status.get_active_runner_status(
         session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
+        envoy_client=mock_envoy_client,
     )
 
     # Assert
@@ -139,6 +143,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         assert runner_status.timeline is None
 
     assert_mock_session(mock_session)
+    mock_envoy_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -155,15 +160,18 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     active_test_procedure.listeners = []
     request_history = Mock()
     last_client_interaction = Mock()
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
 
     _ = await status.get_active_runner_status(
         session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
+        envoy_client=mock_envoy_client,
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
     assert_mock_session(mock_session)
+    mock_envoy_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -218,8 +226,12 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
         finished_zip_path=None,
     )
 
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
+
     # Act
-    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+    runner_status = await status.get_active_runner_status(
+        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client
+    )
 
     # Assert - EndDeviceMetadata
     metadata: EndDeviceMetadata | None = runner_status.end_device_metadata
@@ -256,6 +268,8 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     assert metadata.der_status.inverter_status == "SLEEPING"
     assert metadata.der_status.alarm_status is None
 
+    mock_envoy_client.assert_not_called()
+
 
 @pytest.mark.anyio
 async def test_get_active_runner_status_end_device_metadata_handles_errors(mocker):
@@ -277,9 +291,15 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
         finished_zip_path=None,
     )
 
-    runner_status = await status.get_active_runner_status(mock_session, active_test_procedure, Mock(), Mock())
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
+
+    runner_status = await status.get_active_runner_status(
+        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client
+    )
 
     assert runner_status.end_device_metadata is None
+
+    mock_envoy_client.assert_not_called()
 
 
 def test_get_runner_status(example_client_interaction: ClientInteraction):
@@ -402,6 +422,8 @@ async def test_get_active_runner_status_with_cropping(mocker):
 
     last_client_interaction = Mock()
 
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
+
     # Act - crop to last 15 minutes
     runner_status = await status.get_active_runner_status(
         session=mock_session,
@@ -409,6 +431,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
         request_history=request_history,
         last_client_interaction=last_client_interaction,
         crop_minutes=15,
+        envoy_client=mock_envoy_client,
     )
 
     # Assert - request_history should only contain last 15 minutes

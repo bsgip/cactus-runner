@@ -32,6 +32,7 @@ from envoy_schema.server.schema.sep2.der import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
@@ -128,7 +129,7 @@ def get_runner_status_summary(step_status: dict[str, StepInfo]) -> str:
 
 
 async def get_criteria_summary(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient
 ) -> list[CriteriaEntry]:
     if not active_test_procedure.definition.criteria or not active_test_procedure.definition.criteria.checks:
         return []
@@ -136,7 +137,7 @@ async def get_criteria_summary(
     criteria: list[CriteriaEntry] = []
     for check in active_test_procedure.definition.criteria.checks:
         try:
-            check_result = await run_check(check, active_test_procedure, session)
+            check_result = await run_check(check, active_test_procedure, session, envoy_client)
             criteria.append(
                 CriteriaEntry(
                     check_result.passed,
@@ -151,7 +152,7 @@ async def get_criteria_summary(
 
 
 async def get_precondition_checks_summary(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient
 ) -> list[PreconditionCheckEntry]:
     if not active_test_procedure.definition.preconditions or not active_test_procedure.definition.preconditions.checks:
         return []
@@ -159,7 +160,7 @@ async def get_precondition_checks_summary(
     checks: list[PreconditionCheckEntry] = []
     for check in active_test_procedure.definition.preconditions.checks:
         try:
-            check_result = await run_check(check, active_test_procedure, session)
+            check_result = await run_check(check, active_test_procedure, session, envoy_client)
             checks.append(
                 PreconditionCheckEntry(
                     check_result.passed,
@@ -292,6 +293,7 @@ async def get_active_runner_status(
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
+    envoy_client: EnvoyAdminClient,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
     now = datetime.now(UTC)
@@ -381,8 +383,8 @@ async def get_active_runner_status(
         log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER, tail_bytes=64 * 1024),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
-        criteria=await get_criteria_summary(session, active_test_procedure),
-        precondition_checks=await get_precondition_checks_summary(session, active_test_procedure),
+        criteria=await get_criteria_summary(session, active_test_procedure, envoy_client),
+        precondition_checks=await get_precondition_checks_summary(session, active_test_procedure, envoy_client),
         instructions=await get_current_instructions(active_test_procedure),
         status_summary=get_runner_status_summary(step_status=active_test_procedure.step_status),
         step_status=step_status,

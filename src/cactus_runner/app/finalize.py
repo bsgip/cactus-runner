@@ -22,6 +22,7 @@ from cactus_runner.app.database import (
     get_postgres_dsn,
 )
 from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import (
     get_reading_counts_grouped_by_reading_type,
     get_sites,
@@ -231,7 +232,7 @@ async def generate_json_reporting_data(
     return json_reporting_data
 
 
-async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -> Path:  # noqa: C901
+async def finish_active_test(runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient) -> Path:  # noqa: C901
     """For the specified RunnerState - move the active test into a "Finished" state by writing the final ZIP
     to a temporary file. Raises NoActiveTestProcedureError if there isn't an active test procedure for the specified
     RunnerState
@@ -265,6 +266,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure=active_test_procedure,
                 request_history=capped_request_history,
                 last_client_interaction=runner_state.last_client_interaction,
+                envoy_client=envoy_client,
             )
         ).to_json()
     except Exception as exc:
@@ -280,6 +282,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
                 active_test_procedure.definition.criteria.checks,
                 active_test_procedure,
                 session,
+                envoy_client,
                 runner_state.request_history,
             )
         except Exception as exc:

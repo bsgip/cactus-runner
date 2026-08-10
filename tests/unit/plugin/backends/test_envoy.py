@@ -6,11 +6,11 @@ from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model import DynamicOperatingEnvelope, Site, SiteControlGroup
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
 
-from cactus_runner.plugin.backends.envoy import EnvoyBackend
+from cactus_runner.plugin.backends import EnvoyBackend
 
 
-@pytest.mark.asyncio
-async def test_get_site_controls(pg_base_config) -> None:
+@pytest.mark.anyio
+async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
     """Tests that the get_site_controls returns all controls as expected."""
     async with generate_async_session(pg_base_config) as session:
         site_control_group = generate_class_instance(SiteControlGroup, seed=101)
@@ -43,7 +43,7 @@ async def test_get_site_controls(pg_base_config) -> None:
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
 
         controls = await backend.get_site_controls()
 

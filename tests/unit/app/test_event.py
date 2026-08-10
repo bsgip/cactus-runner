@@ -680,7 +680,7 @@ async def test_handle_event_trigger_normal_operation(
     mock_is_listener_triggerable.side_effect = do_mock_is_listener_triggerable
 
     # Mock all_checks_passing to return True if the checks is in check_indexes
-    def do_mock_all_checks_passing(checks, active_test_procedure, session):
+    def do_mock_all_checks_passing(checks, active_test_procedure, session, _):
         assert session is mock_session
         assert active_test_procedure is input_runner_state.active_test_procedure
 

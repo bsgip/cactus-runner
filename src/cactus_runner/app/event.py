@@ -171,7 +171,7 @@ async def handle_event_trigger(
         if await is_listener_triggerable(listener, trigger, session, active_test_procedure):
             logger.info(f"handle_event_trigger: Matched Step {listener.step} for {trigger}")
 
-            if not await all_checks_passing(listener.event.checks, active_test_procedure, session):
+            if not await all_checks_passing(listener.event.checks, active_test_procedure, session, envoy_client):
                 logger.info(f"handle_event_trigger: Step {listener.step} is NOT being triggered due to failing checks.")
                 continue
 

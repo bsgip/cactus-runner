@@ -78,6 +78,7 @@ from cactus_runner.app.check import (
     run_check,
     timestamp_on_minute_boundary,
 )
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -86,8 +87,9 @@ from cactus_runner.models import (
     ResourceAnnotations,
 )
 from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends import EnvoyBackend
 from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.envoy import EnvoyBackend, map_envoy_site_reading_type_to_dto
+from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_reading_type_to_dto
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
@@ -749,14 +751,18 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
 async def test_check_der_settings_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 DERRATING_BOOL_PARAM_SCENARIOS = [
@@ -978,14 +984,18 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
 async def test_check_der_capability_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1254,14 +1264,18 @@ async def test_check_der_capability_contents(
 async def test_check_der_status_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await check_der_status_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1310,11 +1324,15 @@ async def test_do_check_readings_for_types(
         generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in faked_srts]
         result = await do_check_readings_for_types(backend, srt_dtos, minimum_count)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @dataclasses.dataclass
@@ -1405,12 +1423,16 @@ async def test_do_check_single_level(
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         srts = await session.execute(select(SiteReadingType).where(SiteReadingType.site_reading_type_id.in_(srt_ids)))
         srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in srts.scalars().all()]
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await do_check_single_level(backend, srt_dtos, min_level, max_level)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1493,6 +1515,7 @@ async def test_do_check_levels_for_period(
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         srts = await session.execute(select(SiteReadingType))
         srt_dtos = [
@@ -1500,10 +1523,13 @@ async def test_do_check_levels_for_period(
             for srt in srts.scalars().all()
             if int(srt.site_reading_type_id) in srt_ids
         ]
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         window_period = timedelta(seconds=window_s)
         result = await do_check_levels_for_period(backend, srt_dtos, min_level, max_level, window_period)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1651,10 +1677,14 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
         generate_class_instance(dtos.SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await do_check_readings_on_minute_boundary(backend, faked_srts)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1974,14 +2004,18 @@ async def test_run_check(mocker, check: Check, apply_function_name: str):
     mock_run_check_function.return_value = check_result
 
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
-    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
 
     # Assert
     assert actual is check_result
     mock_run_check_function.assert_called_once()
     assert_mock_session(mock_session)
+    # The backend is only forwarded onto the check evaluation functions
+    # Currently not relying on admin api for checks. This may change.
+    mock_backend.assert_not_called()
 
 
 @mock.patch("cactus_runner.app.check.do_check_site_readings_and_params")
@@ -2001,10 +2035,11 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     check_result = generate_class_instance(CheckResult)
     mock_do_check_site_readings_and_params.return_value = check_result
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     for check in reading_checks:
-        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
         assert actual is check_result
 
     # Assert
@@ -2014,6 +2049,9 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     )
 
     assert_mock_session(mock_session)
+    # Backend forwarded onto patched function
+    # Currently not relying on admin api for checks. This may change.
+    mock_backend.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2069,10 +2107,14 @@ async def test_check_readings_voltage(
 @pytest.mark.anyio
 async def test_check_all_notifications_transmitted_no_logs(pg_base_config):
     """check_all_notifications_transmitted should fail if there are no logs"""
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2089,10 +2131,14 @@ async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
             )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2118,10 +2164,14 @@ async def test_check_subscription_contents_no_site_edev_list(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2196,10 +2246,14 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2286,10 +2340,14 @@ async def test_check_subscription_contents_success(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2326,10 +2384,14 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize("failure_code", [-1, 0, 199, 301, 404, 401, 500])
@@ -2352,10 +2414,14 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize("input_val", [-1, {"a": 2}, 99999998, [1, 2, 3], "abc123"])
@@ -2435,8 +2501,9 @@ async def test_check_response_contents_latest(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         # This will check that there is a latest
         assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), True)
 
@@ -2455,6 +2522,9 @@ async def test_check_response_contents_latest(pg_base_config):
             ),
             False,
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2529,12 +2599,16 @@ async def test_check_response_contents_all(
             )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         params: dict = {"all": True}
         if status is not None:
             params["status"] = status
         assert_check_result(await check_response_contents(params, backend, active_test_procedure), expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2592,8 +2666,9 @@ async def test_check_response_contents_any(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         # This will check that there is any response
         assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), True)
         assert_check_result(await check_response_contents({}, backend, active_test_procedure), True)
@@ -2626,13 +2701,17 @@ async def test_check_response_contents_any(pg_base_config):
             False,
         )
 
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
+
 
 @pytest.mark.anyio
 async def test_check_response_contents_empty(pg_base_config):
     """check_response_contents should behave correctly when the DB is empty of responses"""
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         # This will check that there is any response
         assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), False)
         assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), False)
@@ -2649,6 +2728,9 @@ async def test_check_response_contents_empty(pg_base_config):
             ),
             False,
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2728,7 +2810,8 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        mock_admin_client = mock.Mock(spec=EnvoyBackend)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         # Check responses for DERC1 tag can be found
         assert_check_result(
             await check_response_contents({"subject_tag": "DERC1"}, backend, active_test_procedure), True
@@ -2790,6 +2873,9 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
             False,
         )
 
+        # Currently not relying on admin api for checks. This may change.
+        mock_admin_client.assert_not_called()
+
 
 @pytest.mark.anyio
 async def test_run_check_check_dne():
@@ -2798,13 +2884,15 @@ async def test_run_check_check_dne():
     # Arrange
     check = Check(type="this-check-does-not-exist", parameters={})
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     with pytest.raises(UnknownCheckError):
-        await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+        await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
 
     # Assert
     assert_mock_session(mock_session)
+    mock_backend.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2830,6 +2918,7 @@ async def test_first_failing_check(
 
     # Arrange
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
     side_effects = []
     for r in run_check_results:
         if isinstance(r, type):
@@ -2841,10 +2930,10 @@ async def test_first_failing_check(
     # Act
     if isinstance(expected, type):
         with pytest.raises(expected):
-            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_session)
+            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
     else:
         first_failing_result = await first_failing_check(
-            checks, generate_active_test_procedure_steps([], []), mock_session
+            checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend
         )
 
         if expected is True:
@@ -2855,6 +2944,7 @@ async def test_first_failing_check(
 
     # Assert
     assert_mock_session(mock_session)
+    mock_backend.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2880,6 +2970,7 @@ async def test_all_checks_passing(
 
     # Arrange
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
     side_effects = []
     for r in run_check_results:
         if isinstance(r, type):
@@ -2891,9 +2982,11 @@ async def test_all_checks_passing(
     # Act
     if isinstance(expected, type):
         with pytest.raises(expected):
-            await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+            await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
     else:
-        all_checks_result = await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+        all_checks_result = await all_checks_passing(
+            checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend
+        )
         assert isinstance(all_checks_result, bool)
         assert all_checks_result == expected
 
@@ -3105,18 +3198,22 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
 async def test_check_der_settings_contents_error_messages_meaningful(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
         assert re.search(msg_regex, result.description) is not None, (
             f"'{msg_regex}' not found in '{result.description}'"
         )
+
+    # At the moment the envoy admin api isn't expected to be used, this may change
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -3260,18 +3357,22 @@ async def test_check_der_settings_contents_error_messages_meaningful(
 async def test_check_der_capability_contents_error_messages_meaningful(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
         assert re.search(msg_regex, result.description) is not None, (
             f"'{msg_regex}' not found in '{result.description}'"
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -3323,10 +3424,14 @@ async def test_do_check_readings_for_duration_envoy(pg_base_config, srt_ids: lis
         generate_class_instance(dtos.SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session)
+        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
         result = await do_check_readings_for_duration(backend=backend, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
+
+    # Currently not relying on admin api for checks. This may change
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -19,6 +19,7 @@ from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.evaluator import (
     ResolvedParam,
@@ -32,9 +33,11 @@ from cactus_runner.models import (
     RequestEntry,
 )
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends.common import RunnerBackend
-
-# TEST: just for showing plugin architecture implementation potentially
+from cactus_runner.plugin.backends.common import (
+    RunnerBackend,
+    get_site_reading_types_ordered,
+    get_site_readings_ordered,
+)
 from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
@@ -578,7 +581,7 @@ async def do_check_readings_for_types(
     if minimum_count is not None:
         if site_reading_types:
             srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-            results = await backend.get_site_readings(srt_ids)
+            results = await get_site_readings_ordered(backend, srt_ids)
             count_by_srt_id: dict[str, int] = {
                 srt_id: len([x for x in results if x.site_reading_type_id == srt_id]) for srt_id in srt_ids
             }
@@ -650,7 +653,7 @@ async def do_check_single_level(
     """
     srt_dict = {srt.site_reading_type_id: srt for srt in site_reading_types}
 
-    site_readings = await backend.get_site_readings(list(srt_dict))
+    site_readings = await get_site_readings_ordered(backend, list(srt_dict))
 
     # Sort and group all readings by their respective site reading types
     sorted_readings = sorted(list(site_readings), key=lambda x: x.site_reading_type_id)
@@ -712,7 +715,7 @@ async def do_check_levels_for_period(
     srt_dict = {srt.site_reading_type_id: srt for srt in site_reading_types}
 
     # Retrieve all readings between now and the window-period start.
-    site_readings = await backend.get_site_readings(list(srt_dict))
+    site_readings = await get_site_readings_ordered(backend, list(srt_dict))
 
     if not site_readings:
         return CheckResult(False, "No readings presented by backend")
@@ -791,7 +794,7 @@ async def do_check_readings_on_minute_boundary(
 ) -> CheckResult:
     if site_reading_types:
         srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-        site_readings = await backend.get_site_readings(srt_ids)
+        site_readings = await get_site_readings_ordered(backend, srt_ids)
         on_minute_boundary = [timestamp_on_minute_boundary(sr.time_period_start) for sr in site_readings]
         aligned_count = on_minute_boundary.count(True)
         total_count = len(on_minute_boundary)
@@ -871,7 +874,7 @@ async def do_check_site_readings_and_params(
     if not site:
         return CheckResult(False, "No active site found.")
     print(f"site: {site}")
-    site_reading_types_raw = await backend.get_site_reading_types(site_ids=[site.site_id])
+    site_reading_types_raw = await get_site_reading_types_ordered(backend, site_ids=[site.site_id])
     print(f"raw: {site_reading_types_raw}")
     site_reading_types_all = [
         srt
@@ -879,7 +882,6 @@ async def do_check_site_readings_and_params(
         if srt.site_id == site.site_id and srt.uom == uom and srt.kind == kind and srt.data_qualifier == data_qualifier
     ]
     print(f"all: {site_reading_types_all}")
-    site_reading_types_all = sorted(site_reading_types_all, key=attrgetter("created_time"))
     site_reading_types = [srt for srt in site_reading_types_all if srt.role_flags == reading_location]
 
     incorrect_roleflags = [srt for srt in site_reading_types_all if srt.role_flags != reading_location]
@@ -924,7 +926,7 @@ async def do_check_readings_for_duration(
     non_divisible_count = 0
 
     for reading_type in site_reading_types:
-        reading_data = await backend.get_site_readings([reading_type.site_reading_type_id])
+        reading_data = await get_site_readings_ordered(backend, [reading_type.site_reading_type_id])
         for reading in reading_data:
             if reading.time_period_duration.seconds == 0:
                 zero_count += 1
@@ -1358,10 +1360,9 @@ def check_all_polls_at_correct_time(
 async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
-    # Will be replaced by backend in full plugin arch
     session: AsyncSession,
+    envoy_client: EnvoyAdminClient,
     request_history: list[RequestEntry] | None = None,
-    # This will no longer be an optional arg in full plugin arch implementation
     backend: RunnerBackend | None = None,
 ) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
@@ -1370,7 +1371,11 @@ async def run_check(  # noqa: C901
 
     Args:
         check: The Check to evaluate against the active test procedure.
-        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+        active_test_procedure: The currently active test procedure.
+        session: DB session used for parameter resolution.
+        envoy_client: Admin API client used to construct the backend.
+        request_history: Optional history of HTTP requests for request-based checks.
+        backend: If provided, used directly instead of constructing a new one from session + envoy_client.
 
     Raises:
         UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
@@ -1383,9 +1388,8 @@ async def run_check(  # noqa: C901
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen
 
-    # TEST: Temporary backend creation for showing rough implementation
     if backend is None:
-        backend = create_backend(session)
+        backend = create_backend(session, envoy_client)
 
     try:
         match check.type:
@@ -1460,6 +1464,7 @@ async def determine_check_results(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
+    envoy_client: EnvoyAdminClient,
     request_history: list[RequestEntry] | None = None,
 ) -> dict[str, CheckResult]:
     check_results: dict[str, CheckResult] = {}
@@ -1467,7 +1472,7 @@ async def determine_check_results(
         return check_results
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, request_history)
+        result = await run_check(check, active_test_procedure, session, envoy_client, request_history)
         check_results[check.type] = result
     return check_results
 
@@ -1476,6 +1481,7 @@ async def first_failing_check(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
+    envoy_client: EnvoyAdminClient,
     request_history: list[RequestEntry] | None = None,
 ) -> CheckResult | None:
     """Iterates through checks - looking for the first Check that returns a failing CheckResult. If all checks are
@@ -1489,7 +1495,7 @@ async def first_failing_check(
         return None
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, request_history)
+        result = await run_check(check, active_test_procedure, session, envoy_client, request_history)
         if not result.passed:
             logger.info(f"{check} is not passing: {result}.")
             return result
@@ -1502,6 +1508,7 @@ async def all_checks_passing(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
     session: AsyncSession,
+    envoy_client: EnvoyAdminClient,
     request_history: list[RequestEntry] | None = None,
 ) -> bool:
     """Returns True if every specified check is passing. An empty/unspecified list will return True.
@@ -1510,5 +1517,5 @@ async def all_checks_passing(
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
       FailedCheckError: Raised if this function encounters an exception while running the check."""
 
-    failing_check = await first_failing_check(checks, active_test_procedure, session, request_history)
+    failing_check = await first_failing_check(checks, active_test_procedure, session, envoy_client, request_history)
     return failing_check is None

@@ -98,7 +98,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     if active_test_procedure.definition.preconditions:
         async with begin_session() as session:
             check_failure = await first_failing_check(
-                active_test_procedure.definition.preconditions.checks, active_test_procedure, session
+                active_test_procedure.definition.preconditions.checks, active_test_procedure, session, envoy_client
             )
             if check_failure:
                 return StartResult(
@@ -479,7 +479,9 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
             try:
-                zip_path = await finalize.finish_active_test(runner_state, session)
+                zip_path = await finalize.finish_active_test(
+                    runner_state, session, request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+                )
             except Exception as exc:
                 logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
                 zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])
@@ -628,6 +630,7 @@ async def status_handler(request: web.Request) -> web.Response:
                 active_test_procedure=active_test_procedure,
                 request_history=request.app[APPKEY_RUNNER_STATE].request_history,
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+                envoy_client=request.app[APPKEY_ENVOY_ADMIN_CLIENT],
                 crop_minutes=15,
             )
 
