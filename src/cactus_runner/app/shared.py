@@ -3,8 +3,8 @@ from typing import Any
 
 from aiohttp import web
 
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.models import InitialisedCertificates, RunnerState
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 # aiohttp AppKeys are used to share global state between request handlers
 APPKEY_RUNNER_STATE = web.AppKey("runner-state", RunnerState)

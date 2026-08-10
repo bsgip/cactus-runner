@@ -32,7 +32,6 @@ from cactus_runner.app.env import (
     MOUNT_POINT,
     SERVER_URL,
 )
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
     get_all_request_ids,
@@ -56,6 +55,7 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
 )
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 

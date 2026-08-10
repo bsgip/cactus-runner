@@ -19,7 +19,6 @@ from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.evaluator import (
     ResolvedParam,
@@ -38,6 +37,7 @@ from cactus_runner.plugin.backends.common import (
     get_site_reading_types_ordered,
     get_site_readings_ordered,
 )
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)

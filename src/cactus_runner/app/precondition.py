@@ -15,7 +15,7 @@ from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from cactus_runner.app.database import begin_session, open_connection
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 PLAYLIST_NOTIFICATION_WAIT_SECONDS = 3
 

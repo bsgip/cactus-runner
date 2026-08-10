@@ -3,8 +3,8 @@ import unittest.mock as mock
 import pytest
 
 from cactus_runner.app.database import remove_database_connection
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 
 @pytest.mark.anyio

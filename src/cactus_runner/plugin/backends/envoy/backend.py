@@ -23,10 +23,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend, RunnerBackendTestContext
-from cactus_runner.plugin.backends.envoy import mappers
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
 
 logger = logging.getLogger(__name__)
 

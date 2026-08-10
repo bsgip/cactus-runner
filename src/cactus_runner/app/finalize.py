@@ -22,7 +22,6 @@ from cactus_runner.app.database import (
     get_postgres_dsn,
 )
 from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import (
     get_reading_counts_grouped_by_reading_type,
     get_sites,
@@ -46,6 +45,7 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version

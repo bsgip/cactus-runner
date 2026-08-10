@@ -32,7 +32,6 @@ from envoy_schema.server.schema.sep2.der import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
@@ -42,6 +41,7 @@ from cactus_runner.models import (
     ClientInteraction,
     StepInfo,
 )
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 

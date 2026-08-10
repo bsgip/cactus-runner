@@ -78,7 +78,6 @@ from cactus_runner.app.check import (
     run_check,
     timestamp_on_minute_boundary,
 )
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.models import (
     ActiveTestProcedure,
@@ -87,8 +86,8 @@ from cactus_runner.models import (
     ResourceAnnotations,
 )
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends import EnvoyBackend
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_reading_type_to_dto
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with

@@ -34,7 +34,7 @@ from cactus_runner.app.database import (
     initialise_database_connection,
     remove_database_connection,
 )
-from cactus_runner.app.envoy_admin_client import (
+from cactus_runner.plugin.backends.envoy.admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )

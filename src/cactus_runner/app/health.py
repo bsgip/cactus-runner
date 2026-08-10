@@ -4,7 +4,7 @@ from envoy.server.model.aggregator import Aggregator
 from sqlalchemy import func, select
 
 from cactus_runner.app.database import begin_session
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 

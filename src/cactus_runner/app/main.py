@@ -28,10 +28,6 @@ from cactus_runner.app.env import (
     MOUNT_POINT,
     SERVER_URL,
 )
-from cactus_runner.app.envoy_admin_client import (
-    EnvoyAdminClient,
-    EnvoyAdminClientAuthParams,
-)
 from cactus_runner.app.shared import (
     APPKEY_ENVOY_ADMIN_CLIENT,
     APPKEY_ENVOY_ADMIN_INIT_KWARGS,
@@ -43,6 +39,10 @@ from cactus_runner.app.shared import (
 )
 from cactus_runner.app.uri import uri_path_join
 from cactus_runner.models import InitialisedCertificates, RunnerState
+from cactus_runner.plugin.backends.envoy.admin_client import (
+    EnvoyAdminClient,
+    EnvoyAdminClientAuthParams,
+)
 
 logger = logging.getLogger(__name__)
 
