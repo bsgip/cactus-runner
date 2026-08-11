@@ -31,6 +31,7 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlRequest,
     SiteControlResponse,
 )
+from envoy_schema.admin.schema.site_group import SiteGroupAssignmentRequest, SiteGroupRequest, SiteGroupResponse
 from envoy_schema.admin.schema.uri import (
     AggregatorListUri,
     ServerConfigRuntimeUri,
@@ -39,6 +40,9 @@ from envoy_schema.admin.schema.uri import (
     SiteControlGroupUri,
     SiteControlRangeUri,
     SiteControlUri,
+    SiteGroupAssignmentsListUri,
+    SiteGroupListUri,
+    SiteGroupUri,
     SiteUri,
     TariffComponentCreateUri,
     TariffComponentUpdateUri,
@@ -243,6 +247,44 @@ class EnvoyAdminClient:
         resp = await self._session.delete(SiteControlGroupListUri)
         resp.raise_for_status()
         return HTTPStatus(resp.status)
+
+    async def get_site_group(self, group_name: str) -> SiteGroupResponse | None:
+        """Fetches the SiteGroup with the specified group_name - returns None if it DNE"""
+        async with self._session.get(SiteGroupUri.format(group_name=group_name)) as resp:
+            if resp.status == HTTPStatus.NOT_FOUND:
+                return None
+            resp.raise_for_status()
+            json = await resp.json()
+            return SiteGroupResponse(**json)
+
+    async def try_create_site_group(self, group_name: str, default_group: bool) -> str | None:
+        """Tries to create a site group with the specified group_name - returns the SiteGroup href on success.
+
+        Can return None if the site group already exists - raises on other kinds of HTTP errors"""
+        body = SiteGroupRequest(name=group_name, default_group=default_group)
+
+        resp = await self._session.post(SiteGroupListUri, json=body.model_dump())
+        if resp.status == HTTPStatus.BAD_REQUEST:
+            # Already exists is returned as a BadRequest
+            return None
+
+        resp.raise_for_status()
+        return resp.headers["Location"]
+
+    async def try_create_site_group_assignment(self, group_name: str, site_id: int) -> None:
+        """Tries to create a site group assignment from site to the specified group with group_name.
+
+        If the site is already assigned to the SiteGroup with group_name - this has no effect. raises an error if the
+        SiteGroup is missing or on other HTTP/connection errors."""
+        body = SiteGroupAssignmentRequest(site_id=site_id)
+        resp = await self._session.post(
+            SiteGroupAssignmentsListUri.format(group_name=group_name), json=body.model_dump()
+        )
+        if resp.status == HTTPStatus.BAD_REQUEST:
+            # Already exists is returned as a BadRequest
+            return
+
+        resp.raise_for_status()
 
     async def create_tariff(self, tariff: TariffRequest) -> int:
         resp = await self._session.post(TariffCreateUri, json=tariff.model_dump())

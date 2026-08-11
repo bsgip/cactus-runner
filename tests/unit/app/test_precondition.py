@@ -4,6 +4,7 @@ import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
+from envoy.server.model import SiteGroup
 from envoy.server.model.aggregator import (
     NULL_AGGREGATOR_ID,
     Aggregator,
@@ -28,14 +29,17 @@ async def test_reset_db_on_content(pg_base_config):
         s1 = generate_class_instance(Site, seed=1, site_id=None, aggregator_id=0)
         s2 = generate_class_instance(Site, seed=2, site_id=None, aggregator_id=1)
 
-        sc1 = generate_class_instance(SiteControlGroup, seed=3, site_control_group_id=None)
+        sc1 = generate_class_instance(SiteControlGroup, seed=3, site_control_group_id=None, required_site_group_id=None)
+
+        sg1 = generate_class_instance(SiteGroup, seed=4, site_group_id=123)
+        sg2 = generate_class_instance(SiteGroup, seed=5, site_group_id=456)
 
         doe1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=4,
             dynamic_operating_envelope_id=None,
             site_control_group_id=None,
-            site_id=None,
+            site_group_id=sg1.site_group_id,
             calculation_log_id=None,
         )
         doe2 = generate_class_instance(
@@ -43,15 +47,15 @@ async def test_reset_db_on_content(pg_base_config):
             seed=5,
             dynamic_operating_envelope_id=None,
             site_control_group_id=None,
-            site_id=None,
+            site_group_id=sg2.site_group_id,
             calculation_log_id=None,
         )
 
-        doe1.site = s1
         doe1.site_control_group = sc1
-        doe2.site = s1
         doe2.site_control_group = sc1
 
+        session.add(sg1)
+        session.add(sg2)
         session.add(doe1)
         session.add(doe2)
         session.add(sc1)
@@ -82,7 +86,7 @@ async def test_reset_db_on_content(pg_base_config):
         await session.flush()
         assert s1.site_id == 1, "Sequence should've been reset"
 
-        sc1 = generate_class_instance(SiteControlGroup, seed=3, site_control_group_id=None)
+        sc1 = generate_class_instance(SiteControlGroup, seed=3, site_control_group_id=None, required_site_group_id=None)
         session.add(sc1)
         await session.flush()
         assert sc1.site_control_group_id == 1, "Sequence should've been reset"

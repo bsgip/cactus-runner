@@ -42,7 +42,7 @@ DEV_SKIP_AUTHORIZATION_CHECK = os.getenv("DEV_SKIP_AUTHORIZATION_CHECK", "false"
 CERT_HEADER = os.getenv("CERT_HEADER", "ssl-client-cert")
 
 # Maximum number of request/response pairs kept on disk at any one time (rolling window)
-MAX_REQUEST_PAIRS = int(os.getenv("MAX_REQUEST_PAIRS", "5000"))
+MAX_REQUEST_PAIRS = int(os.getenv("MAX_REQUEST_PAIRS", "15000"))
 
 # Maximum bytes copied from each log file into the ZIP archive (tail of file).
 # Default 32 MB. Prevents huge log files from bloating the archive on long tests.

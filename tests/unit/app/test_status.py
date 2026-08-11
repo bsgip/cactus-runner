@@ -165,6 +165,7 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     active_test_procedure.definition.criteria = None
     active_test_procedure.definition.preconditions.checks = None
     active_test_procedure.listeners = []
+    active_test_procedure.warnings = {}
     request_history = Mock()
     last_client_interaction = Mock()
 
