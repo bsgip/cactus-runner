@@ -340,7 +340,7 @@ requires-dist = [
     { name = "cactus-schema", git = "https://github.com/bsgip/cactus-schema.git?rev=v1.3.2" },
     { name = "cactus-test-definitions", specifier = ">=1.15.0,<2" },
     { name = "coverage", marker = "extra == 'dev'" },
-    { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.5.0" },
+    { name = "envoy", git = "https://github.com/bsgip/envoy.git?rev=v1.6.0" },
     { name = "freezegun", marker = "extra == 'test'" },
     { name = "intervaltree", specifier = ">=3.1.0" },
     { name = "lxml-stubs", marker = "extra == 'dev'" },
@@ -697,8 +697,8 @@ wheels = [
 
 [[package]]
 name = "envoy"
-version = "1.5.0"
-source = { git = "https://github.com/bsgip/envoy.git?rev=v1.5.0#4e9b4e47c27b542653f9254dffa21f6a3841b38d" }
+version = "1.6.0"
+source = { git = "https://github.com/bsgip/envoy.git?rev=v1.6.0#22c2f22f9b970bb88aed5f9a9377922b22ea60d8" }
 dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
@@ -722,15 +722,15 @@ dependencies = [
 
 [[package]]
 name = "envoy-schema"
-version = "1.1.1"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "pydantic-xml", extra = ["lxml"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/ca/6f20bf843d5f43f357a28cce7194f2fefaa11f87a5d6163c4fffb97504c0/envoy_schema-1.1.1.tar.gz", hash = "sha256:18432431dba590326c43c9b4edb9fa3de5f0eb76d854bce00a394a30e409dcd1", size = 41684, upload-time = "2026-06-22T07:08:30.157Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/38/e8c29f4d5f9292f2805eb251ed260576683f37966a3aca08bc850a6481f0/envoy_schema-1.3.0.tar.gz", hash = "sha256:768a193f48525f3642cc9925f8602d1974479dfee1801c8811296fcbd617bfe3", size = 42450, upload-time = "2026-07-30T02:14:15.887Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/c4/4cf78ee71039308e7ca1b3b9d8f968e5d10630a81153dcf5fc4fa8219cb3/envoy_schema-1.1.1-py3-none-any.whl", hash = "sha256:1b8b04491325f335a11a634dbf2b60aa0096d905a22ede745435090ea7347529", size = 54294, upload-time = "2026-06-22T07:08:28.69Z" },
+    { url = "https://files.pythonhosted.org/packages/16/92/2dbca8aaa640ca1ff0321a92a1aefad3bb3a3642fadbed0c0b7139cfec05/envoy_schema-1.3.0-py3-none-any.whl", hash = "sha256:4c237b462e53cc03db07378dd29c20615556a62e3f7703bd70d06adec61151dc", size = 55084, upload-time = "2026-07-30T02:14:14.54Z" },
 ]
 
 [[package]]

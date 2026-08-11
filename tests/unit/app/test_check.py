@@ -19,6 +19,7 @@ from cactus_test_definitions.client import (
     Step,
     TestProcedure,
 )
+from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
@@ -2321,16 +2322,22 @@ async def test_check_response_contents_latest(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
         )
@@ -2422,17 +2429,23 @@ async def test_check_response_contents_all(
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         for idx, control_id in enumerate(control_ids):
             control = generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=idx,
-                site=site1,
+                site_group_id=sg1.site_group_id,
                 site_control_group=site_control_group,
                 calculation_log_id=None,
                 dynamic_operating_envelope_id=control_id,
@@ -2443,7 +2456,7 @@ async def test_check_response_contents_all(
             control = generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=idx * 1001,
-                site_id=site1.site_id,
+                site_group_id=sg1.site_group_id,
                 deleted_time=datetime(2022, 11, 14, tzinfo=UTC),
                 site_control_group_id=site_control_group.site_control_group_id,
                 calculation_log_id=None,
@@ -2477,16 +2490,22 @@ async def test_check_response_contents_any(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
         )
@@ -2595,17 +2614,23 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         # Create control with ID 100 (tagged as DERC1)
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
             dynamic_operating_envelope_id=100,
@@ -2616,7 +2641,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         der_control_2 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=304,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
             dynamic_operating_envelope_id=200,

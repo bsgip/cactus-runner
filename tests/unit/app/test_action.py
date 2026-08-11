@@ -11,6 +11,7 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions.client import ACTION_PARAMETER_SCHEMA, Action, Event
+from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.doe import (
     DynamicOperatingEnvelope,
     SiteControlGroup,
@@ -291,8 +292,16 @@ async def test_action_set_default_der_control_with_derp_id(pg_base_config, envoy
     # Arrange
     derp_id = 123
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=derp_id + 1))
-        session.add(generate_class_instance(SiteControlGroup, seed=202, site_control_group_id=derp_id))
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=101, site_control_group_id=derp_id + 1, required_site_group_id=None
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=202, site_control_group_id=derp_id, required_site_group_id=None
+            )
+        )
         await session.commit()
     resolved_params = {
         "opModImpLimW": 10,
@@ -327,12 +336,25 @@ async def test_action_set_default_der_control_with_derp_id(pg_base_config, envoy
 @pytest.mark.parametrize(
     "site_control_groups, expected_scg_id",
     [
-        ([generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=1, primacy=11)], 1),
         (
             [
-                generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=1, primacy=11),
-                generate_class_instance(SiteControlGroup, seed=202, site_control_group_id=2, primacy=5),
-                generate_class_instance(SiteControlGroup, seed=303, site_control_group_id=3, primacy=22),
+                generate_class_instance(
+                    SiteControlGroup, seed=101, site_control_group_id=1, primacy=11, required_site_group_id=None
+                )
+            ],
+            1,
+        ),
+        (
+            [
+                generate_class_instance(
+                    SiteControlGroup, seed=101, site_control_group_id=1, primacy=11, required_site_group_id=None
+                ),
+                generate_class_instance(
+                    SiteControlGroup, seed=202, site_control_group_id=2, primacy=5, required_site_group_id=None
+                ),
+                generate_class_instance(
+                    SiteControlGroup, seed=303, site_control_group_id=3, primacy=22, required_site_group_id=None
+                ),
             ],
             2,
         ),
@@ -382,7 +404,11 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
     # Arrange
     derp_id = 456
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(SiteControlGroup, seed=101, site_control_group_id=derp_id))
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, seed=101, site_control_group_id=derp_id, required_site_group_id=None
+            )
+        )
         await session.commit()
     resolved_params = {
         "cancelled": True,
@@ -542,7 +568,9 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
     existing_fsa_id = fsa_id if fsa_id is not None else 21515215
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
-        session.add(generate_class_instance(SiteControlGroup, primacy=2, fsa_id=existing_fsa_id))
+        session.add(
+            generate_class_instance(SiteControlGroup, primacy=2, fsa_id=existing_fsa_id, required_site_group_id=None)
+        )
         await session.commit()
     resolved_params = {
         "start": datetime.now(UTC),
@@ -592,7 +620,11 @@ async def test_action_create_der_control_existing_group_with_tag(pg_base_config,
     )
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
-        session.add(generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=existing_scg_id))
+        session.add(
+            generate_class_instance(
+                SiteControlGroup, primacy=2, site_control_group_id=existing_scg_id, required_site_group_id=None
+            )
+        )
         await session.commit()
     resolved_params = {
         "start": datetime.now(UTC),
@@ -640,7 +672,7 @@ async def test_action_create_der_control_derp_tag_missing(pg_base_config, envoy_
     )
     async with generate_async_session(pg_base_config) as session:
         session.add(generate_class_instance(Site, aggregator_id=1))
-        session.add(generate_class_instance(SiteControlGroup, primacy=2))
+        session.add(generate_class_instance(SiteControlGroup, primacy=2, required_site_group_id=None))
         await session.commit()
     resolved_params = {
         "start": datetime.now(UTC),
@@ -779,43 +811,40 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
 async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config, envoy_admin_client):
     """Verifies that creating a DER control with a tag properly annotates it in the active test procedure (even if
     it's superseding an existing control which has caused us troubles in the past)"""
-    # Arrange
-    async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1)
-        session.add(site)
-        site_ctrl_grp = generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=1)
-        session.add(site_ctrl_grp)
 
-        existing_creation_time = datetime.now(UTC) - timedelta(seconds=20)
-
-        existing_derc = generate_class_instance(
-            DynamicOperatingEnvelope,
-            dynamic_operating_envelope_id=None,
-            calculation_log_id=None,
-            site_control_group=site_ctrl_grp,
-            site=site,
-            start_time=existing_creation_time,
-            end_time=existing_creation_time + timedelta(seconds=3600),
-            duration_seconds=3600,
-            export_limit_watts=123,
-            created_time=existing_creation_time,
-            superseded=False,
-        )
-        session.add(existing_derc)
-
-        await session.flush()
-
-        existing_derc_id = existing_derc.dynamic_operating_envelope_id
-
-        await session.commit()
-
+    # Arrange an existing DERControl to supersede
     existing_derc_tag = "DERC-EXISTING"
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
         step_status={},
         finished_zip_path=None,
-        resource_annotations=ResourceAnnotations(der_control_ids_by_alias={existing_derc_tag: existing_derc_id}),
+        resource_annotations=ResourceAnnotations(),
     )
+    existing_creation_time = datetime.now(UTC) - timedelta(seconds=20)
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1)
+        session.add(site)
+        site_ctrl_grp = generate_class_instance(
+            SiteControlGroup, primacy=2, site_control_group_id=1, required_site_group_id=None
+        )
+        session.add(site_ctrl_grp)
+        await session.commit()
+
+        await action_create_der_control(
+            {
+                "start": existing_creation_time,
+                "duration_seconds": 3600,
+                "pow_10_multipliers": -1,
+                "primacy": 2,
+                "opModExpLimW": 123,
+                "tag": existing_derc_tag,
+            },
+            session,
+            envoy_admin_client,
+            active_test_procedure,
+        )
+        await session.commit()
 
     inserted_tag = "DERC-NEW"
     resolved_params = {
@@ -834,15 +863,14 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
     # Verify the tag was added to the active test procedure
     derc_id_by_alias = active_test_procedure.resource_annotations.der_control_ids_by_alias
     assert inserted_tag in derc_id_by_alias
-    assert derc_id_by_alias[existing_derc_tag] == existing_derc_id
-    assert derc_id_by_alias[inserted_tag] != existing_derc_id
+    assert derc_id_by_alias[existing_derc_tag] != derc_id_by_alias[inserted_tag]
 
     # Verify the tagged control ID matches the created control
     async with generate_async_session(pg_base_config) as session:
         does = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
         assert len(does) == 2
 
-        if does[0].dynamic_operating_envelope_id == existing_derc_id:
+        if does[0].dynamic_operating_envelope_id == derc_id_by_alias[existing_derc_tag]:
             existing = does[0]
             inserted = does[1]
         else:
@@ -945,6 +973,13 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
         assert len(all_does) == 4
         assert len(set([d.export_limit_watts for d in all_does])) == 2, "Two sets of opModExpLimW"
 
+        # Map the underlying SiteGroup references back to the exclusive site_id
+        all_site_ids_by_group_id = dict(
+            (await session.execute(select(SiteGroupAssignment.site_group_id, SiteGroupAssignment.site_id)))
+            .tuples()
+            .all()
+        )
+
         does_by_display_id: dict[int, list[DynamicOperatingEnvelope]] = {}
         for d in all_does:
             assert d.display_id
@@ -957,7 +992,7 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
         for grouped_does in does_by_display_id.values():
             assert len(grouped_does) == 2
             assert len(set([d.export_limit_watts for d in grouped_does])) == 1
-            assert set([d.site_id for d in all_does]) == {11, 33}
+            assert set([all_site_ids_by_group_id[d.site_group_id] for d in all_does]) == {11, 33}
 
 
 @pytest.mark.anyio
@@ -966,7 +1001,17 @@ async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client)
     async with generate_async_session(pg_base_config) as session:
         site = generate_class_instance(Site, aggregator_id=1, site_id=1)
         session.add(site)
-        site_ctrl_grp = generate_class_instance(SiteControlGroup, primacy=2, site_control_group_id=1)
+        site_group = generate_class_instance(SiteGroup, site_group_id=None)
+        session.add(site_group)
+        site_group_ass = generate_class_instance(
+            SiteGroupAssignment, site_group_assignment_id=None, group=site_group, site=site
+        )
+        session.add(site_group_ass)
+        await session.flush()
+
+        site_ctrl_grp = generate_class_instance(
+            SiteControlGroup, primacy=2, site_control_group_id=1, required_site_group_id=None
+        )
         session.add(site_ctrl_grp)
         await session.flush()
 
@@ -975,7 +1020,7 @@ async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client)
                 DynamicOperatingEnvelope,
                 calculation_log_id=None,
                 site_control_group=site_ctrl_grp,
-                site=site,
+                site_group_id=site_group.site_group_id,
                 start_time=datetime.now(UTC),
             )
         )
@@ -986,6 +1031,7 @@ async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client)
 
     # Assert
     assert pg_base_config.execute("select count(*) from dynamic_operating_envelope;").fetchone()[0] == 0
+    assert pg_base_config.execute("select count(*) from archive_dynamic_operating_envelope;").fetchone()[0] == 1
 
 
 @pytest.mark.anyio
@@ -1279,7 +1325,11 @@ async def test_action_remove_function_set_assignment(
     async with generate_async_session(pg_base_config) as session:
         for idx, scg_fsa_id in enumerate(scg_fsa_ids):
             new_instance = generate_class_instance(
-                SiteControlGroup, seed=idx * 101, fsa_id=scg_fsa_id, site_control_group_id=(idx + 1)
+                SiteControlGroup,
+                seed=idx * 101,
+                fsa_id=scg_fsa_id,
+                site_control_group_id=(idx + 1),
+                required_site_group_id=None,
             )
             primacies.append(new_instance.primacy)
             descriptions.append(new_instance.description)

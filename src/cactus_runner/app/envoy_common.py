@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from enum import IntEnum
 from itertools import chain
 
+from envoy.server.model import SiteGroupAssignment
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
@@ -14,6 +15,7 @@ from envoy.server.model.doe import (
 )
 from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
@@ -24,7 +26,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+
 logger = logging.getLogger(__name__)
+
+
+class EnvoyConfigurationError(Exception):
+    """Unknown Cactus Runner Action"""
 
 
 class ReadingLocation(IntEnum):
@@ -33,6 +41,27 @@ class ReadingLocation(IntEnum):
 
     SITE_READING = int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_PREMISES_AGGREGATION_POINT)
     DEVICE_READING = int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_DER | RoleFlagsType.IS_SUBMETER)
+
+
+async def get_exclusive_site_group(client: EnvoyAdminClient, site: Site) -> SiteGroupResponse:
+    """Gets the SiteGroup which site has exclusive access to - that is, anything added to the returned SiteGroup will
+    ONLY be visible to site (no other sites will have membership).
+
+    This method will create SiteGroup if none exists via the admin client"""
+    exclusive_site_name = f"exclusive_site_{site.site_id}"
+
+    # There is a unique constraint underneath this - we should be safe from a race condition perspective
+    created_site_group_href = await client.try_create_site_group(group_name=exclusive_site_name, default_group=False)
+    if created_site_group_href is not None:
+        # If the creation succeeded - we will need to add assignments from site to it
+        await client.try_create_site_group_assignment(group_name=exclusive_site_name, site_id=site.site_id)
+
+    site_group = await client.get_site_group(group_name=exclusive_site_name)
+    if site_group is None:
+        raise EnvoyConfigurationError(
+            f"Couldn't find SiteGroup with name '{exclusive_site_name}' - this is likely a bug with envoy admin API"
+        )
+    return site_group
 
 
 async def get_active_site(session: AsyncSession, include_der_settings: bool = False) -> Site | None:
@@ -199,7 +228,9 @@ async def get_sites(session: AsyncSession) -> Sequence[Site]:
 async def count_all_site_controls_with_cancelled(session: AsyncSession, site_id: int | None) -> int:
     active_stmt = select(func.count()).select_from(DynamicOperatingEnvelope)
     if site_id is not None:
-        active_stmt = active_stmt.where(DynamicOperatingEnvelope.site_id == site_id)
+        active_stmt = active_stmt.join(
+            SiteGroupAssignment, DynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id
+        ).where(SiteGroupAssignment.site_id == site_id)
 
     archive_stmt = (
         select(func.count())
@@ -207,7 +238,9 @@ async def count_all_site_controls_with_cancelled(session: AsyncSession, site_id:
         .where(ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None))
     )
     if site_id is not None:
-        archive_stmt = archive_stmt.where(ArchiveDynamicOperatingEnvelope.site_id == site_id)
+        archive_stmt = archive_stmt.join(
+            SiteGroupAssignment, ArchiveDynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id
+        ).where(SiteGroupAssignment.site_id == site_id)
 
     return (await session.execute(active_stmt)).scalar_one() + (await session.execute(archive_stmt)).scalar_one()
 
@@ -223,7 +256,9 @@ async def get_site_controls_active_archived(
     active_controls = (
         (
             await session.execute(
-                select(DynamicOperatingEnvelope).where(DynamicOperatingEnvelope.site_id == site.site_id)
+                select(DynamicOperatingEnvelope)
+                .join(SiteGroupAssignment, DynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id)
+                .where(SiteGroupAssignment.site_id == site.site_id)
             )
         )
         .scalars()
@@ -233,7 +268,12 @@ async def get_site_controls_active_archived(
     deleted_controls = (
         (
             await session.execute(
-                select(ArchiveDynamicOperatingEnvelope).where(ArchiveDynamicOperatingEnvelope.site_id == site.site_id)
+                select(ArchiveDynamicOperatingEnvelope)
+                .join(
+                    SiteGroupAssignment,
+                    ArchiveDynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id,
+                )
+                .where(SiteGroupAssignment.site_id == site.site_id)
             )
         )
         .scalars()
