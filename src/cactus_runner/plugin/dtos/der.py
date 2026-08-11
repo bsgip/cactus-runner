@@ -24,7 +24,9 @@ class SiteDERSetting:
     max_var_value: int | None = None
     max_var_neg_value: int | None = None
     max_charge_rate_w_value: int | None = None
+    max_charge_rate_w_multiplier: int | None = None
     max_discharge_rate_w_value: int | None = None
+    max_discharge_rate_w_multiplier: int | None = None
     max_wh_value: int | None = None
     min_pf_over_excited_displacement: int | None = None
     min_pf_under_excited_displacement: int | None = None

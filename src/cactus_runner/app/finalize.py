@@ -46,6 +46,7 @@ from cactus_runner.models import (
     Site,
 )
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.hookspec import create_backend
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version
@@ -258,8 +259,11 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
 
     capped_request_history = _cap_request_history(runner_state.request_history)
 
+    backend = create_backend(session=session, envoy_client=envoy_client)
+
     # Collect status summary
     try:
+        # TODO: [JCrowley 10-08-2026] - Change this to take only the backend; no session or envoy_client
         json_status_summary = (
             await get_active_runner_status(
                 session=session,
@@ -267,6 +271,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
                 request_history=capped_request_history,
                 last_client_interaction=runner_state.last_client_interaction,
                 envoy_client=envoy_client,
+                backend=backend,
             )
         ).to_json()
     except Exception as exc:
@@ -281,8 +286,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
             check_results = await check.determine_check_results(
                 active_test_procedure.definition.criteria.checks,
                 active_test_procedure,
-                session,
-                envoy_client,
+                backend,
                 runner_state.request_history,
             )
         except Exception as exc:

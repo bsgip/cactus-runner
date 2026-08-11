@@ -1,3 +1,4 @@
+from cactus_runner.plugin.backends import EnvoyBackend
 import logging
 import math
 from collections.abc import Sequence
@@ -128,8 +129,12 @@ async def action_remove_steps(
         active_test_procedure.step_status[listener.step].completed_at = datetime.now(tz=UTC)
 
 
-async def action_finish_test(runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient) -> None:
-    await finish_active_test(runner_state, session, envoy_client)
+async def action_finish_test(runner_state: RunnerState, backend: RunnerBackend) -> None:
+    if not isinstance(backend, EnvoyBackend):
+        raise RuntimeError(
+            f"Only Envoy backend is currently supported for finalization, not {type(backend)}"
+        )
+    await finish_active_test(runner_state, backend.session, backend.admin_client)
 
 
 async def action_set_default_der_control(resolved_parameters: dict[str, Any], backend: RunnerBackend) -> None:
@@ -459,7 +464,9 @@ def action_add_proxy_route(resolved_parameters: dict[str, Any], active_test_proc
 
 
 async def apply_action(  # noqa: C901
-    action: Action, runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient
+    action: Action,
+    runner_state: RunnerState,
+    backend: RunnerBackend,
 ) -> None:
     """Applies the action to the active test procedure.
 
@@ -468,17 +475,19 @@ async def apply_action(  # noqa: C901
     Args:
         action (Action): The Action to apply to the active test procedure.
         runner_state (RunnerState): The current state of the runner. If not active_test_procedure then this exits early.
+        backend (RunnerBackend): Object tasked with interacting with the underlying utility server to complete
+            protocol tasks.
 
     Raises:
         UnknownActionError: Raised if this function has no implementation for the provided `action.type`.
     """
-    backend = create_backend(session=session, envoy_client=envoy_client)
     active_test_procedure = runner_state.active_test_procedure
     if not active_test_procedure:
         return
 
+    resolver = backend.get_expression_resolver()
     resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
-        session, active_test_procedure, action.parameters
+        resolver, active_test_procedure, action.parameters
     )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     logger.info(f"Executing action {action} with parameters {resolved_parameters}")
@@ -491,7 +500,7 @@ async def apply_action(  # noqa: C901
                 await action_remove_steps(active_test_procedure, resolved_parameters)
                 return
             case "finish-test":
-                await action_finish_test(runner_state, session, envoy_client)
+                await action_finish_test(runner_state, backend)
                 return
             case "set-default-der-control":
                 await action_set_default_der_control(resolved_parameters, backend)
@@ -532,10 +541,9 @@ async def apply_action(  # noqa: C901
 
 
 async def apply_actions(
-    session: AsyncSession,
     listener: Listener,
     runner_state: RunnerState,
-    envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
 ) -> None:
     """Applies all actions for the given listener.
 
@@ -547,6 +555,6 @@ async def apply_actions(
     """
     for action in listener.actions:
         try:
-            await apply_action(session=session, action=action, runner_state=runner_state, envoy_client=envoy_client)
+            await apply_action(action=action, runner_state=runner_state, backend=backend)
         except (UnknownActionError, FailedActionError) as e:
             logger.error(f"Error. Unable to execute action for step={listener.step}: {repr(e)}")

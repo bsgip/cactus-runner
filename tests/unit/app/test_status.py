@@ -22,7 +22,10 @@ from freezegun import freeze_time
 from cactus_runner.app import status
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
+from cactus_runner.plugin.backends import EnvoyBackend
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 PENDING_STEP = StepInfo()
 RESOLVED_STEP = StepInfo(started_at=datetime.now(tz=UTC), completed_at=datetime.now(tz=UTC))
@@ -62,15 +65,17 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     # Arrange
     mock_session = create_mock_session()
     mock_run_check = mocker.patch("cactus_runner.app.status.run_check")
-    mock_resolve_set_max_w = mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w")
     mock_get_timeline_streams = mocker.patch("cactus_runner.app.status.get_timeline_data_streams")
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_resolver = Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
 
     mock_run_check.return_value = CheckResult(True, "Details on Check 1")
 
     if isinstance(resolve_max_w_result, type):
-        mock_resolve_set_max_w.side_effect = resolve_max_w_result()
+        mock_resolver.resolve_named_variable_der_setting_max_w.side_effect = resolve_max_w_result()
     else:
-        mock_resolve_set_max_w.return_value = resolve_max_w_result
+        mock_resolver.resolve_named_variable_der_setting_max_w.return_value = resolve_max_w_result
 
     if isinstance(timeline_streams_result, type):
         mock_get_timeline_streams.side_effect = timeline_streams_result()
@@ -115,6 +120,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         request_history=request_history,
         last_client_interaction=last_client_interaction,
         envoy_client=mock_envoy_client,
+        backend=mock_backend,
     )
 
     # Assert
@@ -143,7 +149,9 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
         assert runner_status.timeline is None
 
     assert_mock_session(mock_session)
-    mock_envoy_client.assert_not_called()
+    assert not mock_envoy_client.mock_calls
+    mock_backend.get_expression_resolver.assert_called_once()
+    mock_resolver.resolve_named_variable_der_setting_max_w.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -162,12 +170,14 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     last_client_interaction = Mock()
     mock_envoy_client = Mock(spec=EnvoyAdminClient)
 
+    backend = EnvoyBackend(session=mock_session, admin_client=mock_envoy_client)
     _ = await status.get_active_runner_status(
         session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
         envoy_client=mock_envoy_client,
+        backend=backend,
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
     assert_mock_session(mock_session)
@@ -180,8 +190,11 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     # Arrange
     mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
-    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_resolver = Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
+    mock_resolver.resolve_named_variable_der_setting_max_w.return_value = 5000
 
     mock_get_active_site = mocker.patch("cactus_runner.app.status.get_active_site")
 
@@ -230,7 +243,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
 
     # Act
     runner_status = await status.get_active_runner_status(
-        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client
+        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client, mock_backend
     )
 
     # Assert - EndDeviceMetadata
@@ -268,7 +281,10 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     assert metadata.der_status.inverter_status == "SLEEPING"
     assert metadata.der_status.alarm_status is None
 
-    mock_envoy_client.assert_not_called()
+    assert not mock_envoy_client.mock_calls
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_resolver.mock_calls) == 1
+    mock_resolver.resolve_named_variable_der_setting_max_w.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -276,9 +292,12 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
     """Test that EndDeviceMetadata is None when get_active_site raises an exception"""
     mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
-    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
     mocker.patch("cactus_runner.app.status.get_active_site", side_effect=Exception("DB error"))
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_resolver = Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
+    mock_resolver.resolve_named_variable_der_setting_max_w.return_value = 5000
 
     active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -294,12 +313,15 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
     mock_envoy_client = Mock(spec=EnvoyAdminClient)
 
     runner_status = await status.get_active_runner_status(
-        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client
+        mock_session, active_test_procedure, Mock(), Mock(), mock_envoy_client, mock_backend
     )
 
     assert runner_status.end_device_metadata is None
 
     mock_envoy_client.assert_not_called()
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_resolver.mock_calls) == 1
+    mock_resolver.resolve_named_variable_der_setting_max_w.assert_called_once()
 
 
 def test_get_runner_status(example_client_interaction: ClientInteraction):
@@ -387,8 +409,11 @@ async def test_get_active_runner_status_with_cropping(mocker):
     now = BASIS
     mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
-    mocker.patch("cactus_runner.app.status.resolve_named_variable_der_setting_max_w", return_value=5000)
     mocker.patch("cactus_runner.app.status.get_active_site", return_value=None)
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_resolver = Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
+    mock_resolver.resolve_named_variable_der_setting_max_w.return_value = 5000
 
     mock_get_timeline_streams = mocker.patch("cactus_runner.app.status.get_timeline_data_streams")
     mock_timeline_data = [generate_class_instance(TimelineDataStreamEntry)]
@@ -432,6 +457,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
         last_client_interaction=last_client_interaction,
         crop_minutes=15,
         envoy_client=mock_envoy_client,
+        backend=mock_backend,
     )
 
     # Assert - request_history should only contain last 15 minutes
@@ -455,3 +481,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
 
     assert runner_status.timeline is not None
     assert runner_status.timeline.data_streams == mock_timeline_data
+
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_resolver.mock_calls) == 1
+    mock_resolver.resolve_named_variable_der_setting_max_w.assert_called_once()

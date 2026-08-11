@@ -55,7 +55,10 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
 )
+from cactus_runner.plugin.backends import EnvoyBackend
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +72,12 @@ class StartResult:
 
 
 async def attempt_apply_actions(
-    actions: list[Action] | None, runner_state: RunnerState, envoy_client: EnvoyAdminClient
+        actions: list[Action] | None, runner_state: RunnerState, backend: RunnerBackend
 ) -> None:
     if actions:
         async with begin_session() as session:
             for a in actions:
-                await action.apply_action(a, runner_state, session, envoy_client)
+                await action.apply_action(a, runner_state, backend)
             await session.commit()  # Actions can write updates to the DB directly
 
 
@@ -97,8 +100,9 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
     # We cannot start a test procedure if any of the precondition checks are failing:
     if active_test_procedure.definition.preconditions:
         async with begin_session() as session:
+            backend = create_backend(session, envoy_client)
             check_failure = await first_failing_check(
-                active_test_procedure.definition.preconditions.checks, active_test_procedure, session, envoy_client
+                active_test_procedure.definition.preconditions.checks, active_test_procedure, backend
             )
             if check_failure:
                 return StartResult(
@@ -127,7 +131,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 
     # Fire any precondition actions
     if active_test_procedure.definition.preconditions:
-        await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, envoy_client)
+        await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, backend)
 
     # Activate the first listener
     await action.action_enable_steps(active_test_procedure, {"steps": [active_test_procedure.listeners[0].step]})
@@ -240,18 +244,20 @@ async def initialize_next_test(
 
     # Apply init_actions and handle immediate_start
     is_started = False
-    if runner_state.active_test_procedure.definition.preconditions:
-        await attempt_apply_actions(
-            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, envoy_client
-        )
+    async with begin_session() as session:
+        backend = create_backend(session, envoy_client)
+        if runner_state.active_test_procedure.definition.preconditions:
+            await attempt_apply_actions(
+                runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, backend
+            )
 
-        if runner_state.active_test_procedure.definition.preconditions.immediate_start:
-            start_result = await attempt_start_for_state(runner_state, envoy_client)
-            if not start_result.success:
-                raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
-            is_started = True
+            if runner_state.active_test_procedure.definition.preconditions.immediate_start:
+                start_result = await attempt_start_for_state(runner_state, envoy_client)
+                if not start_result.success:
+                    raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
+                is_started = True
 
-    return is_started
+        return is_started
 
 
 async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C901
@@ -394,11 +400,13 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     # if this test has "init_actions" - now is the time to fire them
     if active_test_procedure.definition.preconditions:
         try:
-            await attempt_apply_actions(
-                active_test_procedure.definition.preconditions.init_actions,
-                request.app[APPKEY_RUNNER_STATE],
-                request.app[APPKEY_ENVOY_ADMIN_CLIENT],
-            )
+            async with begin_session() as session:
+                backend = create_backend(session, request.app[APPKEY_ENVOY_ADMIN_CLIENT])
+                await attempt_apply_actions(
+                    active_test_procedure.definition.preconditions.init_actions,
+                    request.app[APPKEY_RUNNER_STATE],
+                    backend,
+                )
         except (action.FailedActionError, action.UnknownActionError) as e:
             return web.Response(
                 status=http.HTTPStatus.PRECONDITION_FAILED,
@@ -479,6 +487,7 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
             try:
+                print(f"runner_state: {runner_state}")
                 zip_path = await finalize.finish_active_test(
                     runner_state, session, request.app[APPKEY_ENVOY_ADMIN_CLIENT]
                 )
@@ -622,15 +631,18 @@ async def status_handler(request: web.Request) -> web.Response:
         This will be cropped to the last 15 mins of requests and timeline data to ensure UI does not slow down.
     """
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
+    envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
 
     if active_test_procedure is not None:
         async with begin_session() as session:
+            backend = create_backend(session=session, envoy_client=envoy_client)
             runner_status = await status.get_active_runner_status(
                 session=session,
                 active_test_procedure=active_test_procedure,
                 request_history=request.app[APPKEY_RUNNER_STATE].request_history,
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-                envoy_client=request.app[APPKEY_ENVOY_ADMIN_CLIENT],
+                envoy_client=envoy_client,
+                backend=backend,
                 crop_minutes=15,
             )
 
@@ -763,13 +775,13 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
     async with request.app[APPKEY_PROXY_LOCK]:
         async with begin_session() as session:
+            backend = EnvoyBackend(session=session, admin_client=envoy_client)
             trigger_handled = await event.handle_event_trigger(
                 trigger=event.generate_client_request_trigger(
                     proxy_parts, mount_point=MOUNT_POINT, before_serving=True
                 ),
                 runner_state=runner_state,
-                session=session,
-                envoy_client=envoy_client,
+                backend=backend,
             )
             await session.commit()
 
@@ -781,13 +793,13 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
         # Fire "after request" event trigger (only if an event didn't handle the before event)
         if not trigger_handled:
             async with begin_session() as session:
+                backend = create_backend(session, envoy_client)
                 trigger_handled = await event.handle_event_trigger(
                     trigger=event.generate_client_request_trigger(
                         proxy_parts, mount_point=MOUNT_POINT, before_serving=False
                     ),
                     runner_state=runner_state,
-                    session=session,
-                    envoy_client=envoy_client,
+                    backend=backend,
                 )
                 await session.commit()
 
@@ -858,11 +870,11 @@ async def proceed_handler(request: web.Request) -> web.Response:
         return web.Response(status=http.HTTPStatus.GONE, text=msg)
 
     async with begin_session() as session:
+        backend = create_backend(session, envoy_client)
         trigger_handled = await event.handle_event_trigger(
             trigger=event.generate_proceed_trigger(),
             runner_state=runner_state,
-            session=session,
-            envoy_client=envoy_client,
+            backend=backend,
         )
         await session.commit()
 

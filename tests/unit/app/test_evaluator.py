@@ -1,3 +1,4 @@
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 import unittest.mock as mock
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -131,7 +132,8 @@ async def test_resolve_variable_expected_use(
         await session.commit()
 
         async with begin_session() as session:
-            result = await resolve_variable(session, atp, expression)
+            resolver = EnvoyResolver(session)
+            result = await resolve_variable(resolver, atp, expression)
             assert isinstance(result, type(expected))
             assert result == expected
 

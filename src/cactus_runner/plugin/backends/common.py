@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.models import RunnerBackendTestContext
+from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 
 def generate_plugin_context(test_procedure: ActiveTestProcedure) -> RunnerBackendTestContext:
@@ -60,6 +61,13 @@ class RunnerBackend(Protocol):
         Args:
             context: Immutable snapshot of the active test procedure's identity and configuration.
         """
+
+    def get_expression_resolver(self) -> ExpressionResolver:
+        """Returns an expression resolver for the backend.
+
+        It is expected that one exists either at backend creation or on a per call basis of this method.
+        """
+        ...
 
     # ------------------------------------------------------------------
     # Sites
@@ -520,6 +528,7 @@ class RunnerBackend(Protocol):
                 resource reference.
         """
         ...
+
 
 
 # ---------------------------------------------------------------------------

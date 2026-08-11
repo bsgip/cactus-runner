@@ -1,3 +1,4 @@
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 import itertools
 import logging
 from collections.abc import Sequence
@@ -59,6 +60,10 @@ class EnvoyBackend(RunnerBackend):
         self.session = session
         self.admin_client = admin_client
         self.context = test_context
+
+    def get_expression_resolver(self) -> EnvoyResolver:
+        """Return an instance of an Envoy ExpressionResolver with the DB session attached."""
+        return EnvoyResolver(self.session)
 
     async def get_active_site(self, include_der_settings: bool = False) -> dtos.Site | None:
         """Returns the active site, interpreted as the most recently modified EndDevice in the database.

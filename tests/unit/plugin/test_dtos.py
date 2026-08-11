@@ -45,6 +45,9 @@ def test_site_der_setting_dto_has_no_extra_fields() -> None:
     dto_field_names = {f.name for f in fields(dtos.SiteDERSetting)}
     required = _fields_referenced_by_params(ParamsDERSettingsContents) | {"grad_w"}
 
+    # Required by status.py::get_active_runner_status currently
+    required = required.union(["max_discharge_rate_w_multiplier", "max_charge_rate_w_multiplier"])
+
     extra = dto_field_names - required
     assert not extra, f"SiteDERSetting DTO has fields not required by ParamsDERSettingsContents: {extra}"
 

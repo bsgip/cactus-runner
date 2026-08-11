@@ -4,11 +4,11 @@ import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions import UnresolvableVariableError
 
-from cactus_runner.app.resolvers import RANDOM_URI_ATTEMPTS, resolve_random_uri
 from cactus_runner.models import ActiveTestProcedure, RandomValues
+from cactus_runner.plugin.backends.resolver import RANDOM_URI_ATTEMPTS, resolve_random_uri
 
 
-@mock.patch("cactus_runner.app.resolvers.candidate_random_uri")
+@mock.patch("cactus_runner.plugin.backends.resolver.candidate_random_uri")
 def test_resolve_random_uri_retries_collisions(mock_candidate_random_uri: mock.MagicMock):
     """In the unlikely event of a URI collision - the attempts are retried"""
     # Arrange
@@ -34,7 +34,7 @@ def test_resolve_random_uri_retries_collisions(mock_candidate_random_uri: mock.M
     assert mock_candidate_random_uri.call_count == 4
 
 
-@mock.patch("cactus_runner.app.resolvers.candidate_random_uri")
+@mock.patch("cactus_runner.plugin.backends.resolver.candidate_random_uri")
 def test_resolve_random_uri_bounded_attempts(mock_candidate_random_uri: mock.MagicMock):
     """The system will give up gracefully if collisions cannot be avoided (super unlikely)"""
     # Arrange

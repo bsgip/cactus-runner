@@ -1360,10 +1360,8 @@ def check_all_polls_at_correct_time(
 async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
-    envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
-    backend: RunnerBackend | None = None,
 ) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
 
@@ -1372,24 +1370,20 @@ async def run_check(  # noqa: C901
     Args:
         check: The Check to evaluate against the active test procedure.
         active_test_procedure: The currently active test procedure.
-        session: DB session used for parameter resolution.
-        envoy_client: Admin API client used to construct the backend.
+        backend: Contains server implementation specifics to present data for checks
         request_history: Optional history of HTTP requests for request-based checks.
-        backend: If provided, used directly instead of constructing a new one from session + envoy_client.
 
     Raises:
         UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
         FailedCheckError: Raised if this function encounters an exception while running the check.
     """
+    resolver = backend.get_expression_resolver()
     resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
-        session, active_test_procedure, check.parameters
+        resolver, active_test_procedure, check.parameters
     )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen
-
-    if backend is None:
-        backend = create_backend(session, envoy_client)
 
     try:
         match check.type:
@@ -1463,8 +1457,7 @@ async def run_check(  # noqa: C901
 async def determine_check_results(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
-    envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> dict[str, CheckResult]:
     check_results: dict[str, CheckResult] = {}
@@ -1472,7 +1465,7 @@ async def determine_check_results(
         return check_results
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, envoy_client, request_history)
+        result = await run_check(check, active_test_procedure, backend, request_history)
         check_results[check.type] = result
     return check_results
 
@@ -1480,8 +1473,7 @@ async def determine_check_results(
 async def first_failing_check(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
-    envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> CheckResult | None:
     """Iterates through checks - looking for the first Check that returns a failing CheckResult. If all checks are
@@ -1495,7 +1487,7 @@ async def first_failing_check(
         return None
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, envoy_client, request_history)
+        result = await run_check(check, active_test_procedure, backend, request_history)
         if not result.passed:
             logger.info(f"{check} is not passing: {result}.")
             return result
@@ -1507,8 +1499,7 @@ async def first_failing_check(
 async def all_checks_passing(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
-    envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> bool:
     """Returns True if every specified check is passing. An empty/unspecified list will return True.
@@ -1517,5 +1508,5 @@ async def all_checks_passing(
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
       FailedCheckError: Raised if this function encounters an exception while running the check."""
 
-    failing_check = await first_failing_check(checks, active_test_procedure, session, envoy_client, request_history)
+    failing_check = await first_failing_check(checks, active_test_procedure, backend, request_history)
     return failing_check is None

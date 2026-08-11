@@ -1,19 +1,20 @@
 from datetime import UTC, datetime
 from http import HTTPMethod
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from cactus_schema.runner import RequestEntry
 from cactus_test_definitions.client import Event
 
 from cactus_runner.app import evaluator, event
 from cactus_runner.app.uri import MountedProxyPathParts
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 
 def test_generate_time_trigger():
@@ -568,18 +569,20 @@ async def test_is_listener_triggerable(
 
     # Arrange
     atp = generate_class_instance(ActiveTestProcedure, optional_is_none=True)
-    mock_session = create_mock_session()
-    mock_resolve_variable_expressions_from_parameters.side_effect = lambda session, active_test_procedure, parameters: (
-        parameters
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_resolver = Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
+    mock_resolve_variable_expressions_from_parameters.side_effect = (
+        lambda _resolver, _active_test_procedures, parameters: parameters
     )
 
-    result = await event.is_listener_triggerable(listener, trigger, mock_session, atp)
+    result = await event.is_listener_triggerable(listener, trigger, mock_backend, atp)
 
     # Assert
     assert isinstance(result, bool)
     assert result == expected
-    assert_mock_session(mock_session)
-    assert all([ca.args[0] is mock_session for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
+    assert not mock_resolver.mock_calls
+    assert all([ca.args[0] is mock_resolver for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
 
 
 @pytest.mark.parametrize(
@@ -600,18 +603,14 @@ async def test_is_listener_triggerable(
 async def test_handle_event_trigger_shortcircuit_conditions(
     mock_is_listener_triggerable: MagicMock, runner_state: RunnerState
 ):
-    mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
-
+    mock_backend = Mock(spec=RunnerBackend)
     # Act
-    result = await event.handle_event_trigger(
-        generate_class_instance(event.EventTrigger), runner_state, mock_session, mock_envoy_client
-    )
+    result = await event.handle_event_trigger(generate_class_instance(event.EventTrigger), runner_state, mock_backend)
 
     # Assertgenerate_class_instance(event.EventTrigger)
     assert result == []
-    assert_mock_session(mock_session)
     mock_is_listener_triggerable.assert_not_called()
+    assert not mock_backend.mock_calls
 
 
 def gen_listener(
@@ -648,8 +647,7 @@ async def test_handle_event_trigger_normal_operation(
 ):
     """Runs various scenarios for testing listeners and validating they pass checks"""
     # Arrange
-    mock_session = create_mock_session()
-    mock_envoy_client = MagicMock()
+    mock_backend = MagicMock(spec=RunnerBackend)
     input_trigger = generate_class_instance(event.EventTrigger, single_listener=single_listener)
     input_runner_state = RunnerState(
         generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None, listeners=listeners),
@@ -668,8 +666,8 @@ async def test_handle_event_trigger_normal_operation(
         return None
 
     # Mock is_listener_triggerable to return True if the listener is in trigger_indexes
-    def do_mock_is_listener_triggerable(listener, trigger, session, active_test_procedure):
-        assert session is mock_session
+    def do_mock_is_listener_triggerable(listener, trigger, backend, active_test_procedure):
+        assert backend is mock_backend
         assert trigger is input_trigger
         assert active_test_procedure is input_runner_state.active_test_procedure
 
@@ -680,8 +678,8 @@ async def test_handle_event_trigger_normal_operation(
     mock_is_listener_triggerable.side_effect = do_mock_is_listener_triggerable
 
     # Mock all_checks_passing to return True if the checks is in check_indexes
-    def do_mock_all_checks_passing(checks, active_test_procedure, session, _):
-        assert session is mock_session
+    def do_mock_all_checks_passing(checks, active_test_procedure, backend):
+        assert backend is mock_backend
         assert active_test_procedure is input_runner_state.active_test_procedure
 
         idx = find_index(checks, [listener.event.checks for listener in listeners])
@@ -692,10 +690,11 @@ async def test_handle_event_trigger_normal_operation(
     mock_all_checks_passing.side_effect = do_mock_all_checks_passing
 
     # Act
-    result = await event.handle_event_trigger(input_trigger, input_runner_state, mock_session, mock_envoy_client)
+    result = await event.handle_event_trigger(input_trigger, input_runner_state, mock_backend)
 
     # Assert
     assert_list_type(Listener, result, len(expected_indexes))
     for listener in result:
         assert find_index(listener, listeners) in expected_indexes
-    assert_mock_session(mock_session)
+    
+    assert not mock_backend.mock_calls

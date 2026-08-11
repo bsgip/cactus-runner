@@ -3,8 +3,8 @@ from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDERSetting
 
-from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 def _add_der_setting(session, **der_setting_kwargs) -> None:
@@ -28,7 +28,8 @@ async def test_resolve_named_variable_der_setting_max_import_w_empty(pg_empty_co
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERSetting"):
-            await resolvers.resolve_named_variable_der_setting_max_import_w(session)
+            resolver = EnvoyResolver(session)
+            await resolver.resolve_named_variable_der_setting_max_import_w()
 
 
 @pytest.mark.asyncio
@@ -45,7 +46,8 @@ async def test_resolve_named_variable_der_setting_max_import_w_uses_charge_rate(
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_setting_max_import_w(session)
+        resolver = EnvoyResolver(session)
+        result = await resolver.resolve_named_variable_der_setting_max_import_w()
         assert isinstance(result, float)
         assert result == 123.45
 
@@ -64,6 +66,7 @@ async def test_resolve_named_variable_der_setting_max_import_w_falls_back_to_max
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_setting_max_import_w(session)
+        resolver = EnvoyResolver(session)
+        result = await resolver.resolve_named_variable_der_setting_max_import_w()
         assert isinstance(result, float)
         assert result == 6780

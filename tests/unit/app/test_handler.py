@@ -88,7 +88,7 @@ def run_request(test_procedure_id: TestProcedureId, use_device_cert: bool = Fals
     ],
 )
 async def test_initialise_handler(
-    test_procedure_id: TestProcedureId, use_device_cert: bool, is_immediate_start: bool, mocker
+    test_procedure_id: TestProcedureId, use_device_cert: bool, is_immediate_start: bool, mocker, pg_base_config
 ):
     # Arrange
     mock_request = MagicMock()
@@ -286,7 +286,9 @@ async def test_new_init_handler_bad_request_invalid_test_procedure(mocker):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("precondition_failure", [action.FailedActionError, action.UnknownActionError])
-async def test_new_init_handler_precondition_failed_response_if_preconditions_fail(precondition_failure, mocker):
+async def test_new_init_handler_precondition_failed_response_if_preconditions_fail(
+    precondition_failure, mocker, pg_base_config
+):
     # Arrange
     test_procedure_id = TestProcedureId.ALL_01
     mock_request = MagicMock()
@@ -342,7 +344,7 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
         ),
     ],
 )
-async def test_new_init_handler_immediate_start_failure(start_result: handler.StartResult, mocker):
+async def test_new_init_handler_immediate_start_failure(start_result: handler.StartResult, mocker, pg_base_config):
     # Arrange
     test_procedure_id = TestProcedureId.ALL_01
     mock_request = MagicMock()

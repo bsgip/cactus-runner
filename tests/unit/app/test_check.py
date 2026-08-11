@@ -2002,19 +2002,16 @@ async def test_run_check(mocker, check: Check, apply_function_name: str):
     mock_run_check_function = mocker.patch(f"cactus_runner.app.check.{apply_function_name}")
     mock_run_check_function.return_value = check_result
 
-    mock_session = create_mock_session()
     mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
-    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
+    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
 
     # Assert
     assert actual is check_result
     mock_run_check_function.assert_called_once()
-    assert_mock_session(mock_session)
-    # The backend is only forwarded onto the check evaluation functions
-    # Currently not relying on admin api for checks. This may change.
-    mock_backend.assert_not_called()
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @mock.patch("cactus_runner.app.check.do_check_site_readings_and_params")
@@ -2033,12 +2030,11 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     # Arrange
     check_result = generate_class_instance(CheckResult)
     mock_do_check_site_readings_and_params.return_value = check_result
-    mock_session = create_mock_session()
     mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     for check in reading_checks:
-        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
+        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
         assert actual is check_result
 
     # Assert
@@ -2047,10 +2043,8 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
         "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
     )
 
-    assert_mock_session(mock_session)
-    # Backend forwarded onto patched function
-    # Currently not relying on admin api for checks. This may change.
-    mock_backend.assert_not_called()
+    mock_backend.get_expression_resolver.assert_called()
+    assert len(mock_backend.mock_calls) == len(reading_checks)
 
 
 @pytest.mark.parametrize(
@@ -2882,16 +2876,15 @@ async def test_run_check_check_dne():
 
     # Arrange
     check = Check(type="this-check-does-not-exist", parameters={})
-    mock_session = create_mock_session()
     mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     with pytest.raises(UnknownCheckError):
-        await run_check(check, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
+        await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
 
     # Assert
-    assert_mock_session(mock_session)
-    mock_backend.assert_not_called()
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -2916,7 +2909,6 @@ async def test_first_failing_check(
     """Tries to trip up first_failing_check under various combinations of pass/fail/exception"""
 
     # Arrange
-    mock_session = create_mock_session()
     mock_backend = mock.Mock(spec=RunnerBackend)
     side_effects = []
     for r in run_check_results:
@@ -2929,10 +2921,10 @@ async def test_first_failing_check(
     # Act
     if isinstance(expected, type):
         with pytest.raises(expected):
-            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
+            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_backend)
     else:
         first_failing_result = await first_failing_check(
-            checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend
+            checks, generate_active_test_procedure_steps([], []), mock_backend
         )
 
         if expected is True:
@@ -2942,8 +2934,7 @@ async def test_first_failing_check(
             assert expected is first_failing_result.passed
 
     # Assert
-    assert_mock_session(mock_session)
-    mock_backend.assert_not_called()
+    assert not mock_backend.mock_calls
 
 
 @pytest.mark.parametrize(

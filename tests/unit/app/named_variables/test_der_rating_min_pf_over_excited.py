@@ -3,8 +3,8 @@ from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDERRating
 
-from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 @pytest.mark.asyncio
@@ -12,7 +12,8 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited(pg_empty_co
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
+            resolver = EnvoyResolver(session)
+            await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,8 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_no_rating(p
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="rtgMinPFOverExcited"):
-            await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
+            resolver = EnvoyResolver(session)
+            await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
 
 
 @pytest.mark.asyncio
@@ -50,7 +52,8 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_single_rati
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
+        resolver = EnvoyResolver(session)
+        result = await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.95
 
@@ -105,6 +108,7 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_many_rating
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_min_pf_over_excited(session)
+        resolver = EnvoyResolver(session)
+        result = await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.45

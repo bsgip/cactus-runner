@@ -8,7 +8,6 @@ import pytest
 from assertical.asserts.time import assert_nowish
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from cactus_test_definitions.client import ACTION_PARAMETER_SCHEMA, Action, Event
 from envoy.server.model.doe import (
@@ -51,6 +50,8 @@ from cactus_runner.models import (
     StepStatus,
 )
 from cactus_runner.plugin.backends import EnvoyBackend
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
 # the actions defined in cactus test definitions (via ACTION_PARAMETER_SCHEMA). This sync will be enforced
@@ -212,31 +213,34 @@ async def test_apply_action(mocker, action: Action, apply_function_name: str):
 
     # Arrange
     mock_apply_function = mocker.patch(f"cactus_runner.app.action.{apply_function_name}")
-    mock_session = create_mock_session()
-    mock_envoy_client = mock.MagicMock()
+    mock_backend = mocker.Mock(spec=RunnerBackend)
+    mock_resolver = mocker.Mock(spec=ExpressionResolver)
+    mock_backend.get_expression_resolver.return_value = mock_resolver
 
     # Act
-    await apply_action(action, create_testing_runner_state([]), mock_session, mock_envoy_client)
+    await apply_action(action, create_testing_runner_state([]), mock_backend)
 
     # Assert
     mock_apply_function.assert_called_once()
-    assert_mock_session(mock_session)
+    assert not mock_resolver.mock_calls
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @pytest.mark.anyio
-async def test__apply_action_raise_exception_for_unknown_action_type():
+async def test_apply_action_raise_exception_for_unknown_action_type():
     runner_state = mock.MagicMock()
-    mock_session = create_mock_session()
-    mock_envoy_client = mock.MagicMock()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     with pytest.raises(UnknownActionError):
         await apply_action(
-            envoy_client=mock_envoy_client,
-            session=mock_session,
             action=Action(type="NOT-A-VALID-ACTION-TYPE", parameters={}),
             runner_state=runner_state,
+            backend=mock_backend,
         )
-    assert_mock_session(mock_session)
+
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -269,20 +273,19 @@ async def test__apply_action_raise_exception_for_unknown_action_type():
 async def test_apply_actions(mocker, listener: Listener):
     # Arrange
     runner_state = mock.MagicMock()
-    mock_session = create_mock_session()
     mock_apply_action = mocker.patch("cactus_runner.app.action.apply_action")
-    mock_envoy_client = mock.MagicMock()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     await apply_actions(
-        session=mock_session,
         listener=listener,
         runner_state=runner_state,
-        envoy_client=mock_envoy_client,
+        backend=mock_backend,
     )
 
     # Assert
     assert mock_apply_action.call_count == len(listener.actions)
+    assert not mock_backend.mock_calls
 
 
 @pytest.mark.parametrize("cancelled", [True, False, None])

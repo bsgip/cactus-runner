@@ -34,13 +34,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cactus_runner.app.check import run_check
 from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
-from cactus_runner.app.resolvers import resolve_named_variable_der_setting_max_w
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientInteraction,
     StepInfo,
 )
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,8 @@ def get_runner_status_summary(step_status: dict[str, StepInfo]) -> str:
 
 
 async def get_criteria_summary(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient
+    active_test_procedure: ActiveTestProcedure,
+    backend: RunnerBackend,
 ) -> list[CriteriaEntry]:
     if not active_test_procedure.definition.criteria or not active_test_procedure.definition.criteria.checks:
         return []
@@ -137,7 +138,7 @@ async def get_criteria_summary(
     criteria: list[CriteriaEntry] = []
     for check in active_test_procedure.definition.criteria.checks:
         try:
-            check_result = await run_check(check, active_test_procedure, session, envoy_client)
+            check_result = await run_check(check, active_test_procedure, backend)
             criteria.append(
                 CriteriaEntry(
                     check_result.passed,
@@ -152,7 +153,8 @@ async def get_criteria_summary(
 
 
 async def get_precondition_checks_summary(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure, envoy_client: EnvoyAdminClient
+    active_test_procedure: ActiveTestProcedure,
+    backend: RunnerBackend,
 ) -> list[PreconditionCheckEntry]:
     if not active_test_procedure.definition.preconditions or not active_test_procedure.definition.preconditions.checks:
         return []
@@ -160,7 +162,7 @@ async def get_precondition_checks_summary(
     checks: list[PreconditionCheckEntry] = []
     for check in active_test_procedure.definition.preconditions.checks:
         try:
-            check_result = await run_check(check, active_test_procedure, session, envoy_client)
+            check_result = await run_check(check, active_test_procedure, backend)
             checks.append(
                 PreconditionCheckEntry(
                     check_result.passed,
@@ -294,9 +296,11 @@ async def get_active_runner_status(
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
     envoy_client: EnvoyAdminClient,
+    backend: RunnerBackend,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
     now = datetime.now(UTC)
+    resolver = backend.get_expression_resolver()
 
     step_status: dict[str, StepEventStatus] = {}
     for step_name, step_info in active_test_procedure.step_status.items():
@@ -306,7 +310,7 @@ async def get_active_runner_status(
     # If there is a set max w available - return it - otherwise client likely has registered anything yet
     # This is used by both timeline and EndDeviceMetadata classes
     try:
-        set_max_w = int(await resolve_named_variable_der_setting_max_w(session))
+        set_max_w = int(await resolver.resolve_named_variable_der_setting_max_w())
     except Exception:
         set_max_w = None
 
@@ -317,8 +321,8 @@ async def get_active_runner_status(
     lower_max_w: int | None = None
     lower_max_label: str | None = None
     try:
-        der_setting_site = await get_active_site(session, include_der_settings=True)
-        der_setting = der_setting_site.site_der_setting if der_setting_site else None
+        der_setting_site = await backend.get_active_site()
+        der_setting = await backend.get_der_settings(site_id=der_setting_site.site_id) if der_setting_site else None
         if der_setting is not None:
             upper_max_w = set_max_w
             upper_max_label = "setMaxW"
@@ -383,8 +387,8 @@ async def get_active_runner_status(
         log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER, tail_bytes=64 * 1024),
         test_procedure_name=active_test_procedure.name,
         last_client_interaction=last_client_interaction,
-        criteria=await get_criteria_summary(session, active_test_procedure, envoy_client),
-        precondition_checks=await get_precondition_checks_summary(session, active_test_procedure, envoy_client),
+        criteria=await get_criteria_summary(active_test_procedure, backend),
+        precondition_checks=await get_precondition_checks_summary(active_test_procedure, backend),
         instructions=await get_current_instructions(active_test_procedure),
         status_summary=get_runner_status_summary(step_status=active_test_procedure.step_status),
         step_status=step_status,
