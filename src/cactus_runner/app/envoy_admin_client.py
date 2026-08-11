@@ -46,9 +46,9 @@ from envoy_schema.admin.schema.uri import (
     SiteUri,
     TariffComponentCreateUri,
     TariffComponentUpdateUri,
-    TariffCreateUri,
     TariffGeneratedRateCreateUri,
     TariffGeneratedRateUpdateUri,
+    TariffListUri,
 )
 
 logger = logging.getLogger(__name__)
@@ -287,7 +287,7 @@ class EnvoyAdminClient:
         resp.raise_for_status()
 
     async def create_tariff(self, tariff: TariffRequest) -> int:
-        resp = await self._session.post(TariffCreateUri, json=tariff.model_dump())
+        resp = await self._session.post(TariffListUri, json=tariff.model_dump())
         resp.raise_for_status()
 
         json = await resp.json()

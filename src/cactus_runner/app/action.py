@@ -181,7 +181,7 @@ async def action_set_default_der_control(
     # if the test doesn't specifically call out a DERProgram - we select the first one (lowest primacy)
     if derp_id is None:
         all_site_control_groups = await select_site_control_groups(
-            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None
+            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None, site_group_ids=set()
         )
         if len(all_site_control_groups) == 0:
             raise Exception("There are no configured DERPrograms - unable to set the DefaultDERControl")
@@ -608,6 +608,8 @@ async def action_create_time_tariff_interval(
     if active_site is None:
         raise Exception("Can't create TimeTariffInterval if there is no EndDevice. This is a test definition error.")
 
+    active_site_group = await get_exclusive_site_group(envoy_client, active_site)
+
     parent_tc_id: int | None = None
     if rate_component_tag is None:
         # If we have no parent tag - we assume there must be a single TariffComponent and we'll use that ID
@@ -630,7 +632,7 @@ async def action_create_time_tariff_interval(
     rate_id = await envoy_client.create_tariff_generated_rate(
         TariffGeneratedRateRequest(
             tariff_component_id=parent_tc_id,
-            site_id=active_site.site_id,
+            site_group_id=active_site_group.site_group_id,
             start_time=start,
             duration_seconds=duration_seconds,
             price_pow10_encoded=price_pow10_encoded_block0,

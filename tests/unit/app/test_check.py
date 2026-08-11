@@ -4018,20 +4018,25 @@ async def test_check_price_response_contents_latest(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
+        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1, required_site_group_id=None)
         session.add(tariff)
 
         tariff_component = generate_class_instance(TariffComponent, seed=2, tariff=tariff)
         session.add(tariff_component)
-        await session.flush()
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         rate_1 = generate_class_instance(
             TariffGeneratedRate,
             seed=303,
-            site=site1,
+            site_group=sg1,
             tariff_component=tariff_component,
             tariff_id=1,
             calculation_log_id=None,
@@ -4132,7 +4137,7 @@ async def test_check_price_response_contents_all(
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
+        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1, required_site_group_id=None)
         session.add(tariff)
 
         tariff_component = generate_class_instance(TariffComponent, seed=2, tariff=tariff)
@@ -4141,11 +4146,17 @@ async def test_check_price_response_contents_all(
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         for idx, control_id in enumerate(rate_ids):
             control = generate_class_instance(
                 TariffGeneratedRate,
                 seed=idx,
-                site=site1,
+                site_group=sg1,
                 tariff_component=tariff_component,
                 tariff_id=1,
                 calculation_log_id=None,
@@ -4157,7 +4168,7 @@ async def test_check_price_response_contents_all(
             control = generate_class_instance(
                 ArchiveTariffGeneratedRate,
                 seed=idx * 1001,
-                site_id=site1.site_id,
+                site_group_id=sg1.site_group_id,
                 deleted_time=datetime(2022, 11, 14, tzinfo=UTC),
                 tariff_component_id=tariff_component.tariff_component_id,
                 calculation_log_id=None,
@@ -4195,7 +4206,7 @@ async def test_check_price_response_contents_any(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
+        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1, required_site_group_id=None)
         session.add(tariff)
 
         tariff_component = generate_class_instance(TariffComponent, seed=2, tariff=tariff)
@@ -4204,10 +4215,16 @@ async def test_check_price_response_contents_any(pg_base_config):
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         rate_1 = generate_class_instance(
             TariffGeneratedRate,
             seed=303,
-            site=site1,
+            site_group=sg1,
             tariff_component=tariff_component,
             tariff_id=1,
             calculation_log_id=None,
@@ -4349,7 +4366,7 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1)
+        tariff = generate_class_instance(Tariff, seed=1, tariff_id=1, required_site_group_id=None)
         session.add(tariff)
 
         tariff_component = generate_class_instance(TariffComponent, seed=2, tariff=tariff)
@@ -4358,11 +4375,17 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         # Create control with ID 100 (tagged as RATE1)
         rate_1 = generate_class_instance(
             TariffGeneratedRate,
             seed=303,
-            site=site1,
+            site_group=sg1,
             tariff_component=tariff_component,
             tariff_id=1,
             calculation_log_id=None,
@@ -4374,7 +4397,7 @@ async def test_check_price_response_contents_tag_RATE1(pg_base_config):
         rate_2 = generate_class_instance(
             TariffGeneratedRate,
             seed=304,
-            site=site1,
+            site_group=sg1,
             tariff_component=tariff_component,
             tariff_id=1,
             calculation_log_id=None,
