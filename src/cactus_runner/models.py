@@ -10,6 +10,7 @@ from cactus_schema.runner import (
     ClientInteractionType,
     RequestEntry,
     StepStatus,
+    WarningEntry,
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Event, TestProcedure
@@ -151,6 +152,7 @@ class ActiveTestProcedure:
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
     proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
+    warnings: dict[str, WarningEntry] = field(default_factory=dict)
     well_known_entries: list[WellKnownEntry] = field(default_factory=list)
 
     def is_finished(self) -> bool:
@@ -734,4 +736,4 @@ class ReportingData_v1(ReportingData_Base):  # noqa: N801
     readings: list[PackedReadings]
     sites: list[Site]
     timeline: Timeline | None
-    set_max_w_varied: bool = False
+    warnings: list[WarningEntry] = field(default_factory=list)

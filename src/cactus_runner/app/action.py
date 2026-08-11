@@ -41,6 +41,7 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_all_site_control_groups,
     get_all_sites,
+    get_exclusive_site_group,
     get_tariff_components,
     get_tariff_generated_rates,
     get_tariffs,
@@ -180,7 +181,7 @@ async def action_set_default_der_control(
     # if the test doesn't specifically call out a DERProgram - we select the first one (lowest primacy)
     if derp_id is None:
         all_site_control_groups = await select_site_control_groups(
-            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None
+            session, start=0, changed_after=datetime.min, limit=1, fsa_id=None, site_group_ids=set()
         )
         if len(all_site_control_groups) == 0:
             raise Exception("There are no configured DERPrograms - unable to set the DefaultDERControl")
@@ -249,20 +250,23 @@ async def action_create_der_control(  # noqa: C901
 
     display_id: int | None = None
 
-    site_ids: list[int]
+    site_group_ids: list[int]
     if not end_device_indexes:
         # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
         active_site = await get_active_site(session)
         if active_site is None:
             raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
-        site_ids = [active_site.site_id]
+
+        active_site_group = await get_exclusive_site_group(envoy_client, active_site)
+        site_group_ids = [active_site_group.site_group_id]
     else:
-        site_ids = []
+        site_group_ids = []
         all_sites = await get_all_sites(session)
         for idx in end_device_indexes:
             if idx < 0 or idx >= len(all_sites):
                 raise Exception(f"end_device_index {idx} doesn't map to a valid EndDevice. {len(all_sites)} registered")
-            site_ids.append(all_sites[idx].site_id)
+            exclusive_site_group = await get_exclusive_site_group(envoy_client, all_sites[idx])
+            site_group_ids.append(exclusive_site_group.site_group_id)
 
         # We also need a unique display_id if we are "sharing" this DERControl virtually across multiple EndDevices
         # We could just use the current count of DERControls but that will recycle between test runs - not ideal
@@ -271,7 +275,7 @@ async def action_create_der_control(  # noqa: C901
         now_seconds = int(datetime.now(UTC).timestamp())
         display_id = existing_control_count << 32 | (now_seconds & 0xFFFFFFFF)
 
-    if len(site_ids) > 1 and annotation:
+    if len(site_group_ids) > 1 and annotation:
         raise Exception("Cannot combine 'tag' and 'end_device_indexes' parameters. This is a test definition error.")
 
     # We need the parent SiteControlGroup.site_control_group_id to nest this control under. This can be resolved via
@@ -332,7 +336,7 @@ async def action_create_der_control(  # noqa: C901
         [
             SiteControlRequest(
                 calculation_log_id=None,
-                site_id=site_id,
+                site_group_id=site_group_id,
                 duration_seconds=duration_seconds,
                 start_time=start_time,
                 randomize_start_seconds=randomize_seconds,
@@ -348,7 +352,7 @@ async def action_create_der_control(  # noqa: C901
                 # Storage extension
                 storage_target_watts=storage_target_watts,
             )
-            for site_id in site_ids
+            for site_group_id in site_group_ids
         ],
     )
 
@@ -604,6 +608,8 @@ async def action_create_time_tariff_interval(
     if active_site is None:
         raise Exception("Can't create TimeTariffInterval if there is no EndDevice. This is a test definition error.")
 
+    active_site_group = await get_exclusive_site_group(envoy_client, active_site)
+
     parent_tc_id: int | None = None
     if rate_component_tag is None:
         # If we have no parent tag - we assume there must be a single TariffComponent and we'll use that ID
@@ -626,7 +632,7 @@ async def action_create_time_tariff_interval(
     rate_id = await envoy_client.create_tariff_generated_rate(
         TariffGeneratedRateRequest(
             tariff_component_id=parent_tc_id,
-            site_id=active_site.site_id,
+            site_group_id=active_site_group.site_group_id,
             start_time=start,
             duration_seconds=duration_seconds,
             price_pow10_encoded=price_pow10_encoded_block0,

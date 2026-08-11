@@ -10,10 +10,7 @@ from pathlib import Path
 from typing import cast
 
 import pandas as pd
-from cactus_schema.runner.schema import RequestEntry
-from envoy.server.model.archive.site import ArchiveSiteDERSetting
-from envoy.server.model.site import SiteDERSetting
-from sqlalchemy import select
+from cactus_schema.runner.schema import RequestEntry, WarningEntry
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, timeline
@@ -37,6 +34,7 @@ from cactus_runner.app.readings import (
 )
 from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
+from cactus_runner.app.warning import run_post_test_analysers
 from cactus_runner.models import (
     CheckResult,
     PackedReadings,
@@ -90,6 +88,14 @@ def get_file_name_no_extension(file_path: str) -> str:
         return ".".join(dot_parts[:-1])
 
 
+def _format_warnings_txt(warnings: list[WarningEntry]) -> str:
+    """Human-readable printout of warnings for the artifact zip - one block per warning."""
+    blocks = []
+    for w in warnings:
+        blocks.append(f"Type: {w.type}\nTimestamp: {w.timestamp.isoformat()}\n{w.description}\n\n{w.message}")
+    return "\n\n---\n\n".join(blocks)
+
+
 def write_zip_to_file(
     output_path: Path,
     json_status_summary: str | None,
@@ -98,6 +104,7 @@ def write_zip_to_file(
     errors: list[str],
     filename_infix: str = "",
     reporting_data_filename_prefix: str | None = "ReportingData",
+    warnings: list[WarningEntry] | None = None,
 ) -> None:
     """Writes the zipped test procedure artifacts to output_path."""
 
@@ -117,6 +124,12 @@ def write_zip_to_file(
             file_path = archive_dir / f"{reporting_data_filename_prefix}{filename_infix}.json"
             with open(file_path, "w") as f:
                 f.write(json_reporting_data)
+
+        # Create human-readable warnings printout (omitted if no warnings)
+        if warnings:
+            file_path = archive_dir / f"warnings{filename_infix}.txt"
+            with open(file_path, "w") as f:
+                f.write(_format_warnings_txt(warnings))
 
         # Copy log files into the archive (use tail if larger than MAX_LOG_FILE_BYTES)
         for log_file_path in log_file_paths:
@@ -200,7 +213,7 @@ async def generate_json_reporting_data(
     timeline: timeline.Timeline | None,
     errors: list[str],
     version: int = 1,
-    set_max_w_varied: bool = False,
+    warnings: list[WarningEntry] | None = None,
 ) -> str | None:
     created_at = datetime.now(UTC)
 
@@ -220,7 +233,7 @@ async def generate_json_reporting_data(
             readings=packed_readings,  # ty:ignore[unknown-argument]
             sites=sites,  # ty:ignore[unknown-argument]
             timeline=timeline,  # ty:ignore[unknown-argument]
-            set_max_w_varied=set_max_w_varied,  # ty:ignore[unknown-argument]
+            warnings=warnings if warnings is not None else [],  # ty:ignore[unknown-argument]
         )
         json_reporting_data = reporting_data.to_json()
     except Exception as exc:
@@ -256,6 +269,9 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
     logger.info(f"finish_active_test_procedure: '{active_test_procedure.name}' will be finished")
 
     capped_request_history = _cap_request_history(runner_state.request_history)
+
+    # Run finalize-time warning analysers so status/reporting/zip all see the final warning set
+    await run_post_test_analysers(session, active_test_procedure, capped_request_history)
 
     # Collect status summary
     try:
@@ -323,20 +339,6 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
         reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
-        # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
-        # than the current SiteDERSetting for the same site means it changed
-        set_max_w_varied = (
-            await session.execute(
-                select(ArchiveSiteDERSetting.site_id)
-                .join(
-                    SiteDERSetting,
-                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
-                )
-                .limit(1)
-            )
-        ).scalar() is not None
-
         capped_runner_state = dataclasses.replace(runner_state, request_history=capped_request_history)
 
         # Convert to serialisable types
@@ -355,7 +357,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
             timeline=test_timeline,
             errors=errors,
             version=reporting_data_version,
-            set_max_w_varied=set_max_w_varied,
+            warnings=list(active_test_procedure.warnings.values()),
         )
         reporting_data_filename_prefix = f"ReportingData_v{reporting_data_version}"
     except Exception as exc:
@@ -382,6 +384,7 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         filename_infix=f"_{int(generation_timestamp.timestamp())}_{active_test_procedure.name}",
         reporting_data_filename_prefix=reporting_data_filename_prefix,
         errors=errors,
+        warnings=list(active_test_procedure.warnings.values()),
     )
     active_test_procedure.finished_zip_path = zip_path
     return zip_path
