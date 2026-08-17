@@ -377,6 +377,7 @@ async def get_active_runner_status(
         timestamp_status=datetime.now(tz=UTC),
         timestamp_initialise=active_test_procedure.initialised_at,
         timestamp_start=active_test_procedure.started_at,
+        timestamp_finished=active_test_procedure.finished_at,
         csip_aus_version=active_test_procedure.csip_aus_version.value,
         log_envoy=read_log_file(LOG_FILE_ENVOY_SERVER, tail_bytes=64 * 1024),
         test_procedure_name=active_test_procedure.name,
