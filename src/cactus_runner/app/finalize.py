@@ -382,4 +382,5 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession) -
         warnings=list(active_test_procedure.warnings.values()),
     )
     active_test_procedure.finished_zip_path = zip_path
+    active_test_procedure.finished_at = now
     return zip_path

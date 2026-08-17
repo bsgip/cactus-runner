@@ -134,6 +134,7 @@ class ActiveTestProcedure:
     finished_zip_path: Path | None = (
         None  # Path to finalised ZIP file on disk. If not None this test is "done" and shouldn't update events/state
     )
+    finished_at: datetime | None = None  # When did the test finish (None if it hasn't finished yet)
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
     proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
