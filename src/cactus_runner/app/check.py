@@ -17,7 +17,6 @@ from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.evaluator import (
@@ -37,8 +36,6 @@ from cactus_runner.plugin.backends.common import (
     get_site_reading_types_ordered,
     get_site_readings_ordered,
 )
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
-from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
 
@@ -873,15 +870,12 @@ async def do_check_site_readings_and_params(
     site = await backend.get_active_site()
     if not site:
         return CheckResult(False, "No active site found.")
-    print(f"site: {site}")
     site_reading_types_raw = await get_site_reading_types_ordered(backend, site_ids=[site.site_id])
-    print(f"raw: {site_reading_types_raw}")
     site_reading_types_all = [
         srt
         for srt in site_reading_types_raw
         if srt.site_id == site.site_id and srt.uom == uom and srt.kind == kind and srt.data_qualifier == data_qualifier
     ]
-    print(f"all: {site_reading_types_all}")
     site_reading_types = [srt for srt in site_reading_types_all if srt.role_flags == reading_location]
 
     incorrect_roleflags = [srt for srt in site_reading_types_all if srt.role_flags != reading_location]

@@ -5,6 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
 
+import pandas as pd
 from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
@@ -716,3 +717,53 @@ class ReportingData_v1(ReportingData_Base):  # noqa: N801
     sites: list[Site]
     timeline: Timeline | None
     set_max_w_varied: bool = False
+
+
+@dataclass(frozen=True)
+class FinalSerializableReportingData:
+    serializable_readings: dict[ReadingType, pd.DataFrame] | None
+    serializable_reading_counts: dict[ReadingType, int] | None
+    serializable_sites: list[Site] | None
+    set_max_w_varied: bool | None
+
+
+@dataclass(frozen=True)
+class RunnerBackendTestContext:
+    name: str
+    definition: TestProcedure
+    csip_aus_version: CSIPAusVersion  # What CSIP aus version did is this run communicating with?
+    initialised_at: datetime  # When did the test initialise - timezone aware
+    started_at: datetime | None  # When did the test start (None if it hasn't started yet) - timezone aware
+    client_aggregator_id: str  # What aggregator ID will be the client operating as? (0 for device certs)
+    client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
+    client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)
+    run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any
+    pen: int  # Private Enterprise Number (PEN). A value of 0 means no valid PEN avaiable.
+    subscription_domain: str | None = None
+    is_static_url: bool | None = None
+    run_group_id: str | None = None
+    run_group_name: str | None = None
+    user_id: str | None = None
+    user_name: str | None = None
+    communications_disabled: bool = False
+
+
+@dataclass
+class TimelineDataStream(JSONWizard):
+    label: str  # Descriptive label of this data stream
+    offset_watt_values: list[
+        int | None
+    ]  # The watt readings with the Nth entry being at Timeline.start + N * Timeline.interval_seconds
+    stepped: bool  # If True - this data should be presented as a stepped line chart
+    dashed: bool  # If True - this data should be a dashed line
+
+
+@dataclass
+class Timeline(JSONWizard):
+    """Represents a series of regular "power" observations aligned on interval_seconds offsets relative to start"""
+
+    start: datetime  # The basis time
+    interval_seconds: int  # The length of each regular interval within the timeline
+    data_streams: list[TimelineDataStream]
+
+

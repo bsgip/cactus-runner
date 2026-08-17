@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 __all__ = [
@@ -37,19 +37,32 @@ class SiteControlGroupWrite:
 class SiteControl:
     site_control_id: str
     site_control_group_id: str
+    import_limit_active_watts: Decimal | None
+    export_limit_active_watts: Decimal | None
+    generation_limit_active_watts: Decimal | None
+    load_limit_active_watts: Decimal | None
+    superseded: bool
+    start_time: datetime
+    duration: timedelta
     deleted_time: datetime | None
+    archive_time: datetime | None
     created_time: datetime
+    changed_time: datetime
 
 
 @dataclass(slots=True, frozen=True)
 class SiteControlGroupDefault:
     """Read DTO — mirrors the envoy SiteControlGroupDefault ORM model."""
 
-    import_limit_watts: Decimal | None
-    export_limit_watts: Decimal | None
-    generation_limit_watts: Decimal | None
-    load_limit_watts: Decimal | None
-    ramp_rate_percent_per_second: Decimal | None
+    import_limit_active_watts: Decimal | None
+    export_limit_active_watts: Decimal | None
+    generation_limit_active_watts: Decimal | None
+    load_limit_active_watts: Decimal | None
+    ramp_rate_percent_per_second: int | None
+    changed_time: datetime
+    created_time: datetime
+    archive_time: datetime | None
+    deleted_time: datetime | None
 
 
 @dataclass(slots=True, frozen=True)

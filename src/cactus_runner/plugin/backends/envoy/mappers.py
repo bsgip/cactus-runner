@@ -1,11 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
+from enum import IntEnum, IntFlag
 
+from cactus_schema.runner import DERCapabilityInfo, DERSettingsInfo, DERStatusInfo
 from envoy.server.model import (
     DynamicOperatingEnvelope,
     DynamicOperatingEnvelopeResponse,
     Site,
     SiteControlGroup,
+    SiteControlGroupDefault,
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
@@ -14,7 +17,11 @@ from envoy.server.model import (
     Subscription,
     TransmitNotificationLog,
 )
-from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.archive import (
+    ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
+    ArchiveSiteReading,
+)
 from envoy_schema.admin.schema.config import RuntimeServerConfigRequest
 from envoy_schema.admin.schema.site import SiteUpdateRequest
 from envoy_schema.admin.schema.site_control import (
@@ -22,6 +29,17 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlGroupRequest,
     SiteControlRequest,
     UpdateDefaultValue,
+)
+from envoy_schema.server.schema.sep2.der import (
+    AlarmStatusType,
+    ConnectStatusType,
+    DERControlType,
+    DERType,
+    DOESupportedMode,
+    InverterStatusType,
+    LocalControlModeStatusType,
+    OperationalModeStatusType,
+    StorageModeStatusType,
 )
 
 from cactus_runner.plugin import dtos
@@ -82,7 +100,7 @@ def map_envoy_site_der_status_to_dto(site_der_status: SiteDERStatus) -> dtos.Sit
     )
 
 
-def map_envoy_site_reading_to_dto(site_reading: SiteReading) -> dtos.SiteReading:
+def map_envoy_site_reading_to_dto(site_reading: SiteReading | ArchiveSiteReading) -> dtos.SiteReading:
     """Maps an Envoy DB SiteReading to CACTUS backend DTO."""
     return dtos.SiteReading(
         site_reading_type_id=f"{site_reading.site_reading_type_id}",
@@ -90,6 +108,9 @@ def map_envoy_site_reading_to_dto(site_reading: SiteReading) -> dtos.SiteReading
         time_period_duration=timedelta(seconds=site_reading.time_period_seconds),
         value=site_reading.value,
         created_time=site_reading.created_time,
+        archive_time=site_reading.archive_time if isinstance(site_reading, ArchiveSiteReading) else None,
+        deleted_time=site_reading.deleted_time if isinstance(site_reading, ArchiveSiteReading) else None,
+        changed_time=site_reading.changed_time,
     )
 
 
@@ -112,8 +133,17 @@ def map_envoy_site_control_to_dto(
     return dtos.SiteControl(
         site_control_id=f"{site_control.dynamic_operating_envelope_id}",
         site_control_group_id=f"{site_control.site_control_group_id}",
+        import_limit_active_watts=site_control.import_limit_active_watts,
+        export_limit_active_watts=site_control.export_limit_watts,
+        generation_limit_active_watts=site_control.generation_limit_active_watts,
+        load_limit_active_watts=site_control.load_limit_active_watts,
         deleted_time=site_control.deleted_time if isinstance(site_control, ArchiveDynamicOperatingEnvelope) else None,
+        archive_time=site_control.archive_time if isinstance(site_control, ArchiveDynamicOperatingEnvelope) else None,
+        start_time=site_control.start_time,
+        duration=timedelta(seconds=site_control.duration_seconds),
         created_time=site_control.created_time,
+        superseded=site_control.superseded,
+        changed_time=site_control.changed_time,
     )
 
 
@@ -167,6 +197,27 @@ def map_envoy_site_control_group_to_dto(site_control_group: SiteControlGroup) ->
         primacy=site_control_group.primacy,
         fsa_id=f"{site_control_group.fsa_id}",
         display_id=site_control_group.display_id,
+    )
+
+
+def map_envoy_site_control_group_default_to_dto(
+    site_control_group_default: SiteControlGroupDefault | ArchiveSiteControlGroupDefault,
+) -> dtos.SiteControlGroupDefault:
+    """Map an envoy site control group default to a CACTUS backend DTO."""
+    return dtos.SiteControlGroupDefault(
+        import_limit_active_watts=site_control_group_default.import_limit_active_watts,
+        export_limit_active_watts=site_control_group_default.export_limit_active_watts,
+        generation_limit_active_watts=site_control_group_default.generation_limit_active_watts,
+        load_limit_active_watts=site_control_group_default.load_limit_active_watts,
+        ramp_rate_percent_per_second=site_control_group_default.ramp_rate_percent_per_second,
+        changed_time=site_control_group_default.changed_time,
+        created_time=site_control_group_default.created_time,
+        archive_time=site_control_group_default.archive_time
+        if isinstance(site_control_group_default, ArchiveSiteControlGroupDefault)
+        else None,
+        deleted_time=site_control_group_default.deleted_time
+        if isinstance(site_control_group_default, ArchiveSiteControlGroupDefault)
+        else None,
     )
 
 
@@ -254,4 +305,80 @@ def map_dto_site_write_to_envoy(site: dtos.SiteWrite) -> Site:
         sfdi=site.sfdi,
         device_category=site.device_category,
         registration_pin=site.registration_pin,
+    )
+
+
+def _resolve_value_multiplier(value: int | None, multiplier: int | None) -> int | None:
+    """Resolve a sep2 value/multiplier pair to an integer (value * 10^multiplier)."""
+    if value is None:
+        return None
+    return int(value * (10 ** (multiplier if multiplier is not None else 0)))
+
+
+def _resolve_intflag(bitmap: int | None, flag_type: type[IntFlag]) -> list[str] | None:
+    """Resolve an IntFlag bitmap to a list of active flag names."""
+    if bitmap is None:
+        return None
+    return [flag.name for flag in flag_type if bitmap & flag and flag.name is not None]
+
+
+def _resolve_intenum(value: int | None, enum_type: type[IntEnum]) -> str | None:
+    """Resolve an IntEnum integer value to its name string."""
+    if value is None:
+        return None
+    try:
+        return enum_type(value).name
+    except ValueError:
+        return None
+
+
+def build_der_capability(rating: SiteDERRating) -> DERCapabilityInfo:
+    return DERCapabilityInfo(
+        der_type=_resolve_intenum(rating.der_type, DERType),
+        modes_supported=_resolve_intflag(rating.modes_supported, DERControlType),
+        max_w=_resolve_value_multiplier(rating.max_w_value, rating.max_w_multiplier),
+        max_va=_resolve_value_multiplier(rating.max_va_value, rating.max_va_multiplier),
+        max_var=_resolve_value_multiplier(rating.max_var_value, rating.max_var_multiplier),
+        max_var_neg=_resolve_value_multiplier(rating.max_var_neg_value, rating.max_var_neg_multiplier),
+        max_a=_resolve_value_multiplier(rating.max_a_value, rating.max_a_multiplier),
+        max_charge_rate_w=_resolve_value_multiplier(
+            rating.max_charge_rate_w_value, rating.max_charge_rate_w_multiplier
+        ),
+        max_discharge_rate_w=_resolve_value_multiplier(
+            rating.max_discharge_rate_w_value, rating.max_discharge_rate_w_multiplier
+        ),
+        max_wh=_resolve_value_multiplier(rating.max_wh_value, rating.max_wh_multiplier),
+        doe_modes_supported=_resolve_intflag(rating.doe_modes_supported, DOESupportedMode),
+    )
+
+
+def build_der_settings(setting: SiteDERSetting) -> DERSettingsInfo:
+    return DERSettingsInfo(
+        modes_enabled=_resolve_intflag(setting.modes_enabled, DERControlType),
+        max_w=_resolve_value_multiplier(setting.max_w_value, setting.max_w_multiplier),
+        max_va=_resolve_value_multiplier(setting.max_va_value, setting.max_va_multiplier),
+        max_var=_resolve_value_multiplier(setting.max_var_value, setting.max_var_multiplier),
+        max_var_neg=_resolve_value_multiplier(setting.max_var_neg_value, setting.max_var_neg_multiplier),
+        max_charge_rate_w=_resolve_value_multiplier(
+            setting.max_charge_rate_w_value, setting.max_charge_rate_w_multiplier
+        ),
+        max_discharge_rate_w=_resolve_value_multiplier(
+            setting.max_discharge_rate_w_value, setting.max_discharge_rate_w_multiplier
+        ),
+        grad_w=setting.grad_w,
+        doe_modes_enabled=_resolve_intflag(setting.doe_modes_enabled, DOESupportedMode),
+    )
+
+
+def build_der_status(status: SiteDERStatus) -> DERStatusInfo:
+    return DERStatusInfo(
+        alarm_status=_resolve_intflag(status.alarm_status, AlarmStatusType),
+        generator_connect_status=_resolve_intflag(status.generator_connect_status, ConnectStatusType),
+        storage_connect_status=_resolve_intflag(status.storage_connect_status, ConnectStatusType),
+        inverter_status=_resolve_intenum(status.inverter_status, InverterStatusType),
+        operational_mode_status=_resolve_intenum(status.operational_mode_status, OperationalModeStatusType),
+        storage_mode_status=_resolve_intenum(status.storage_mode_status, StorageModeStatusType),
+        local_control_mode_status=_resolve_intenum(status.local_control_mode_status, LocalControlModeStatusType),
+        manufacturer_status=status.manufacturer_status,
+        state_of_charge_status=status.state_of_charge_status,
     )

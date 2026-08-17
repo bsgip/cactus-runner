@@ -1,12 +1,22 @@
 from datetime import UTC, datetime
+from unittest.mock import Mock
 
 import pytest
 from assertical.fake.generator import generate_class_instance
+from assertical.fake.sqlalchemy import create_mock_session
 from assertical.fixtures.postgres import generate_async_session
-from envoy.server.model import DynamicOperatingEnvelope, Site, SiteControlGroup
+from envoy.server.model import (
+    DynamicOperatingEnvelope,
+    Site,
+    SiteControlGroup,
+    SiteDERRating,
+    SiteDERSetting,
+    SiteDERStatus,
+)
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
 
-from cactus_runner.plugin.backends import EnvoyBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 @pytest.mark.anyio
@@ -50,3 +60,89 @@ async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
         assert [int(c.site_control_id) for c in controls] == list(range(1, 11))
         assert [int(c.site_control_id) for c in controls if c.deleted_time is not None] == list(range(6, 11))
         assert [int(c.site_control_id) for c in controls if c.deleted_time is None] == list(range(1, 6))
+
+
+@pytest.mark.anyio
+async def test_get_end_device_metadata(mocker) -> None:
+    """Test that EndDeviceMetadata is correctly populated from active site.
+
+    This test was largely part of a test_status.py unit test but it is mainly rooted in envoy as the
+    backend, so it was migrated for the most part here to protect the behaviour of the existing
+    metadata creation logic for it.
+    """
+    # Arrange
+    mock_session = create_mock_session()
+    mock_envoy_client = Mock(spec=EnvoyAdminClient)
+    backend = EnvoyBackend(session=mock_session, admin_client=mock_envoy_client)
+    mock_resolver = Mock(spec=EnvoyResolver)
+    mocker.patch.object(backend, "get_expression_resolver", return_value=mock_resolver)
+    mock_resolver.resolve_named_variable_der_setting_max_w.return_value = 5000
+
+    mock_get_active_site = mocker.patch("cactus_runner.plugin.backends.envoy.backend._get_active_site_with_der")
+
+    # Build model instances with specific overrides for fields we assert on
+    site_der_setting = generate_class_instance(
+        SiteDERSetting,
+        seed=401,
+        doe_modes_enabled=7,  # DOESupportedMode: EXPORT_LIMIT_W | IMPORT_LIMIT_W | GENERATION_LIMIT_W
+        modes_enabled=None,
+        max_w_value=5000,
+        max_w_multiplier=0,
+        grad_w=100,
+    )
+    site_der_rating = generate_class_instance(
+        SiteDERRating,
+        seed=501,
+        der_type=4,  # DERType.PHOTOVOLTAIC_SYSTEM
+        modes_supported=None,
+        max_w_value=6000,
+        max_w_multiplier=0,
+    )
+    site_der_status = generate_class_instance(
+        SiteDERStatus,
+        seed=601,
+        inverter_status=2,  # InverterStatusType.SLEEPING
+        alarm_status=None,
+    )
+    site = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=42)
+    site.site_der_setting = site_der_setting
+    site.site_der_rating = site_der_rating
+    site.site_der_status = site_der_status
+    mock_get_active_site.return_value = site
+
+    # Act
+    metadata = await backend.get_end_device_metadata()
+
+    # Assert - EndDeviceMetadata
+    assert metadata is not None
+    assert metadata.edevid == 42
+    assert metadata.lfdi == site.lfdi
+    assert metadata.sfdi == site.sfdi
+    assert metadata.nmi == site.nmi
+    assert metadata.aggregator_id == 1
+    assert metadata.set_max_w == 5000
+    assert metadata.doe_modes_enabled == 7
+    assert metadata.device_category == site.device_category
+    assert metadata.timezone_id == site.timezone_id
+
+    # DERSettings
+    assert metadata.der_settings is not None
+    assert metadata.der_settings.max_w == 5000
+    assert metadata.der_settings.grad_w == 100
+    assert metadata.der_settings.modes_enabled is None
+    assert metadata.der_settings.doe_modes_enabled == [
+        "OP_MOD_EXPORT_LIMIT_W",
+        "OP_MOD_IMPORT_LIMIT_W",
+        "OP_MOD_GENERATION_LIMIT_W",
+    ]
+
+    # DERCapability
+    assert metadata.der_capability is not None
+    assert metadata.der_capability.der_type == "PHOTOVOLTAIC_SYSTEM"
+    assert metadata.der_capability.max_w == 6000
+    assert metadata.der_capability.modes_supported is None
+
+    # DERStatus
+    assert metadata.der_status is not None
+    assert metadata.der_status.inverter_status == "SLEEPING"
+    assert metadata.der_status.alarm_status is None

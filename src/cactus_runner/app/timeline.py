@@ -1,29 +1,23 @@
+from typing import cast
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from itertools import chain
-from typing import Any, cast
 
 from dataclass_wizard import JSONWizard
-from envoy.server.model.archive import ArchiveBase
-from envoy.server.model.archive.doe import (
-    ArchiveDynamicOperatingEnvelope,
-    ArchiveSiteControlGroupDefault,
-)
-from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroupDefault
-from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from intervaltree import Interval, IntervalTree
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
-    get_csip_aus_site_reading_types,
-    get_site_control_group_defaults_with_archive,
-    get_site_controls_active_archived,
-    get_site_readings,
 )
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.common import get_site_reading_types_ordered
+
+
+ArchivableEntity = dtos.SiteControl | dtos.SiteReading | dtos.SiteControlGroupDefault
 
 
 @dataclass
@@ -74,7 +68,7 @@ def pow10_to_watts(value: int, pow_10: int) -> int:
     return int(value * pow(10, pow_10))
 
 
-def reading_to_watts(srts: Sequence[SiteReadingType], r: SiteReading) -> int:
+def reading_to_watts(srts: Sequence[dtos.SiteReadingType], r: dtos.SiteReading) -> int:
     for srt in srts:
         if srt.site_reading_type_id == r.site_reading_type_id:
             return pow10_to_watts(r.value, srt.power_of_ten_multiplier)
@@ -82,7 +76,7 @@ def reading_to_watts(srts: Sequence[SiteReadingType], r: SiteReading) -> int:
     raise ValueError(f"Couldn't find SiteReadingType with ID {r.site_reading_type_id}")
 
 
-def entity_to_priority(entity: Any) -> int:  # noqa: ANN401
+def entity_to_priority(entity: ArchivableEntity) -> int:
     """this function will calculate the entity priority which follows these rules:
 
     1) an ArchiveBase (deletion) descendent is ALWAYS lower priority when compared to other types.
@@ -92,7 +86,7 @@ def entity_to_priority(entity: Any) -> int:  # noqa: ANN401
     3) an ArchiveBase (non deletion) descendent is highest priority ONLY from its start time to archive time (otherwise
        it can be ignored)
         * Tiebreaks here are done by taking the highest archive time"""
-    if isinstance(entity, ArchiveBase):
+    if entity.archive_time is not None:
         if entity.deleted_time is None:
             return 3  # Archive records
         else:
@@ -101,16 +95,18 @@ def entity_to_priority(entity: Any) -> int:  # noqa: ANN401
         return 2  # normal record
 
 
-def highest_priority_entity(entities: set[Interval]) -> Any:  # noqa: ANN401
+def highest_priority_entity(
+    entities: set[Interval],
+) -> ArchivableEntity:
     """this function will take the highest priority entity which follows these priorities:
 
     This priority mapping is done by entity_to_priority
     """
-    highest_entity: Any | None = None
+    highest_entity: ArchivableEntity | None = None
     highest_priority: int = -1
 
     for e in entities:
-        current_entity = e.data
+        current_entity: ArchivableEntity = e.data
         current_entity_priority = entity_to_priority(current_entity)
         if current_entity_priority > highest_priority:
             highest_entity = current_entity
@@ -122,9 +118,12 @@ def highest_priority_entity(entities: set[Interval]) -> Any:  # noqa: ANN401
 
         # At this point - we've got something at the same priority - we need to tiebreak
         if (
-            isinstance(current_entity, ArchiveBase)
+            # If archive time is set it is considered an archive record
+            current_entity.archive_time is not None
+            # If deleted time is set it is considered an archived deleted record
             and current_entity.deleted_time is None
-            and isinstance(highest_entity, ArchiveBase)
+            and highest_entity is not None
+            and highest_entity.archive_time is not None
             and current_entity.deleted_time is None
         ):
             # if we have two archive records (not deletion records) - Take the one with the higher archive time
@@ -154,7 +153,7 @@ def generate_offset_watt_values(
     start: datetime,
     end: datetime,
     interval_seconds: int,
-    watt_fetchers: list[Callable[[Any], int | None]],
+    watt_fetchers: list[Callable[[ArchivableEntity], int | None]],
 ) -> list[list[int | None]]:
     """Interrogates tree at regular intervals from start -> end at regular intervals of interval_seconds. At each
     of those intervals (if an entity is returned) - call each of the watt_fetcher Callables on that entity. The results
@@ -185,10 +184,10 @@ def generate_offset_watt_values(
 
 
 async def generate_readings_data_stream(
-    session: AsyncSession, label: str, location: ReadingLocation, start: datetime, end: datetime, interval_seconds: int
+    backend: RunnerBackend, label: str, location: ReadingLocation, start: datetime, end: datetime, interval_seconds: int
 ) -> TimelineDataStream:
     srts = await get_csip_aus_site_reading_types(
-        session, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
+        backend, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
     )
 
     # Build one interval tree per SiteReadingType. Multi-phase setups report each phase as a separate SRT;
@@ -198,17 +197,21 @@ async def generate_readings_data_stream(
         # Dump all readings - we will refine in memory
         # (we could be fancy and try to interrogate records within the start/end range but that introduces a bit more
         # complexity and we should only be dealing with < 60 records)
-        readings = await get_site_readings(session, srt)
+        readings = await backend.get_site_readings(site_reading_type_ids=[srt.site_reading_type_id])
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree = IntervalTree(
-            Interval(r.time_period_start, r.time_period_start + timedelta(seconds=r.time_period_seconds), r)
+            Interval(r.time_period_start, r.time_period_start + r.time_period_duration, r)
             for r in readings
-            if r.time_period_seconds is not None and r.time_period_seconds > 0
+            if r.time_period_duration > timedelta(0)
         )
         per_srt_values.append(
             generate_offset_watt_values(
-                tree, start, end, interval_seconds, [lambda e, _srt=srt: reading_to_watts([_srt], e)]
+                tree,
+                start,
+                end,
+                interval_seconds,
+                [lambda e, _srt=srt: reading_to_watts([_srt], cast(dtos.SiteReading, e))],
             )[0]
         )
 
@@ -228,11 +231,11 @@ async def generate_readings_data_stream(
 
 
 async def generate_control_data_streams(
-    session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
+    backend: RunnerBackend, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
 
-    all_controls = await get_site_controls_active_archived(session)
-    site_control_group_ids: set[int] = set(c.site_control_group_id for c in all_controls)
+    all_controls = await backend.get_site_controls()
+    site_control_group_ids: set[str] = set(c.site_control_group_id for c in all_controls)
     all_data_streams: list[TimelineDataStream] = []
 
     # We will enumerate all the controls, batched by the site control group (DERProgram) that they belong to
@@ -248,8 +251,9 @@ async def generate_control_data_streams(
             if control.superseded:
                 continue
 
-            end_time = control.start_time + timedelta(seconds=control.duration_seconds)
-            if isinstance(control, ArchiveDynamicOperatingEnvelope):
+            end_time = control.start_time + control.duration
+
+            if control.archive_time is not None:
                 # If this is a deleted control we use a slightly different interval - we only report on start time until
                 # the deletion time
                 if control.deleted_time is not None and control.deleted_time > control.start_time:
@@ -277,13 +281,11 @@ async def generate_control_data_streams(
             end,
             interval_seconds,
             [
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).import_limit_active_watts, False),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).export_limit_watts, True),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).load_limit_active_watts, False),
-                lambda e: decimal_to_watts(cast(DynamicOperatingEnvelope, e).generation_limit_active_watts, True),
-                lambda e: decimal_to_watts(
-                    getattr(cast(DynamicOperatingEnvelope, e), "storage_target_active_watts", None), True
-                ),
+                lambda e: decimal_to_watts(cast(dtos.SiteControl, e).import_limit_active_watts, False),
+                lambda e: decimal_to_watts(cast(dtos.SiteControl, e).export_limit_active_watts, True),
+                lambda e: decimal_to_watts(cast(dtos.SiteControl, e).load_limit_active_watts, False),
+                lambda e: decimal_to_watts(cast(dtos.SiteControl, e).generation_limit_active_watts, True),
+                lambda e: decimal_to_watts(getattr(e, "storage_target_active_watts", None), True),
             ],
         )
 
@@ -329,13 +331,13 @@ async def generate_control_data_streams(
 
 
 async def generate_default_control_data_streams(
-    session: AsyncSession, start: datetime, end: datetime, interval_seconds: int
+    backend: RunnerBackend, start: datetime, end: datetime, interval_seconds: int
 ) -> list[TimelineDataStream]:
-    all_defaults = await get_site_control_group_defaults_with_archive(session)
+    all_defaults = await backend.get_site_control_group_defaults()
 
     intervals: list[Interval] = []
     for default_control in all_defaults:
-        if isinstance(default_control, ArchiveSiteControlGroupDefault):
+        if default_control.archive_time is not None:
             # An archive record was active only from when it was last changed and then archived
             start_time = default_control.changed_time
             end_time = default_control.archive_time
@@ -357,13 +359,11 @@ async def generate_default_control_data_streams(
         end,
         interval_seconds,
         [
-            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).import_limit_active_watts, False),
-            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).export_limit_active_watts, True),
-            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).load_limit_active_watts, False),
-            lambda e: decimal_to_watts(cast(SiteControlGroupDefault, e).generation_limit_active_watts, True),
-            lambda e: decimal_to_watts(
-                getattr(cast(SiteControlGroupDefault, e), "storage_target_active_watts", None), True
-            ),
+            lambda e: decimal_to_watts(cast(dtos.SiteControlGroupDefault, e).import_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(dtos.SiteControlGroupDefault, e).export_limit_active_watts, True),
+            lambda e: decimal_to_watts(cast(dtos.SiteControlGroupDefault, e).load_limit_active_watts, False),
+            lambda e: decimal_to_watts(cast(dtos.SiteControlGroupDefault, e).generation_limit_active_watts, True),
+            lambda e: decimal_to_watts(getattr(e, "storage_target_active_watts", None), True),
         ],
     )
 
@@ -405,7 +405,7 @@ async def generate_default_control_data_streams(
 
 
 async def generate_timeline(
-    session: AsyncSession, start: datetime, interval_seconds: int, end: datetime | None = None
+    backend: RunnerBackend, start: datetime, interval_seconds: int, end: datetime | None = None
 ) -> Timeline:
     """Constructs a Timeline from the database"""
 
@@ -413,7 +413,7 @@ async def generate_timeline(
         end = datetime.now(tz=start.tzinfo)
 
     site_readings = await generate_readings_data_stream(
-        session,
+        backend,
         label="Site Power",
         location=ReadingLocation.SITE_READING,
         start=start,
@@ -421,16 +421,16 @@ async def generate_timeline(
         interval_seconds=interval_seconds,
     )
     device_readings = await generate_readings_data_stream(
-        session,
+        backend,
         label="Device Power",
         location=ReadingLocation.DEVICE_READING,
         start=start,
         end=end,
         interval_seconds=interval_seconds,
     )
-    controls = await generate_control_data_streams(session, start=start, end=end, interval_seconds=interval_seconds)
+    controls = await generate_control_data_streams(backend, start=start, end=end, interval_seconds=interval_seconds)
     defaults = await generate_default_control_data_streams(
-        session, start=start, end=end, interval_seconds=interval_seconds
+        backend, start=start, end=end, interval_seconds=interval_seconds
     )
 
     # Collate the data streams - culling any that don't have at least 1 value

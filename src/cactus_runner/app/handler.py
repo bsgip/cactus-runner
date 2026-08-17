@@ -55,9 +55,8 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
 )
-from cactus_runner.plugin.backends import EnvoyBackend
 from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
@@ -637,11 +636,9 @@ async def status_handler(request: web.Request) -> web.Response:
         async with begin_session() as session:
             backend = create_backend(session=session, envoy_client=envoy_client)
             runner_status = await status.get_active_runner_status(
-                session=session,
                 active_test_procedure=active_test_procedure,
                 request_history=request.app[APPKEY_RUNNER_STATE].request_history,
                 last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-                envoy_client=envoy_client,
                 backend=backend,
                 crop_minutes=15,
             )

@@ -1,3 +1,9 @@
+from cactus_runner.models import ReadingType, Site as CactusSite
+from cactus_runner.plugin.backends.envoy.readings import get_readings, MANDATORY_READING_SPECIFIERS
+from cactus_runner.app.envoy_common import get_sites, get_reading_counts_grouped_by_reading_type
+from cactus_runner.plugin.backends.models import FinalSerializableReportingData
+from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
+from cactus_schema.runner import EndDeviceMetadata
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 import itertools
 import logging
@@ -17,8 +23,13 @@ from envoy.server.model import (
     SiteReadingType,
     Subscription,
     TransmitNotificationLog,
+    SiteControlGroupDefault,
 )
-from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.archive import (
+    ArchiveDynamicOperatingEnvelope,
+    ArchiveSiteControlGroupDefault,
+    ArchiveSiteDERSetting,
+)
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +40,26 @@ from cactus_runner.plugin.backends.common import RunnerBackend, RunnerBackendTes
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_active_site_with_der(session: AsyncSession) -> Site | None:
+    """A simple query to get site with der eagerly loaded."""
+    stmt = select(Site).order_by(Site.changed_time.desc()).limit(1)
+
+    stmt = stmt.options(
+        selectinload(Site.site_der_rating),
+        selectinload(Site.site_der_setting),
+        selectinload(Site.site_der_status),
+    )
+
+    site = (await session.execute(stmt)).scalar_one_or_none()
+
+    if site:
+        logger.debug(f"get_active_site: Resolved site {site.site_id} as the active site / EndDevice")
+        return site
+    else:
+        logger.error("get_active_site: There are no sites registered.")
+        return None
 
 
 class EnvoyBackend(RunnerBackend):
@@ -65,24 +96,31 @@ class EnvoyBackend(RunnerBackend):
         """Return an instance of an Envoy ExpressionResolver with the DB session attached."""
         return EnvoyResolver(self.session)
 
-    async def get_active_site(self, include_der_settings: bool = False) -> dtos.Site | None:
-        """Returns the active site, interpreted as the most recently modified EndDevice in the database.
+    async def has_set_max_w_varied(self) -> bool:
+        """Check if setMaxW was varied during the test.
 
-        Args:
-            include_der_settings: If True, eagerly loads the site's DER sub-resources
-                (rating, setting, and status) in the same query.
+        Any archive entry with a different max_w_value than the current SiteDERSetting for the
+        same site means it changed
+        """
+        return (
+            await self.session.execute(
+                select(ArchiveSiteDERSetting.site_id)
+                .join(
+                    SiteDERSetting,
+                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
+                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+                )
+                .limit(1)
+            )
+        ).scalar() is not None
+
+    async def get_active_site(self) -> dtos.Site | None:
+        """Returns the active site, interpreted as the most recently modified EndDevice in the database.
 
         Returns:
             The most recently modified Site, or None if no sites are registered.
         """
         stmt = select(Site).order_by(Site.changed_time.desc()).limit(1)
-
-        if include_der_settings:
-            stmt = stmt.options(
-                selectinload(Site.site_der_rating),
-                selectinload(Site.site_der_setting),
-                selectinload(Site.site_der_status),
-            )
 
         site = (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -149,7 +187,7 @@ class EnvoyBackend(RunnerBackend):
 
     async def get_site_readings(
         self,
-        site_reading_type_ids: Sequence[str],
+        site_reading_type_ids: Sequence[str] | None,
         *,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
@@ -168,8 +206,11 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             All SiteReadings associated with the supplied SiteReadingType IDs.
         """
-        srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
-        results = await self.session.execute(select(SiteReading).where(SiteReading.site_reading_type_id.in_(srt_ids)))
+        stmt = select(SiteReading)
+        if site_reading_type_ids is not None:
+            srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
+            stmt = stmt.where(SiteReading.site_reading_type_id.in_(srt_ids))
+        results = await self.session.execute(stmt)
         readings = results.scalars().all()
         return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in readings]
 
@@ -296,6 +337,17 @@ class EnvoyBackend(RunnerBackend):
         results = await self.session.execute(stmt)
 
         return [mappers.map_envoy_site_control_group_to_dto(cg) for cg in results.scalars().all()]
+
+    async def get_site_control_group_defaults(
+        self,
+    ) -> Sequence[dtos.SiteControlGroupDefault]:
+        """Fetches all SiteControlGroupDefault's for all SiteControlGroups, both current and historic
+        (including update values)"""
+        active_control_groups = (await self.session.execute(select(SiteControlGroupDefault))).scalars().all()
+        deleted_control_groups = (await self.session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
+
+        all_controls = itertools.chain(active_control_groups, deleted_control_groups)
+        return [map_envoy_site_control_group_default_to_dto(ctrl) for ctrl in all_controls]
 
     async def update_runtime_config(self, config: dtos.RuntimeConfigWrite) -> None:
         """Applies runtime configuration changes to the envoy server via the admin API.
@@ -470,3 +522,80 @@ class EnvoyBackend(RunnerBackend):
         """
         self.session.add(mappers.map_dto_site_write_to_envoy(site))
         await self.session.commit()
+
+    async def get_end_device_metadata(self) -> EndDeviceMetadata | None:
+        """Constructs and returns the current EndDeviceMetadata to be used in a status payload."""
+        resolver = self.get_expression_resolver()
+        try:
+            set_max_w = int(await resolver.resolve_named_variable_der_setting_max_w())
+        except Exception:
+            set_max_w = None
+        try:
+            active_site: Site | None = await _get_active_site_with_der(self.session)
+            if active_site is None:
+                return None
+            doe_modes_enabled = None
+            der_capability = None
+            der_settings = None
+            der_status = None
+            if active_site.site_der_setting is not None:
+                doe_modes_enabled = active_site.site_der_setting.doe_modes_enabled
+                der_settings = mappers.build_der_settings(active_site.site_der_setting)
+            if active_site.site_der_rating is not None:
+                der_capability = mappers.build_der_capability(active_site.site_der_rating)
+            if active_site.site_der_status is not None:
+                der_status = mappers.build_der_status(active_site.site_der_status)
+
+            # TODO: in update catus schema def to use string representations of ids
+            return EndDeviceMetadata(
+                edevid=active_site.site_id,
+                lfdi=active_site.lfdi,
+                sfdi=active_site.sfdi,
+                nmi=active_site.nmi,
+                aggregator_id=active_site.aggregator_id,
+                set_max_w=set_max_w,
+                doe_modes_enabled=doe_modes_enabled,
+                device_category=active_site.device_category,
+                timezone_id=active_site.timezone_id,
+                der_capability=der_capability,
+                der_settings=der_settings,
+                der_status=der_status,
+            )
+        except Exception as exc:
+            logger.error("Error getting end device metadata", exc_info=exc)
+            return None
+
+    async def generate_final_serializable_report_data(self) -> FinalSerializableReportingData:
+        """Generates the final reportable serializing content for the reportable JSON.
+
+        As part of the finalization steps.
+        """
+        sites = await get_sites(self.session)
+        readings = await get_readings(self.session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
+        reading_counts = await get_reading_counts_grouped_by_reading_type(self.session)
+
+        # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
+        # than the current SiteDERSetting for the same site means it changed
+        set_max_w_varied = (
+            await self.session.execute(
+                select(ArchiveSiteDERSetting.site_id)
+                .join(
+                    SiteDERSetting,
+                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
+                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+                )
+                .limit(1)
+            )
+        ).scalar() is not None
+
+        # Convert to serialisable types
+        serializable_readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
+        serializable_reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
+        serializable_sites = [CactusSite.from_site(s) for s in sites]
+
+        return FinalSerializableReportingData(
+            serializable_readings=serializable_readings,
+            serializable_reading_counts=serializable_reading_counts,
+            serializable_sites=serializable_sites,
+            set_max_w_varied=set_max_w_varied,
+        )

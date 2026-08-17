@@ -44,3 +44,6 @@ class SiteReading:
     time_period_duration: timedelta
     value: int  # actual reading value - type/power of ten are defined in the parent reading set
     created_time: datetime  # the time the reading was recorded within the underlying backend
+    archive_time: datetime | None
+    deleted_time: datetime | None
+    changed_time: datetime

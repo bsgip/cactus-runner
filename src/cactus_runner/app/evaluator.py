@@ -1,3 +1,4 @@
+from cactus_runner.plugin.backends.uri import resolve_random_uri
 import dataclasses
 from typing import Any
 
@@ -12,7 +13,8 @@ from cactus_test_definitions.variable_expressions import (
 )
 
 from cactus_runner.models import ActiveTestProcedure
-from cactus_runner.plugin.backends.resolver import ExpressionResolver, resolve_named_variable_now, resolve_random_uri
+from cactus_runner.plugin.backends.resolver import ExpressionResolver, resolve_named_variable_now
+
 
 
 @dataclasses.dataclass

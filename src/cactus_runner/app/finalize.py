@@ -11,10 +11,6 @@ from typing import cast
 
 import pandas as pd
 from cactus_schema.runner.schema import RequestEntry
-from envoy.server.model.archive.site import ArchiveSiteDERSetting
-from envoy.server.model.site import SiteDERSetting
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import check, timeline
 from cactus_runner.app.database import (
@@ -22,18 +18,10 @@ from cactus_runner.app.database import (
     get_postgres_dsn,
 )
 from cactus_runner.app.env import MAX_LOG_FILE_BYTES, MAX_REQUEST_PAIRS
-from cactus_runner.app.envoy_common import (
-    get_reading_counts_grouped_by_reading_type,
-    get_sites,
-)
 from cactus_runner.app.log import (
     LOG_FILE_CACTUS_RUNNER,
     LOG_FILE_ENVOY_ADMIN,
     LOG_FILE_ENVOY_SERVER,
-)
-from cactus_runner.app.readings import (
-    MANDATORY_READING_SPECIFIERS,
-    get_readings,
 )
 from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
@@ -45,8 +33,7 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
-from cactus_runner.plugin.backends.hookspec import create_backend
+from cactus_runner.plugin.backends.common import RunnerBackend
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version
@@ -233,7 +220,7 @@ async def generate_json_reporting_data(
     return json_reporting_data
 
 
-async def finish_active_test(runner_state: RunnerState, session: AsyncSession, envoy_client: EnvoyAdminClient) -> Path:  # noqa: C901
+async def finish_active_test(runner_state: RunnerState, backend: RunnerBackend) -> Path:  # noqa: C901
     """For the specified RunnerState - move the active test into a "Finished" state by writing the final ZIP
     to a temporary file. Raises NoActiveTestProcedureError if there isn't an active test procedure for the specified
     RunnerState
@@ -259,18 +246,13 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
 
     capped_request_history = _cap_request_history(runner_state.request_history)
 
-    backend = create_backend(session=session, envoy_client=envoy_client)
-
     # Collect status summary
     try:
-        # TODO: [JCrowley 10-08-2026] - Change this to take only the backend; no session or envoy_client
         json_status_summary = (
             await get_active_runner_status(
-                session=session,
                 active_test_procedure=active_test_procedure,
                 request_history=capped_request_history,
                 last_client_interaction=runner_state.last_client_interaction,
-                envoy_client=envoy_client,
                 backend=backend,
             )
         ).to_json()
@@ -310,7 +292,10 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
         try:
             timeline_interval_seconds = 20
             test_timeline = await timeline.generate_timeline(
-                session, start=active_test_procedure.started_at, interval_seconds=timeline_interval_seconds, end=now
+                backend=backend,
+                start=active_test_procedure.started_at,
+                interval_seconds=timeline_interval_seconds,
+                end=now,
             )
             if not test_timeline.data_streams:
                 test_timeline = None
@@ -321,43 +306,22 @@ async def finish_active_test(runner_state: RunnerState, session: AsyncSession, e
 
     # Fetch raw DB data
     try:
-        sites = await get_sites(session)
-        readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
-        reading_counts = await get_reading_counts_grouped_by_reading_type(session)
-
-        # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
-        # than the current SiteDERSetting for the same site means it changed
-        set_max_w_varied = (
-            await session.execute(
-                select(ArchiveSiteDERSetting.site_id)
-                .join(
-                    SiteDERSetting,
-                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
-                )
-                .limit(1)
-            )
-        ).scalar() is not None
-
         capped_runner_state = dataclasses.replace(runner_state, request_history=capped_request_history)
 
-        # Convert to serialisable types
-        serializable_readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
-        serializable_reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
-        serializable_sites = [Site.from_site(s) for s in sites]
+        serializable_content = await backend.generate_final_serializable_report_data()
 
         # Collect reporting state into json object
         reporting_data_version = CURRENT_REPORTING_DATA_VERSION
         json_reporting_data = await generate_json_reporting_data(
             runner_state=capped_runner_state,
             check_results=check_results,
-            readings=serializable_readings,
-            reading_counts=serializable_reading_counts,
-            sites=serializable_sites,
+            readings=serializable_content.serializable_readings or dict(),
+            reading_counts=serializable_content.serializable_reading_counts or dict(),
+            sites=serializable_content.serializable_sites or [],
             timeline=test_timeline,
             errors=errors,
             version=reporting_data_version,
-            set_max_w_varied=set_max_w_varied,
+            set_max_w_varied=serializable_content.set_max_w_varied or False,
         )
         reporting_data_filename_prefix = f"ReportingData_v{reporting_data_version}"
     except Exception as exc:

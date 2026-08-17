@@ -1,4 +1,4 @@
-from cactus_runner.plugin.backends import EnvoyBackend
+from cactus_runner.plugin.backends.envoy import EnvoyBackend
 import logging
 import math
 from collections.abc import Sequence
@@ -10,15 +10,6 @@ from typing import Any, cast
 from cactus_test_definitions.client import Action
 from envoy_schema.server.schema.sep2.types import DeviceCategory
 
-# from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-# from cactus_runner.app.envoy_common import (
-#    count_all_site_controls_with_cancelled,
-#    get_active_site,
-#    get_all_site_control_groups,
-#    get_all_sites,
-# )
 from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
@@ -32,8 +23,6 @@ from cactus_runner.models import (
 )
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend, get_site_control_groups_ordered
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
-from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
 

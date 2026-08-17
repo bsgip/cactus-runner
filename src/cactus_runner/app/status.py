@@ -1,14 +1,9 @@
 import logging
 from datetime import UTC, datetime, timedelta
-from enum import IntEnum, IntFlag
 
 from cactus_schema.runner import (
     CriteriaEntry,
     DataStreamPoint,
-    DERCapabilityInfo,
-    DERSettingsInfo,
-    DERStatusInfo,
-    EndDeviceMetadata,
     PreconditionCheckEntry,
     RequestEntry,
     RunnerStatus,
@@ -17,22 +12,8 @@ from cactus_schema.runner import (
     TimelineDataStreamEntry,
     TimelineStatus,
 )
-from envoy.server.model.site import Site, SiteDERRating, SiteDERSetting, SiteDERStatus
-from envoy_schema.server.schema.sep2.der import (
-    AlarmStatusType,
-    ConnectStatusType,
-    DERControlType,
-    DERType,
-    DOESupportedMode,
-    InverterStatusType,
-    LocalControlModeStatusType,
-    OperationalModeStatusType,
-    StorageModeStatusType,
-)
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.check import run_check
-from cactus_runner.app.envoy_common import get_active_site
 from cactus_runner.app.log import LOG_FILE_ENVOY_SERVER, read_log_file
 from cactus_runner.app.timeline import duration_to_label, generate_timeline
 from cactus_runner.models import (
@@ -41,85 +22,8 @@ from cactus_runner.models import (
     StepInfo,
 )
 from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_value_multiplier(value: int | None, multiplier: int | None) -> int | None:
-    """Resolve a sep2 value/multiplier pair to an integer (value * 10^multiplier)."""
-    if value is None:
-        return None
-    return int(value * (10 ** (multiplier if multiplier is not None else 0)))
-
-
-def _resolve_intflag(bitmap: int | None, flag_type: type[IntFlag]) -> list[str] | None:
-    """Resolve an IntFlag bitmap to a list of active flag names."""
-    if bitmap is None:
-        return None
-    return [flag.name for flag in flag_type if bitmap & flag and flag.name is not None]
-
-
-def _resolve_intenum(value: int | None, enum_type: type[IntEnum]) -> str | None:
-    """Resolve an IntEnum integer value to its name string."""
-    if value is None:
-        return None
-    try:
-        return enum_type(value).name
-    except ValueError:
-        return None
-
-
-def _build_der_capability(rating: SiteDERRating) -> DERCapabilityInfo:
-    return DERCapabilityInfo(
-        der_type=_resolve_intenum(rating.der_type, DERType),
-        modes_supported=_resolve_intflag(rating.modes_supported, DERControlType),
-        max_w=_resolve_value_multiplier(rating.max_w_value, rating.max_w_multiplier),
-        max_va=_resolve_value_multiplier(rating.max_va_value, rating.max_va_multiplier),
-        max_var=_resolve_value_multiplier(rating.max_var_value, rating.max_var_multiplier),
-        max_var_neg=_resolve_value_multiplier(rating.max_var_neg_value, rating.max_var_neg_multiplier),
-        max_a=_resolve_value_multiplier(rating.max_a_value, rating.max_a_multiplier),
-        max_charge_rate_w=_resolve_value_multiplier(
-            rating.max_charge_rate_w_value, rating.max_charge_rate_w_multiplier
-        ),
-        max_discharge_rate_w=_resolve_value_multiplier(
-            rating.max_discharge_rate_w_value, rating.max_discharge_rate_w_multiplier
-        ),
-        max_wh=_resolve_value_multiplier(rating.max_wh_value, rating.max_wh_multiplier),
-        doe_modes_supported=_resolve_intflag(rating.doe_modes_supported, DOESupportedMode),
-    )
-
-
-def _build_der_settings(setting: SiteDERSetting) -> DERSettingsInfo:
-    return DERSettingsInfo(
-        modes_enabled=_resolve_intflag(setting.modes_enabled, DERControlType),
-        max_w=_resolve_value_multiplier(setting.max_w_value, setting.max_w_multiplier),
-        max_va=_resolve_value_multiplier(setting.max_va_value, setting.max_va_multiplier),
-        max_var=_resolve_value_multiplier(setting.max_var_value, setting.max_var_multiplier),
-        max_var_neg=_resolve_value_multiplier(setting.max_var_neg_value, setting.max_var_neg_multiplier),
-        max_charge_rate_w=_resolve_value_multiplier(
-            setting.max_charge_rate_w_value, setting.max_charge_rate_w_multiplier
-        ),
-        max_discharge_rate_w=_resolve_value_multiplier(
-            setting.max_discharge_rate_w_value, setting.max_discharge_rate_w_multiplier
-        ),
-        grad_w=setting.grad_w,
-        doe_modes_enabled=_resolve_intflag(setting.doe_modes_enabled, DOESupportedMode),
-    )
-
-
-def _build_der_status(status: SiteDERStatus) -> DERStatusInfo:
-    return DERStatusInfo(
-        alarm_status=_resolve_intflag(status.alarm_status, AlarmStatusType),
-        generator_connect_status=_resolve_intflag(status.generator_connect_status, ConnectStatusType),
-        storage_connect_status=_resolve_intflag(status.storage_connect_status, ConnectStatusType),
-        inverter_status=_resolve_intenum(status.inverter_status, InverterStatusType),
-        operational_mode_status=_resolve_intenum(status.operational_mode_status, OperationalModeStatusType),
-        storage_mode_status=_resolve_intenum(status.storage_mode_status, StorageModeStatusType),
-        local_control_mode_status=_resolve_intenum(status.local_control_mode_status, LocalControlModeStatusType),
-        manufacturer_status=status.manufacturer_status,
-        state_of_charge_status=status.state_of_charge_status,
-    )
 
 
 def get_runner_status_summary(step_status: dict[str, StepInfo]) -> str:
@@ -201,12 +105,12 @@ async def get_current_instructions(active_test_procedure: ActiveTestProcedure) -
 
 
 async def get_timeline_data_streams(
-    session: AsyncSession, basis: datetime, interval_seconds: int, end: datetime
+    backend: RunnerBackend, basis: datetime, interval_seconds: int, end: datetime
 ) -> list[TimelineDataStreamEntry]:
     """Takes a timeline snapshot for the active test procedure and then converts it to the JSON compatible equivalent
     for use with status models"""
 
-    timeline = await generate_timeline(session, basis, interval_seconds, end)
+    timeline = await generate_timeline(backend, basis, interval_seconds, end)
     return [
         TimelineDataStreamEntry(
             label=ds.label,
@@ -255,47 +159,10 @@ def get_event_status(
     return None
 
 
-async def _get_end_device_metadata(session: AsyncSession, set_max_w: int | None) -> EndDeviceMetadata | None:
-    try:
-        active_site: Site | None = await get_active_site(session, include_der_settings=True)
-        if active_site is None:
-            return None
-        doe_modes_enabled = None
-        der_capability = None
-        der_settings = None
-        der_status = None
-        if active_site.site_der_setting is not None:
-            doe_modes_enabled = active_site.site_der_setting.doe_modes_enabled
-            der_settings = _build_der_settings(active_site.site_der_setting)
-        if active_site.site_der_rating is not None:
-            der_capability = _build_der_capability(active_site.site_der_rating)
-        if active_site.site_der_status is not None:
-            der_status = _build_der_status(active_site.site_der_status)
-        return EndDeviceMetadata(
-            edevid=active_site.site_id,
-            lfdi=active_site.lfdi,
-            sfdi=active_site.sfdi,
-            nmi=active_site.nmi,
-            aggregator_id=active_site.aggregator_id,
-            set_max_w=set_max_w,
-            doe_modes_enabled=doe_modes_enabled,
-            device_category=active_site.device_category,
-            timezone_id=active_site.timezone_id,
-            der_capability=der_capability,
-            der_settings=der_settings,
-            der_status=der_status,
-        )
-    except Exception as exc:
-        logger.error("Error getting end device metadata", exc_info=exc)
-        return None
-
-
 async def get_active_runner_status(
-    session: AsyncSession,
     active_test_procedure: ActiveTestProcedure,
     request_history: list[RequestEntry],
     last_client_interaction: ClientInteraction,
-    envoy_client: EnvoyAdminClient,
     backend: RunnerBackend,
     crop_minutes: int | None = None,  # Allows a partial runner status to be generated for the UI
 ) -> RunnerStatus:
@@ -311,8 +178,21 @@ async def get_active_runner_status(
     # This is used by both timeline and EndDeviceMetadata classes
     try:
         set_max_w = int(await resolver.resolve_named_variable_der_setting_max_w())
-    except Exception:
+    except Exception as exc:
+        logger.error("Failed to resolve a value for setMaxW", exc_info=exc)
         set_max_w = None
+
+    try:
+        discharge_max_w = int(await resolver.resolve_named_variable_der_setting_max_discharge_rate_w())
+    except Exception as exc:
+        logger.error("Failed to resolve a value for setMaxDischargeRateW", exc_info=exc)
+        discharge_max_w = None
+
+    try:
+        charge_max_w = int(await resolver.resolve_named_variable_der_setting_max_charge_rate_w())
+    except Exception as exc:
+        logger.error("Failed to resolve a value for setMaxChargeRateW", exc_info=exc)
+        charge_max_w = None
 
     # Resolve the effective device max for each direction, preferring the asymmetric
     # setMaxDischargeRateW (export) / setMaxChargeRateW (import) over setMaxW.
@@ -321,25 +201,16 @@ async def get_active_runner_status(
     lower_max_w: int | None = None
     lower_max_label: str | None = None
     try:
-        der_setting_site = await backend.get_active_site()
-        der_setting = await backend.get_der_settings(site_id=der_setting_site.site_id) if der_setting_site else None
-        if der_setting is not None:
-            upper_max_w = set_max_w
-            upper_max_label = "setMaxW"
-            lower_max_w = set_max_w
-            lower_max_label = "setMaxW"
-            discharge_max_w = _resolve_value_multiplier(
-                der_setting.max_discharge_rate_w_value, der_setting.max_discharge_rate_w_multiplier
-            )
-            if discharge_max_w is not None:
-                upper_max_w = discharge_max_w
-                upper_max_label = "setMaxDischargeRateW"
-            charge_max_w = _resolve_value_multiplier(
-                der_setting.max_charge_rate_w_value, der_setting.max_charge_rate_w_multiplier
-            )
-            if charge_max_w is not None:
-                lower_max_w = charge_max_w
-                lower_max_label = "setMaxChargeRateW"
+        upper_max_w = set_max_w
+        upper_max_label = "setMaxW"
+        lower_max_w = set_max_w
+        lower_max_label = "setMaxW"
+        if discharge_max_w is not None:
+            upper_max_w = discharge_max_w
+            upper_max_label = "setMaxDischargeRateW"
+        if charge_max_w is not None:
+            lower_max_w = charge_max_w
+            lower_max_label = "setMaxChargeRateW"
     except Exception as exc:
         logger.error("Error resolving device max for timeline", exc_info=exc)
 
@@ -356,7 +227,7 @@ async def get_active_runner_status(
                 crop_start = now - timedelta(minutes=crop_minutes)
                 basis = max(basis, crop_start)  # Don't go earlier than crop_start
 
-            data_streams = await get_timeline_data_streams(session, basis, interval_seconds, end)
+            data_streams = await get_timeline_data_streams(backend, basis, interval_seconds, end)
             now_offset = duration_to_label((int((now - basis).total_seconds()) // interval_seconds) * interval_seconds)
             timeline = TimelineStatus(
                 data_streams=data_streams,
@@ -372,7 +243,11 @@ async def get_active_runner_status(
         timeline = None
 
     # Populate EndDeviceMetadata from active site
-    end_device_metadata = await _get_end_device_metadata(session, set_max_w)
+    try:
+        end_device_metadata = await backend.get_end_device_metadata()
+    except Exception as exc:
+        logger.error("Failed to return device metadata from backend.", exc_info=exc)
+        end_device_metadata = None
 
     # Optionally crop request_history to reduce status size for UI
     if crop_minutes is not None:

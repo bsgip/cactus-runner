@@ -3,34 +3,11 @@ from datetime import datetime
 from operator import attrgetter
 from typing import Protocol, runtime_checkable
 
-from cactus_runner.models import ActiveTestProcedure
+from cactus_schema.runner import EndDeviceMetadata
+
+from cactus_runner.models import FinalSerializableReportingData, RunnerBackendTestContext
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends.models import RunnerBackendTestContext
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
-
-
-def generate_plugin_context(test_procedure: ActiveTestProcedure) -> RunnerBackendTestContext:
-    """Creates a suitable immutable context to be commmunicated with harness backend plugins."""
-    return RunnerBackendTestContext(
-        name=test_procedure.name,
-        definition=test_procedure.definition,
-        csip_aus_version=test_procedure.csip_aus_version,
-        initialised_at=test_procedure.initialised_at,
-        started_at=test_procedure.started_at,
-        client_certificate_type=test_procedure.client_certificate_type,
-        client_aggregator_id=test_procedure.client_aggregator_id,
-        client_lfdi=test_procedure.client_lfdi,
-        client_sfdi=test_procedure.client_sfdi,
-        run_id=test_procedure.run_id,
-        pen=test_procedure.pen,
-        subscription_domain=test_procedure.subscription_domain,
-        is_static_url=test_procedure.is_static_url,
-        run_group_id=test_procedure.run_group_id,
-        run_group_name=test_procedure.run_group_name,
-        user_id=test_procedure.user_id,
-        user_name=test_procedure.user_name,
-        communications_disabled=test_procedure.communications_disabled,
-    )
 
 
 @runtime_checkable
@@ -61,11 +38,20 @@ class RunnerBackend(Protocol):
         Args:
             context: Immutable snapshot of the active test procedure's identity and configuration.
         """
+        ...
 
     def get_expression_resolver(self) -> ExpressionResolver:
         """Returns an expression resolver for the backend.
 
         It is expected that one exists either at backend creation or on a per call basis of this method.
+        """
+        ...
+
+    async def has_set_max_w_varied(self) -> bool:
+        """Determine if set_max_w has changed since it was first recorded by the backend.
+
+        Only used for producing the final reporting data. If not concerned for reporting purposes
+        then return whatever you like as it will not affect the testing outcome.
         """
         ...
 
@@ -75,14 +61,8 @@ class RunnerBackend(Protocol):
 
     async def get_active_site(
         self,
-        include_der_settings: bool = False,
     ) -> dtos.Site | None:
         """Returns the active site, defined as the most recently modified EndDevice known to the backend.
-
-        Args:
-            include_der_settings: If True, the returned Site should have DER sub-resources (rating,
-                setting, status) populated where available. Implementations may eagerly load or lazily
-                resolve these as appropriate.
 
         Returns:
             The most recently modified Site, or None if no sites are registered.
@@ -205,7 +185,7 @@ class RunnerBackend(Protocol):
 
     async def get_site_readings(
         self,
-        site_reading_type_ids: Sequence[str],
+        site_reading_type_ids: Sequence[str] | None,
         *,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
@@ -219,6 +199,7 @@ class RunnerBackend(Protocol):
 
         Args:
             site_reading_type_ids: IDs of the SiteReadingTypes whose readings should be returned.
+                If `None` is supplied, then all readings for the test should be returned.
             start_time: Optional start of the time window. If None, no lower bound is applied.
             end_time: Optional end of the time window. If None, no upper bound is applied.
 
@@ -381,10 +362,13 @@ class RunnerBackend(Protocol):
         """
         ...
 
-    async def get_site_control_defaults(
+    async def get_site_control_group_defaults(
         self,
     ) -> Sequence[dtos.SiteControlGroupDefault]:
         """Returns the current and historical DefaultDERControl values across all DERPrograms.
+
+        Implementations must include default controls that are current, cancelled or archived.
+        When in doubt, return everything and allow the calling logic to filter.
 
         Returns:
             All SiteControlGroupDefault entries recorded, in no guaranteed order.
@@ -529,6 +513,22 @@ class RunnerBackend(Protocol):
         """
         ...
 
+    async def get_end_device_metadata(self) -> EndDeviceMetadata | None:
+        """Called as part of getting the runner status.
+
+        Relies heavily upon the data obtainable via the backend in the Envoy case so decision has
+        been made here to make it part of the base protocol. The metadata produced is then used
+        to populate a final RunnerStatus object.
+        """
+        ...
+
+    async def generate_final_serializable_report_data(self) -> FinalSerializableReportingData:
+        """Provides all specific serializable data needed for reporting.
+
+        It isn't exactly that important but to implement there are very specific reporting shapes
+        that need to be met to create the final report JSON as part of finalization.
+        """
+        ...
 
 
 # ---------------------------------------------------------------------------
