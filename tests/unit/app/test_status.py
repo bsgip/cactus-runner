@@ -103,6 +103,7 @@ async def test_get_active_runner_status(
         listeners=[],
         started_at=expected_started_at,
         finished_zip_path=None,
+        finished_at=None,
     )
 
     request_history = Mock()
@@ -132,6 +133,7 @@ async def test_get_active_runner_status(
         assert runner_status.timeline is not None
         assert runner_status.timeline.set_max_w == expected_max_w
     assert runner_status.end_device_metadata is None
+    assert runner_status.timestamp_finished is None
 
     # If we have a fail_message - the criteria will have an extra entry
     if fail_message is None:
@@ -150,6 +152,33 @@ async def test_get_active_runner_status(
     else:
         assert runner_status.timeline is None
 
+    assert_mock_session(mock_session)
+
+
+@pytest.mark.anyio
+async def test_get_active_runner_status_timestamp_finished(mocker):
+    """finished_at on the active test procedure gets passed on to the RunnerStatus"""
+    expected_finished_at = datetime(2023, 5, 7, tzinfo=UTC)
+
+    mock_session = create_mock_session()
+    active_test_procedure = Mock()
+    active_test_procedure.step_status = {"step_name": StepInfo()}
+    active_test_procedure.listeners = []
+    active_test_procedure.definition = Mock()
+    active_test_procedure.definition.criteria = None
+    active_test_procedure.definition.preconditions.checks = None
+    active_test_procedure.warnings = {}
+    active_test_procedure.finished_at = expected_finished_at
+
+    runner_status = await status.get_active_runner_status(
+        session=mock_session,
+        active_test_procedure=active_test_procedure,
+        request_history=Mock(),
+        last_client_interaction=Mock(),
+        fail_message=None,
+    )
+
+    assert runner_status.timestamp_finished == expected_finished_at
     assert_mock_session(mock_session)
 
 
