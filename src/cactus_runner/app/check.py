@@ -2,6 +2,7 @@ import http
 import logging
 import math
 import re
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
 from itertools import chain
@@ -1533,6 +1534,23 @@ async def run_check(  # noqa: C901
     return check_result
 
 
+def _check_result_label(check: Check, is_duplicated_type: bool, check_results: dict[str, CheckResult]) -> str:
+    """Builds a label for a Check that's unique within check_results. Otherwise, checks that share a type
+    (eg: multiple response-contents checks for control tags/status) get dropped/overwritten."""
+    label = check.type
+    if is_duplicated_type and check.parameters:
+        param_str = ", ".join(f"{k}={v}" for k, v in check.parameters.items())
+        label = f"{check.type} ({param_str})"
+
+    # Parameters should make labels unique in practice - but fall back to a numeric suffix just in case
+    if label in check_results:
+        suffix = 2
+        while f"{label} #{suffix}" in check_results:
+            suffix += 1
+        label = f"{label} #{suffix}"
+    return label
+
+
 async def determine_check_results(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
@@ -1543,9 +1561,12 @@ async def determine_check_results(
     if checks is None:
         return check_results
 
+    type_counts = Counter(check.type for check in checks)
+
     for check in checks:
         result = await run_check(check, active_test_procedure, session, request_history)
-        check_results[check.type] = result
+        is_duplicated_type = type_counts[check.type] > 1
+        check_results[_check_result_label(check, is_duplicated_type, check_results)] = result
     return check_results
 
 

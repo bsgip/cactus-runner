@@ -63,6 +63,7 @@ from cactus_runner.app.check import (
     check_readings_voltage,
     check_response_contents,
     check_subscription_contents,
+    determine_check_results,
     do_check_levels_for_period,
     do_check_reading_levels_for_types,
     do_check_reading_type_mrids_match_pen,
@@ -3778,3 +3779,37 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
     assert_check_result(result, False)
     assert result.description is not None
     assert "Test has not started" in result.description
+
+
+@mock.patch("cactus_runner.app.check.run_check")
+@pytest.mark.anyio
+async def test_determine_check_results_distinguishes_same_type_checks(mock_run_check: mock.MagicMock):
+    """repeat check type (eg response-contents) with different parameters - must not
+    collide/overwrite each other in the returned dict (as previously happened when keying off check.type)"""
+
+    checks = [
+        Check(type="response-contents", parameters={"status": 1, "subject_tag": "DERC1"}),
+        Check(type="response-contents", parameters={"status": 2, "subject_tag": "DERC1"}),
+        Check(type="response-contents", parameters={"status": 3, "subject_tag": "DERC1"}),
+        Check(type="all-steps-complete", parameters={}),
+    ]
+    results_by_check_type_and_status = {
+        ("response-contents", 1): CheckResult(True, "received"),
+        ("response-contents", 2): CheckResult(False, "not started"),
+        ("response-contents", 3): CheckResult(False, "not completed"),
+        ("all-steps-complete", None): CheckResult(True, "all steps done"),
+    }
+
+    async def run_check_se(check: Check, *args, **kwargs) -> CheckResult:
+        return results_by_check_type_and_status[(check.type, check.parameters.get("status"))]
+
+    mock_run_check.side_effect = run_check_se
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=datetime(2024, 1, 1, tzinfo=UTC), step_status={}, finished_zip_path=None
+    )
+
+    check_results = await determine_check_results(checks, active_test_procedure, mock.Mock(), None)
+
+    assert len(check_results) == 4, "Every check should have its own entry - none should overwrite another"
+    assert sum(1 for r in check_results.values() if not r.passed) == 2, "The two failing DERC1 checks must survive"
