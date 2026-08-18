@@ -61,7 +61,6 @@ BASIS = datetime(2023, 5, 7, tzinfo=UTC)
 @pytest.mark.anyio
 async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_streams_result, expected_max_w):
     # Arrange
-    mock_session = create_mock_session()
     mock_run_check = mocker.patch("cactus_runner.app.status.run_check")
     mock_get_timeline_streams = mocker.patch("cactus_runner.app.status.get_timeline_data_streams")
     mock_backend = Mock(spec=RunnerBackend)
@@ -112,7 +111,6 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
 
     # Act
     runner_status = await status.get_active_runner_status(
-        session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
@@ -144,7 +142,6 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
     else:
         assert runner_status.timeline is None
 
-    assert_mock_session(mock_session)
     mock_backend.get_expression_resolver.assert_called_once()
     mock_resolver.resolve_named_variable_der_setting_max_w.assert_called_once()
     mock_resolver.resolve_named_variable_der_setting_max_discharge_rate_w.assert_called_once()
@@ -155,7 +152,7 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
 async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     get_runner_status_summary_spy = mocker.spy(status, "get_runner_status_summary")
 
-    mock_session = create_mock_session()
+    mock_backend = Mock(spec=RunnerBackend)
     active_test_procedure = Mock()
     active_test_procedure.step_status = {"step_name": StepInfo()}
     active_test_procedure.listeners = []
@@ -167,16 +164,14 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     last_client_interaction = Mock()
     mock_envoy_client = Mock(spec=EnvoyAdminClient)
 
-    backend = EnvoyBackend(session=mock_session, admin_client=mock_envoy_client)
     _ = await status.get_active_runner_status(
-        session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
-        backend=backend,
+        backend=mock_backend,
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
-    assert_mock_session(mock_session)
+    mock_backend.get_expression_resolver.assert_called_once()
     mock_envoy_client.assert_not_called()
 
 
@@ -184,7 +179,6 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
 async def test_get_active_runner_status_with_end_device_metadata(mocker):
     """Test that EndDeviceMetadata is correctly populated from active site"""
     # Arrange
-    mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
     mock_backend = Mock(spec=RunnerBackend)
@@ -209,7 +203,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
 
     # Act
     runner_status = await status.get_active_runner_status(
-        mock_session, active_test_procedure, Mock(), Mock(), mock_backend
+        active_test_procedure, Mock(), Mock(), mock_backend
     )
 
     # Assert - EndDeviceMetadata
@@ -226,7 +220,6 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
 @pytest.mark.anyio
 async def test_get_active_runner_status_end_device_metadata_handles_errors(mocker):
     """Test that EndDeviceMetadata is None when backend.get_active_runner_status raises an exception"""
-    mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
     mocker.patch("cactus_runner.app.status.get_timeline_data_streams", return_value=[])
     mock_backend = Mock(spec=RunnerBackend)
@@ -247,7 +240,7 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
     )
 
     runner_status = await status.get_active_runner_status(
-        mock_session, active_test_procedure, Mock(), Mock(), mock_backend
+        active_test_procedure, Mock(), Mock(), mock_backend
     )
 
     assert runner_status.end_device_metadata is None
@@ -342,7 +335,6 @@ async def test_get_timeline_data_streams(mocker, interval_seconds, data_streams,
 async def test_get_active_runner_status_with_cropping(mocker):
     # Arrange
     now = BASIS
-    mock_session = create_mock_session()
     mocker.patch("cactus_runner.app.status.run_check", return_value=CheckResult(True, "Check passed"))
     mock_backend = Mock(spec=RunnerBackend)
     mock_resolver = Mock(spec=ExpressionResolver)
@@ -383,7 +375,6 @@ async def test_get_active_runner_status_with_cropping(mocker):
 
     # Act - crop to last 15 minutes
     runner_status = await status.get_active_runner_status(
-        session=mock_session,
         active_test_procedure=active_test_procedure,
         request_history=request_history,
         last_client_interaction=last_client_interaction,
@@ -404,7 +395,7 @@ async def test_get_active_runner_status_with_cropping(mocker):
     expected_end = now + timedelta(seconds=120)
 
     mock_get_timeline_streams.assert_called_once_with(
-        mock_session,
+        mock_backend,
         expected_basis,  # Should be cropped basis, not original test_started_at
         20,  # interval_seconds
         expected_end,

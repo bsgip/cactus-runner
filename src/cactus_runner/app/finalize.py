@@ -34,6 +34,7 @@ from cactus_runner.models import (
     Site,
 )
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin import dtos
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version
@@ -183,9 +184,9 @@ def safely_write_error_zip(errors: list[str]) -> Path:
 async def generate_json_reporting_data(
     runner_state: RunnerState,
     check_results: dict[str, CheckResult],
-    readings: dict[ReadingType, pd.DataFrame],
-    reading_counts: dict[ReadingType, int],
-    sites: list[Site],
+    readings: dict[ReadingType | dtos.SiteReadingTypeFinalReport, pd.DataFrame],
+    reading_counts: dict[ReadingType | dtos.SiteReadingTypeFinalReport, int],
+    sites: list[Site | dtos.SiteFinalReport],
     timeline: timeline.Timeline | None,
     errors: list[str],
     version: int = 1,
@@ -315,13 +316,13 @@ async def finish_active_test(runner_state: RunnerState, backend: RunnerBackend) 
         json_reporting_data = await generate_json_reporting_data(
             runner_state=capped_runner_state,
             check_results=check_results,
-            readings=serializable_content.serializable_readings or dict(),
-            reading_counts=serializable_content.serializable_reading_counts or dict(),
-            sites=serializable_content.serializable_sites or [],
+            readings=serializable_content.serializable_readings,
+            reading_counts=serializable_content.serializable_reading_counts,
+            sites=serializable_content.serializable_sites,
             timeline=test_timeline,
             errors=errors,
             version=reporting_data_version,
-            set_max_w_varied=serializable_content.set_max_w_varied or False,
+            set_max_w_varied=serializable_content.set_max_w_varied,
         )
         reporting_data_filename_prefix = f"ReportingData_v{reporting_data_version}"
     except Exception as exc:

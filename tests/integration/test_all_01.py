@@ -79,7 +79,6 @@ async def test_all_01_full(
 
     def get_filename(prefix: str, filenames: list[str]) -> str:
         """Find first filename that starts with 'prefix'"""
-        print(f"filenames: {filenames}")
         for filename in filenames:
             if filename.startswith(prefix):
                 return filename

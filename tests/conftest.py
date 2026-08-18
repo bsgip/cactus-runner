@@ -34,12 +34,12 @@ from cactus_runner.app.database import (
     initialise_database_connection,
     remove_database_connection,
 )
+from cactus_runner.app.main import create_app
+from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
 from cactus_runner.plugin.backends.envoy.admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
-from cactus_runner.app.main import create_app
-from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
 from tests.adapter import HttpxClientSessionAdapter
 
 

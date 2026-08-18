@@ -1,21 +1,16 @@
-from cactus_runner.models import ReadingType, Site as CactusSite
-from cactus_runner.plugin.backends.envoy.readings import get_readings, MANDATORY_READING_SPECIFIERS
-from cactus_runner.app.envoy_common import get_sites, get_reading_counts_grouped_by_reading_type
-from cactus_runner.plugin.backends.models import FinalSerializableReportingData
-from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
-from cactus_schema.runner import EndDeviceMetadata
-from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 import itertools
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from cactus_schema.runner import EndDeviceMetadata
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model import (
     DynamicOperatingEnvelope,
     DynamicOperatingEnvelopeResponse,
     Site,
     SiteControlGroup,
+    SiteControlGroupDefault,
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
@@ -23,7 +18,6 @@ from envoy.server.model import (
     SiteReadingType,
     Subscription,
     TransmitNotificationLog,
-    SiteControlGroupDefault,
 )
 from envoy.server.model.archive import (
     ArchiveDynamicOperatingEnvelope,
@@ -35,9 +29,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from cactus_runner.app.envoy_common import get_reading_counts_grouped_by_reading_type, get_sites
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend, RunnerBackendTestContext
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
+from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
+from cactus_runner.plugin.backends.envoy.readings import MANDATORY_READING_SPECIFIERS, get_readings
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
+from cactus_runner.plugin.backends.models import FinalSerializableReportingData
 
 logger = logging.getLogger(__name__)
 
@@ -589,9 +588,13 @@ class EnvoyBackend(RunnerBackend):
         ).scalar() is not None
 
         # Convert to serialisable types
-        serializable_readings = {ReadingType.from_site_reading_type(k): v for k, v in readings.items()}
-        serializable_reading_counts = {ReadingType.from_site_reading_type(k): v for k, v in reading_counts.items()}
-        serializable_sites = [CactusSite.from_site(s) for s in sites]
+        serializable_readings = {
+            mappers.map_envoy_site_reading_type_to_final_report_dto(k): v for k, v in readings.items()
+        }
+        serializable_reading_counts = {
+            mappers.map_envoy_site_reading_type_to_final_report_dto(k): v for k, v in reading_counts.items()
+        }
+        serializable_sites = [mappers.map_envoy_site_to_final_report_dto(s) for s in sites]
 
         return FinalSerializableReportingData(
             serializable_readings=serializable_readings,

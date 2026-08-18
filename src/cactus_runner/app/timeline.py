@@ -13,8 +13,7 @@ from cactus_runner.app.envoy_common import (
     ReadingLocation,
 )
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.common import get_site_reading_types_ordered
+from cactus_runner.plugin.backends.common import RunnerBackend, get_csip_aus_site_reading_types_active_site
 
 
 ArchivableEntity = dtos.SiteControl | dtos.SiteReading | dtos.SiteControlGroupDefault
@@ -186,7 +185,7 @@ def generate_offset_watt_values(
 async def generate_readings_data_stream(
     backend: RunnerBackend, label: str, location: ReadingLocation, start: datetime, end: datetime, interval_seconds: int
 ) -> TimelineDataStream:
-    srts = await get_csip_aus_site_reading_types(
+    srts = await get_csip_aus_site_reading_types_active_site(
         backend, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
     )
 

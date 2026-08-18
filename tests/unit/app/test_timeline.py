@@ -1,19 +1,14 @@
-from typing import cast
-from envoy.server.model.archive import ArchiveSiteReading
-from cactus_runner.plugin.backends.envoy.mappers import (
-    map_envoy_site_control_to_dto,
-    map_envoy_site_reading_to_dto,
-    map_envoy_site_control_group_default_to_dto,
-)
 import unittest.mock as mock
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
+from envoy.server.model.archive import ArchiveSiteReading
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
@@ -40,6 +35,11 @@ from cactus_runner.app.timeline import (
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
+from cactus_runner.plugin.backends.envoy.mappers import (
+    map_envoy_site_control_group_default_to_dto,
+    map_envoy_site_control_to_dto,
+    map_envoy_site_reading_to_dto,
+)
 
 BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=UTC)  # Used as an arbitrary - non aligned datetime
 
@@ -355,7 +355,7 @@ async def test_generate_readings_data_stream_empty_db(pg_empty_config):
     assert not mock_envoy_client.mock_calls
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
 async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     # Arrange
@@ -421,7 +421,7 @@ async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_type
     )
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
 async def test_generate_readings_data_stream_filters_zero_durations(
     mock_get_csip_aus_site_reading_types: mock.MagicMock,
@@ -480,7 +480,7 @@ async def test_generate_readings_data_stream_filters_zero_durations(
     mock_backend.get_site_readings.assert_called_once_with(site_reading_type_ids=[srt.site_reading_type_id])
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
 async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     """Three concurrent single-phase SRTs covering the same interval should be summed, not winner-takes-all."""
@@ -532,7 +532,7 @@ async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_
     )
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
 async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     """When only one phase has a reading in an interval the result equals that phase's value.
@@ -940,10 +940,10 @@ async def test_generate_timeline(
 ):
     """Checks the top level behaviour of generate_timeline - Focusing on the culling of "superfluous" streams"""
     # Arrange
+    mock_backend = mock.Mock(spec=RunnerBackend)
     start = BASIS
     end = BASIS + timedelta(seconds=5)
     interval = 5
-    mock_session = create_mock_session()
 
     site_ds = generate_class_instance(TimelineDataStream, seed=101, offset_watt_values=site_vals)
     device_ds = generate_class_instance(TimelineDataStream, seed=202, offset_watt_values=device_vals)
@@ -963,10 +963,9 @@ async def test_generate_timeline(
     mock_generate_default_control_data_streams.return_value = default_ds
 
     # Act
-    result = await generate_timeline(mock_session, start, interval, end)
+    result = await generate_timeline(mock_backend, start, interval, end)
 
     # Assert
-    assert_mock_session(mock_session)
     assert isinstance(result, Timeline)
     assert_list_type(TimelineDataStream, result.data_streams, len(expected))
     assert result.interval_seconds == interval

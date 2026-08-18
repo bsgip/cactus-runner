@@ -1,3 +1,4 @@
+from dataclass_wizard import JSONWizard
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -8,10 +9,10 @@ from envoy_schema.server.schema.sep2.types import (
     KindType,
     PhaseCode,
     RoleFlagsType,
-    UomType,
+    UomType, CommodityType,
 )
 
-__all__ = ["SiteReadingType", "SiteReading"]
+__all__ = ["SiteReadingType", "SiteReading", "SiteReadingTypeFinalReport"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -46,4 +47,37 @@ class SiteReading:
     created_time: datetime  # the time the reading was recorded within the underlying backend
     archive_time: datetime | None
     deleted_time: datetime | None
+    changed_time: datetime
+
+
+@dataclass(slots=True, frozen=True)
+class SiteReadingTypeFinalReport(JSONWizard):
+    """All fields as required by the original CACTUS envoy backend for final reporting reasons.
+
+    It is not intended to be something that is used within the tests but just that used for providing
+    data for reports.
+    """
+    site_reading_type_id: str
+    aggregator_id: str
+    site_id: str
+    mrid: str
+    group_id: str
+    group_mrid: str
+
+    uom: UomType
+    data_qualifier: DataQualifierType
+    flow_direction: FlowDirectionType
+    accumulation_behaviour: AccumulationBehaviourType
+    kind: KindType
+    phase: PhaseCode
+    power_of_ten_multiplier: int
+    default_interval_seconds: int
+    role_flags: RoleFlagsType
+
+    description: str | None
+    group_version: int | None
+    group_status: int | None
+    commodity: CommodityType | None
+
+    created_time: datetime
     changed_time: datetime

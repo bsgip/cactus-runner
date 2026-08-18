@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 
 
 # TEST: temporary implementation only

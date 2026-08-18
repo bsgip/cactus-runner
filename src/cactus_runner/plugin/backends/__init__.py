@@ -1,4 +1,5 @@
-from cactus_runner.models import ActiveTestProcedure, RunnerBackendTestContext
+from cactus_runner.models import ActiveTestProcedure
+from cactus_runner.plugin.backends.models import RunnerBackendTestContext
 
 
 def generate_plugin_context(test_procedure: ActiveTestProcedure) -> RunnerBackendTestContext:

@@ -9,6 +9,7 @@ from envoy.server.model import (
     Site,
     SiteControlGroup,
     SiteControlGroupDefault,
+    SiteDERAvailability,
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
@@ -381,4 +382,245 @@ def build_der_status(status: SiteDERStatus) -> DERStatusInfo:
         local_control_mode_status=_resolve_intenum(status.local_control_mode_status, LocalControlModeStatusType),
         manufacturer_status=status.manufacturer_status,
         state_of_charge_status=status.state_of_charge_status,
+    )
+
+
+def map_envoy_site_reading_type_to_final_report_dto(
+    site_reading_type: SiteReadingType,
+) -> dtos.SiteReadingTypeFinalReport:
+    """Create the final reporting dto from a DB entry."""
+    return dtos.SiteReadingTypeFinalReport(
+        site_reading_type_id=site_reading_type.site_reading_type_id,
+        aggregator_id=site_reading_type.aggregator_id,
+        site_id=site_reading_type.site_id,
+        mrid=site_reading_type.mrid,
+        group_id=site_reading_type.group_id,
+        group_mrid=site_reading_type.group_mrid,
+        uom=site_reading_type.uom,
+        data_qualifier=site_reading_type.data_qualifier,
+        flow_direction=site_reading_type.flow_direction,
+        accumulation_behaviour=site_reading_type.accumulation_behaviour,
+        kind=site_reading_type.kind,
+        phase=site_reading_type.phase,
+        power_of_ten_multiplier=site_reading_type.power_of_ten_multiplier,
+        default_interval_seconds=site_reading_type.default_interval_seconds,
+        role_flags=site_reading_type.role_flags,
+        description=site_reading_type.description,
+        group_version=site_reading_type.group_version,
+        group_status=site_reading_type.group_status,
+        commodity=site_reading_type.commodity,
+        created_time=site_reading_type.created_time,
+        changed_time=site_reading_type.changed_time,
+    )
+
+
+def map_envoy_site_der_rating_to_final_report_dto(site_der_rating: SiteDERRating) -> dtos.SiteDERRatingFinalReport:
+    """Create the final reporting dto from a DB entry."""
+    return dtos.SiteDERRatingFinalReport(
+        site_der_rating_id=f"{site_der_rating.site_der_rating_id}",
+        site_id=f"{site_der_rating.site_id}",
+        created_time=site_der_rating.created_time,
+        changed_time=site_der_rating.changed_time,
+        modes_supported=site_der_rating.modes_supported,
+        abnormal_category=site_der_rating.abnormal_category,
+        max_a_value=site_der_rating.max_a_value,
+        max_a_multiplier=site_der_rating.max_a_multiplier,
+        max_ah_value=site_der_rating.max_ah_value,
+        max_ah_multiplier=site_der_rating.max_ah_multiplier,
+        max_charge_rate_va_value=site_der_rating.max_charge_rate_va_value,
+        max_charge_rate_va_multiplier=site_der_rating.max_charge_rate_va_multiplier,
+        max_charge_rate_w_value=site_der_rating.max_charge_rate_w_value,
+        max_charge_rate_w_multiplier=site_der_rating.max_charge_rate_w_multiplier,
+        max_discharge_rate_va_value=site_der_rating.max_discharge_rate_va_value,
+        max_discharge_rate_va_multiplier=site_der_rating.max_discharge_rate_va_multiplier,
+        max_discharge_rate_w_value=site_der_rating.max_discharge_rate_w_value,
+        max_discharge_rate_w_multiplier=site_der_rating.max_discharge_rate_w_multiplier,
+        max_v_value=site_der_rating.max_v_value,
+        max_v_multiplier=site_der_rating.max_v_multiplier,
+        max_va_value=site_der_rating.max_va_value,
+        max_va_multiplier=site_der_rating.max_va_multiplier,
+        max_var_value=site_der_rating.max_var_value,
+        max_var_multiplier=site_der_rating.max_var_multiplier,
+        max_var_neg_value=site_der_rating.max_var_neg_value,
+        max_var_neg_multiplier=site_der_rating.max_var_neg_multiplier,
+        max_w_value=site_der_rating.max_w_value,
+        max_w_multiplier=site_der_rating.max_w_multiplier,
+        max_wh_value=site_der_rating.max_wh_value,
+        max_wh_multiplier=site_der_rating.max_wh_multiplier,
+        min_pf_over_excited_displacement=site_der_rating.min_pf_over_excited_displacement,
+        min_pf_over_excited_multiplier=site_der_rating.min_pf_over_excited_multiplier,
+        min_pf_under_excited_displacement=site_der_rating.min_pf_under_excited_displacement,
+        min_pf_under_excited_multiplier=site_der_rating.min_pf_under_excited_multiplier,
+        min_v_value=site_der_rating.min_v_value,
+        min_v_multiplier=site_der_rating.min_v_multiplier,
+        normal_category=site_der_rating.normal_category,
+        over_excited_pf_displacement=site_der_rating.over_excited_pf_displacement,
+        over_excited_pf_multiplier=site_der_rating.over_excited_pf_multiplier,
+        over_excited_w_value=site_der_rating.over_excited_w_value,
+        over_excited_w_multiplier=site_der_rating.over_excited_w_multiplier,
+        reactive_susceptance_value=site_der_rating.reactive_susceptance_value,
+        reactive_susceptance_multiplier=site_der_rating.reactive_susceptance_multiplier,
+        under_excited_pf_displacement=site_der_rating.under_excited_pf_displacement,
+        under_excited_pf_multiplier=site_der_rating.under_excited_pf_multiplier,
+        under_excited_w_value=site_der_rating.under_excited_w_value,
+        under_excited_w_multiplier=site_der_rating.under_excited_w_multiplier,
+        v_nom_value=site_der_rating.v_nom_value,
+        v_nom_multiplier=site_der_rating.v_nom_multiplier,
+        der_type=site_der_rating.der_type,
+        doe_modes_supported=site_der_rating.doe_modes_supported,
+        vpp_modes_supported=getattr(site_der_rating, "vpp_modes_supported", None),
+    )
+
+
+def map_envoy_site_der_setting_to_final_report_dto(site_der_setting: SiteDERSetting) -> dtos.SiteDERSettingFinalReport:
+    """Create the final reporting dto from a DB entry."""
+    return dtos.SiteDERSettingFinalReport(
+        site_der_setting_id=f"{site_der_setting.site_der_setting_id}",
+        site_id=f"{site_der_setting.site_id}",
+        created_time=site_der_setting.created_time,
+        changed_time=site_der_setting.changed_time,
+        modes_enabled=site_der_setting.modes_enabled,
+        es_delay=site_der_setting.es_delay,
+        es_high_freq=site_der_setting.es_high_freq,
+        es_high_volt=site_der_setting.es_high_volt,
+        es_low_freq=site_der_setting.es_low_freq,
+        es_low_volt=site_der_setting.es_low_volt,
+        es_ramp_tms=site_der_setting.es_ramp_tms,
+        es_random_delay=site_der_setting.es_random_delay,
+        grad_w=site_der_setting.grad_w,
+        max_a_value=site_der_setting.max_a_value,
+        max_a_multiplier=site_der_setting.max_a_multiplier,
+        max_ah_value=site_der_setting.max_ah_value,
+        max_ah_multiplier=site_der_setting.max_ah_multiplier,
+        max_charge_rate_va_value=site_der_setting.max_charge_rate_va_value,
+        max_charge_rate_va_multiplier=site_der_setting.max_charge_rate_va_multiplier,
+        max_charge_rate_w_value=site_der_setting.max_charge_rate_w_value,
+        max_charge_rate_w_multiplier=site_der_setting.max_charge_rate_w_multiplier,
+        max_discharge_rate_va_value=site_der_setting.max_discharge_rate_va_value,
+        max_discharge_rate_va_multiplier=site_der_setting.max_discharge_rate_va_multiplier,
+        max_discharge_rate_w_value=site_der_setting.max_discharge_rate_w_value,
+        max_discharge_rate_w_multiplier=site_der_setting.max_discharge_rate_w_multiplier,
+        max_v_value=site_der_setting.max_v_value,
+        max_v_multiplier=site_der_setting.max_v_multiplier,
+        max_va_value=site_der_setting.max_va_value,
+        max_va_multiplier=site_der_setting.max_va_multiplier,
+        max_var_value=site_der_setting.max_var_value,
+        max_var_multiplier=site_der_setting.max_var_multiplier,
+        max_var_neg_value=site_der_setting.max_var_neg_value,
+        max_var_neg_multiplier=site_der_setting.max_var_neg_multiplier,
+        max_w_value=site_der_setting.max_w_value,
+        max_w_multiplier=site_der_setting.max_w_multiplier,
+        max_wh_value=site_der_setting.max_wh_value,
+        max_wh_multiplier=site_der_setting.max_wh_multiplier,
+        min_pf_over_excited_displacement=site_der_setting.min_pf_over_excited_displacement,
+        min_pf_over_excited_multiplier=site_der_setting.min_pf_over_excited_multiplier,
+        min_pf_under_excited_displacement=site_der_setting.min_pf_under_excited_displacement,
+        min_pf_under_excited_multiplier=site_der_setting.min_pf_under_excited_multiplier,
+        min_v_value=site_der_setting.min_v_value,
+        min_v_multiplier=site_der_setting.min_v_multiplier,
+        soft_grad_w=site_der_setting.soft_grad_w,
+        v_nom_value=site_der_setting.v_nom_value,
+        v_nom_multiplier=site_der_setting.v_nom_multiplier,
+        v_ref_value=site_der_setting.v_ref_value,
+        v_ref_multiplier=site_der_setting.v_ref_multiplier,
+        v_ref_ofs_value=site_der_setting.v_ref_ofs_value,
+        v_ref_ofs_multiplier=site_der_setting.v_ref_ofs_multiplier,
+        doe_modes_enabled=site_der_setting.doe_modes_enabled,
+        vpp_modes_enabled=getattr(site_der_setting, "vpp_modes_enabled", None),
+        min_wh_value=getattr(site_der_setting, "min_wh_value", None),
+        min_wh_multiplier=getattr(site_der_setting, "min_wh_multiplier", None),
+    )
+
+
+def map_envoy_site_der_status_to_final_report_dto(site_der_status: SiteDERStatus) -> dtos.SiteDERStatusFinalReport:
+    """Create a final report dto from a DB entry."""
+    return dtos.SiteDERStatusFinalReport(
+        site_der_status_id=f"{site_der_status.site_der_status_id}",
+        site_id=f"{site_der_status.site_id}",
+        created_time=site_der_status.created_time,
+        changed_time=site_der_status.changed_time,
+        alarm_status=site_der_status.alarm_status,
+        generator_connect_status=site_der_status.generator_connect_status,
+        generator_connect_status_time=site_der_status.generator_connect_status_time,
+        inverter_status=site_der_status.inverter_status,
+        inverter_status_time=site_der_status.inverter_status_time,
+        local_control_mode_status=site_der_status.local_control_mode_status,
+        local_control_mode_status_time=site_der_status.local_control_mode_status_time,
+        manufacturer_status=site_der_status.manufacturer_status,
+        manufacturer_status_time=site_der_status.manufacturer_status_time,
+        operational_mode_status=site_der_status.operational_mode_status,
+        operational_mode_status_time=site_der_status.operational_mode_status_time,
+        state_of_charge_status=site_der_status.state_of_charge_status,
+        state_of_charge_status_time=site_der_status.state_of_charge_status_time,
+        storage_mode_status=site_der_status.storage_mode_status,
+        storage_mode_status_time=site_der_status.storage_mode_status_time,
+        storage_connect_status=site_der_status.storage_connect_status,
+        storage_connect_status_time=site_der_status.storage_connect_status_time,
+    )
+
+
+def map_envoy_site_der_availability_to_final_report_dto(
+    site_der_availability: SiteDERAvailability,
+) -> dtos.SiteDERAvailabilityFinalReport:
+    """Create a final report DTO from a DB entry."""
+    return dtos.SiteDERAvailabilityFinalReport(
+        site_der_availability_id=f"{site_der_availability.site_der_availability_id}",
+        site_id=f"{site_der_availability.site_id}",
+        created_time=site_der_availability.created_time,
+        changed_time=site_der_availability.changed_time,
+        availability_duration_sec=site_der_availability.availability_duration_sec,
+        max_charge_duration_sec=site_der_availability.max_charge_duration_sec,
+        reserved_charge_percent=site_der_availability.reserved_charge_percent,
+        reserved_deliver_percent=site_der_availability.reserved_deliver_percent,
+        estimated_var_avail_value=site_der_availability.estimated_var_avail_value,
+        estimated_var_avail_multiplier=site_der_availability.estimated_var_avail_multiplier,
+        estimated_w_avail_value=site_der_availability.estimated_w_avail_value,
+        estimated_w_avail_multiplier=site_der_availability.estimated_w_avail_multiplier,
+    )
+
+
+def map_envoy_site_to_final_report_dto(site: Site) -> dtos.SiteFinalReport:
+    """Create a final report DTO from a DB entry."""
+    # The DER sub-resources now hang directly off the site
+    site_ders = []
+    site_der_rating = (
+        map_envoy_site_der_rating_to_final_report_dto(site.site_der_rating) if site.site_der_rating else None
+    )
+    site_der_setting = (
+        map_envoy_site_der_setting_to_final_report_dto(site.site_der_setting) if site.site_der_setting else None
+    )
+    site_der_availability = (
+        map_envoy_site_der_availability_to_final_report_dto(site.site_der_availability)
+        if site.site_der_availability
+        else None
+    )
+    site_der_status = (
+        map_envoy_site_der_status_to_final_report_dto(site.site_der_status) if site.site_der_status else None
+    )
+    if any([site_der_setting, site_der_rating, site_der_availability, site_der_status]):
+        site_ders.append(
+            dtos.SiteDERFinalReport(
+                site_id=f"{site.site_id}",
+                created_time=site.created_time,
+                changed_time=site.changed_time,
+                site_der_rating=site_der_rating,
+                site_der_setting=site_der_setting,
+                site_der_availability=site_der_availability,
+                site_der_status=site_der_status,
+            )
+        )
+
+    return dtos.SiteFinalReport(
+        site_id=f"{site.site_id}",
+        nmi=site.nmi,
+        aggregator_id=f"{site.aggregator_id}",
+        timezone_id=site.timezone_id,
+        created_time=site.created_time,
+        changed_time=site.changed_time,
+        lfdi=site.lfdi,
+        sfdi=site.sfdi,
+        device_category=site.device_category,
+        registration_pin=site.registration_pin,
+        post_rate_seconds=site.post_rate_seconds,
+        site_ders=site_ders,
     )

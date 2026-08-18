@@ -71,7 +71,7 @@ class StartResult:
 
 
 async def attempt_apply_actions(
-        actions: list[Action] | None, runner_state: RunnerState, backend: RunnerBackend
+    actions: list[Action] | None, runner_state: RunnerState, backend: RunnerBackend
 ) -> None:
     if actions:
         async with begin_session() as session:
@@ -485,11 +485,9 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
         async with begin_session() as session:
             # This will either force the active test procedure to finish
             # (or it will return the results of an earlier finish)
+            backend = create_backend(session=session, envoy_client=request.app[APPKEY_ENVOY_ADMIN_CLIENT])
             try:
-                print(f"runner_state: {runner_state}")
-                zip_path = await finalize.finish_active_test(
-                    runner_state, session, request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-                )
+                zip_path = await finalize.finish_active_test(runner_state, backend)
             except Exception as exc:
                 logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
                 zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])

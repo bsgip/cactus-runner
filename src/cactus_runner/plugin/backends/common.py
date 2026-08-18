@@ -1,3 +1,5 @@
+from cactus_runner.app.envoy_common import ReadingLocation
+from envoy_schema.server.schema.sep2.types import UomType, KindType, DataQualifierType
 from collections.abc import Sequence
 from datetime import datetime
 from operator import attrgetter
@@ -5,7 +7,7 @@ from typing import Protocol, runtime_checkable
 
 from cactus_schema.runner import EndDeviceMetadata
 
-from cactus_runner.models import FinalSerializableReportingData, RunnerBackendTestContext
+from cactus_runner.plugin.backends.models import RunnerBackendTestContext, FinalSerializableReportingData
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
@@ -603,3 +605,21 @@ async def get_site_control_groups_ordered(
     """
     site_control_groups = await backend.get_site_control_groups(fsa_ids=fsa_ids)
     return sorted(site_control_groups, key=attrgetter("primacy"))
+
+
+async def get_csip_aus_site_reading_types_active_site(
+    backend: RunnerBackend,
+    uom: UomType,
+    location: ReadingLocation,
+    kind: KindType,
+    qualifier: DataQualifierType = DataQualifierType.AVERAGE,
+) -> Sequence[dtos.SiteReadingType]:
+    """Returns only the correctly-flagged SiteReadingTypes for the active site matching the given uom/kind/qualifier."""
+    site = await backend.get_active_site()
+    site_ids = [site.site_id] if site is not None else None
+    srts = await get_site_reading_types_ordered(backend, site_ids=site_ids)
+    return [
+        srt
+        for srt in srts
+        if srt.uom == uom and srt.role_flags == location and srt.kind == kind and srt.data_qualifier == qualifier
+    ]
