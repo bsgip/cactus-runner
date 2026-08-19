@@ -16,6 +16,7 @@ from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
+from envoy.server.manager.server import RuntimeServerConfigManager
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope
@@ -948,6 +949,7 @@ async def do_check_site_readings_and_params(
 
     if check_duration:
         check_results.append(await do_check_readings_for_duration(session, site_reading_types))
+        check_results.append(await do_check_readings_match_post_rate(session, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     check_results.append(await do_check_readings_for_types(session, site_reading_types, minimum_count))
@@ -983,6 +985,30 @@ async def do_check_readings_for_duration(
         return CheckResult(False, f"{' and '.join(error_parts)} found")
 
     return CheckResult(True, "All readings have a valid time_period_seconds set")
+
+
+async def do_check_readings_match_post_rate(
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+) -> CheckResult:
+    """Check that all readings have a time_period_seconds matching the configured mup_postrate_seconds."""
+
+    post_rate_seconds = (await RuntimeServerConfigManager.fetch_current_config(session)).mup_postrate_seconds
+
+    mismatched_count = 0
+    for reading_type in site_reading_types:
+        reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+        for reading in reading_data:
+            if reading.time_period_seconds != post_rate_seconds:
+                mismatched_count += 1
+
+    if mismatched_count > 0:
+        return CheckResult(
+            False,
+            f"{mismatched_count} readings with time_period_seconds not matching "
+            f"the configured post rate ({post_rate_seconds}s)",
+        )
+
+    return CheckResult(True, "All readings have a time_period_seconds matching the configured post rate")
 
 
 async def check_readings_site_active_power(
