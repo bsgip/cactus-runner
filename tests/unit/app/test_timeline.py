@@ -342,7 +342,7 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
 async def test_generate_readings_data_stream_empty_db(pg_empty_config):
     mock_envoy_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_empty_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_envoy_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_envoy_client)
         result = await generate_readings_data_stream(
             backend, "foo", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), 1
         )

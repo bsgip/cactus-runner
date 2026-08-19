@@ -12,7 +12,7 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited(pg_empty_co
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
 
 
@@ -25,7 +25,7 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_no_rating(p
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="rtgMinPFOverExcited"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
 
 
@@ -52,7 +52,7 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_single_rati
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.95
@@ -108,7 +108,7 @@ async def test_resolve_named_variable_der_rating_min_pf_over_excited_many_rating
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.45

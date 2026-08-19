@@ -49,8 +49,8 @@ from cactus_runner.models import (
     StepInfo,
     StepStatus,
 )
-from cactus_runner.plugin.backends.envoy import EnvoyBackend
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy import EnvoyBackend
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 # This is a list of every action type paired with the handler function. This must be kept in sync with
@@ -311,7 +311,7 @@ async def test_action_set_default_der_control_with_derp_id(pg_base_config, envoy
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_set_default_der_control(backend=backend, resolved_parameters=resolved_params)
 
     # Assert
@@ -361,7 +361,7 @@ async def test_action_set_default_der_control_missing_derp_id(
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_set_default_der_control(backend=backend, resolved_parameters=resolved_params)
 
     # Assert
@@ -391,7 +391,7 @@ async def test_action_set_default_der_control_cancelled(pg_base_config, envoy_ad
     }
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_set_default_der_control(backend=backend, resolved_parameters=resolved_params)
 
     # Assert
@@ -467,7 +467,7 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Assert
@@ -502,7 +502,7 @@ async def test_action_create_der_program(pg_base_config, envoy_admin_client, fsa
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_program(resolved_params, active_test_procedure, backend)
 
     # Assert
@@ -567,7 +567,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Assert
@@ -617,7 +617,7 @@ async def test_action_create_der_control_existing_group_with_tag(pg_base_config,
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Assert
@@ -665,7 +665,7 @@ async def test_action_create_der_control_derp_tag_missing(pg_base_config, envoy_
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         with pytest.raises(Exception):  # noqa: B017
             await action_create_der_control(resolved_params, backend, active_test_procedure)
 
@@ -720,7 +720,7 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Assert
@@ -767,7 +767,7 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Assert
@@ -837,7 +837,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_create_der_control(resolved_params, backend, active_test_procedure)
 
     # Verify the tag was added to the active test procedure
@@ -901,7 +901,7 @@ async def test_action_create_der_control_with_tag_and_edev_indexes(pg_base_confi
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         with pytest.raises(Exception):  # noqa: B017
             await action_create_der_control(resolved_params, backend, active_test_procedure)
 
@@ -945,7 +945,7 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         # We do this twice so we can ensure display_id is unique PER call
         await action_create_der_control(resolved_params_1, backend, active_test_procedure)
         await action_create_der_control(resolved_params_2, backend, active_test_procedure)
@@ -993,7 +993,7 @@ async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
 
         # Act
         await action_cancel_active_controls(backend)
@@ -1022,7 +1022,7 @@ async def test_action_set_comms_rate_all_values(pg_base_config, envoy_admin_clie
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_set_comms_rate(resolved_params, backend)
 
     # Assert
@@ -1054,7 +1054,7 @@ async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_clien
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_set_comms_rate(resolved_params, backend)
 
     # Assert
@@ -1093,7 +1093,7 @@ async def test_action_register_aggregator_end_device_device_cert(
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_register_end_device(active_test_procedure, resolved_params, backend)
 
     # Assert
@@ -1178,7 +1178,7 @@ async def test_action_register_aggregator_end_device_agg_cert(
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_register_end_device(active_test_procedure, resolved_params, backend)
 
     # Assert
@@ -1213,11 +1213,11 @@ async def test_action_reregister_existing_device(pg_base_config, envoy_admin_cli
 
     # Act - register the device twice
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_register_end_device(active_test_procedure, resolved_params, backend)
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         # This should not raise an error
         await action_register_end_device(active_test_procedure, resolved_params, backend)
 
@@ -1268,7 +1268,7 @@ async def test_action_edev_registration_links(
 ):
     """NOTE: The expected value is the expected value for DISABLE edev registrations"""
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
 
         if isinstance(expected_db_value, type):
             with pytest.raises(expected_db_value):
@@ -1314,7 +1314,7 @@ async def test_action_remove_function_set_assignment(
 
     # Act
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         await action_remove_function_set_assignment({"fsa_id": fsa_id}, backend)
 
     # Assert

@@ -1,4 +1,3 @@
-from cactus_runner.plugin.backends.envoy import EnvoyBackend
 import logging
 import math
 from collections.abc import Sequence
@@ -119,11 +118,7 @@ async def action_remove_steps(
 
 
 async def action_finish_test(runner_state: RunnerState, backend: RunnerBackend) -> None:
-    if not isinstance(backend, EnvoyBackend):
-        raise RuntimeError(
-            f"Only Envoy backend is currently supported for finalization, not {type(backend)}"
-        )
-    await finish_active_test(runner_state, backend.session, backend.admin_client)
+    await finish_active_test(runner_state, backend)
 
 
 async def action_set_default_der_control(resolved_parameters: dict[str, Any], backend: RunnerBackend) -> None:

@@ -11,7 +11,7 @@ from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 async def test_resolve_named_variable_der_rating_max_discharge_rate_w_empty(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
             await resolver.resolve_named_variable_der_rating_max_discharge_rate_w()
 
@@ -24,7 +24,7 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_no_setting
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         with pytest.raises(UnresolvableVariableError, match="rtgMaxDischargeRateW"):
             await resolver.resolve_named_variable_der_rating_max_discharge_rate_w()
 
@@ -52,7 +52,7 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_single_set
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_max_discharge_rate_w()
         assert isinstance(result, float)
         assert result == 123.45
@@ -108,7 +108,7 @@ async def test_resolve_named_variable_der_rating_max_discharge_rate_w_many_setti
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_max_discharge_rate_w()
         assert isinstance(result, float)
         assert result == 12300

@@ -1,5 +1,6 @@
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import UTC, datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 
 import pytest
 from assertical.fake.generator import generate_class_instance
@@ -53,7 +54,7 @@ async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=envoy_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
 
         controls = await backend.get_site_controls()
 
@@ -71,9 +72,9 @@ async def test_get_end_device_metadata(mocker) -> None:
     metadata creation logic for it.
     """
     # Arrange
-    mock_session = create_mock_session()
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_envoy_client = Mock(spec=EnvoyAdminClient)
-    backend = EnvoyBackend(session=mock_session, admin_client=mock_envoy_client)
+    backend = EnvoyBackend(session_factory=lambda: mock_session, admin_client=mock_envoy_client)
     mock_resolver = Mock(spec=EnvoyResolver)
     mocker.patch.object(backend, "get_expression_resolver", return_value=mock_resolver)
     mock_resolver.resolve_named_variable_der_setting_max_w.return_value = 5000

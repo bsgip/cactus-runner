@@ -28,7 +28,7 @@ async def test_resolve_named_variable_der_setting_max_export_w_empty(pg_empty_co
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERSetting"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_setting_max_export_w()
 
 
@@ -46,7 +46,7 @@ async def test_resolve_named_variable_der_setting_max_export_w_uses_discharge_ra
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_setting_max_export_w()
         assert isinstance(result, float)
         assert result == 123.45
@@ -66,7 +66,7 @@ async def test_resolve_named_variable_der_setting_max_export_w_falls_back_to_max
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_setting_max_export_w()
         assert isinstance(result, float)
         assert result == 6780

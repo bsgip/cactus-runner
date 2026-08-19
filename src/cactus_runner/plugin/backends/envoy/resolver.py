@@ -1,4 +1,4 @@
-from typing import Protocol
+from collections.abc import Callable
 
 import sqlalchemy as sa
 from cactus_test_definitions import errors
@@ -45,18 +45,19 @@ class EnvoyResolver(ExpressionResolver):
     """Contains all DB operations necessary to perform parameter evaluations with envoy.
 
     Parameters:
-        session: DB session for performing queries.
+        _session_factory: Factory to create a DB session for performing queries.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+    def __init__(self, session_factory: Callable[..., AsyncSession]) -> None:
+        self._session_factory = session_factory
 
     # ==================================================================================================
     # DER Settings
     # ==================================================================================================
 
     async def resolve_named_variable_der_setting_max_w(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxW")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxW")
         set_max_w = common.pow10_to_decimal_value(site_der_setting.max_w_value, site_der_setting.max_w_multiplier)
         if set_max_w is None:
             raise errors.UnresolvableVariableError("Unable to extract setMaxW from DERSetting")
@@ -64,7 +65,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_max_w)
 
     async def resolve_named_variable_der_setting_max_va(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxVA")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxVA")
         set_max_va = common.pow10_to_decimal_value(site_der_setting.max_va_value, site_der_setting.max_va_multiplier)
         if set_max_va is None:
             raise errors.UnresolvableVariableError("Unable to extract setMaxVA from DERSetting")
@@ -72,7 +74,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_max_va)
 
     async def resolve_named_variable_der_setting_max_var(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxVar")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxVar")
         set_max_var = common.pow10_to_decimal_value(site_der_setting.max_var_value, site_der_setting.max_var_multiplier)
         if set_max_var is None:
             raise errors.UnresolvableVariableError("Unable to extract setMaxVar from DERSetting")
@@ -80,7 +83,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_max_var)
 
     async def resolve_named_variable_der_setting_max_var_neg(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxVarNeg")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxVarNeg")
         set_max_var_neg = common.pow10_to_decimal_value(
             site_der_setting.max_var_neg_value, site_der_setting.max_var_neg_multiplier
         )
@@ -90,7 +94,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_max_var_neg)
 
     async def resolve_named_variable_der_setting_max_charge_rate_w(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxChargeRateW")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxChargeRateW")
         set_max_charge_rate_w = common.pow10_to_decimal_value(
             site_der_setting.max_charge_rate_w_value, site_der_setting.max_charge_rate_w_multiplier
         )
@@ -100,7 +105,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_max_charge_rate_w)
 
     async def resolve_named_variable_der_setting_max_discharge_rate_w(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxDischargeRateW")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxDischargeRateW")
         set_max_discharge_rate_w = common.pow10_to_decimal_value(
             site_der_setting.max_discharge_rate_w_value, site_der_setting.max_discharge_rate_w_multiplier
         )
@@ -111,7 +117,8 @@ class EnvoyResolver(ExpressionResolver):
 
     async def resolve_named_variable_der_setting_max_import_w(self) -> float:
         # Directional import limit: prefer the asymmetric setMaxChargeRateW, falling back to the mandatory setMaxW
-        site_der_setting = await _select_single_site_der_setting(self.session, "maxImportW")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "maxImportW")
         max_import_w = common.pow10_to_decimal_value(
             site_der_setting.max_charge_rate_w_value, site_der_setting.max_charge_rate_w_multiplier
         )
@@ -126,7 +133,8 @@ class EnvoyResolver(ExpressionResolver):
 
     async def resolve_named_variable_der_setting_max_export_w(self) -> float:
         # Directional export limit: prefer the asymmetric setMaxDischargeRateW, falling back to the mandatory setMaxW
-        site_der_setting = await _select_single_site_der_setting(self.session, "maxExportW")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "maxExportW")
         max_export_w = common.pow10_to_decimal_value(
             site_der_setting.max_discharge_rate_w_value, site_der_setting.max_discharge_rate_w_multiplier
         )
@@ -140,7 +148,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(max_export_w)
 
     async def resolve_named_variable_der_setting_min_pf_over_excited(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMinPFOverExcited")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMinPFOverExcited")
         set_min_pf_over_excited = common.pow10_to_decimal_value(
             site_der_setting.min_pf_over_excited_displacement, site_der_setting.min_pf_over_excited_multiplier
         )
@@ -150,7 +159,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_min_pf_over_excited)
 
     async def resolve_named_variable_der_setting_min_pf_under_excited(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMinPFUnderExcited")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMinPFUnderExcited")
         set_min_pf_under_excited = common.pow10_to_decimal_value(
             site_der_setting.min_pf_under_excited_displacement, site_der_setting.min_pf_under_excited_multiplier
         )
@@ -160,7 +170,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(set_min_pf_under_excited)
 
     async def resolve_named_variable_der_setting_max_wh(self) -> float:
-        site_der_setting = await _select_single_site_der_setting(self.session, "setMaxWh")
+        async with self._session_factory() as session:
+            site_der_setting = await _select_single_site_der_setting(session, "setMaxWh")
         set_max_wh = common.pow10_to_decimal_value(site_der_setting.max_wh_value, site_der_setting.max_wh_multiplier)
         if set_max_wh is None:
             raise errors.UnresolvableVariableError("Unable to extract setMaxWh from DERSetting")
@@ -172,7 +183,8 @@ class EnvoyResolver(ExpressionResolver):
     # ==================================================================================================
 
     async def resolve_named_variable_der_rating_max_w(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxW")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxW")
         rtg_max_w = common.pow10_to_decimal_value(site_der_rating.max_w_value, site_der_rating.max_w_multiplier)
         if rtg_max_w is None:
             raise errors.UnresolvableVariableError("Unable to extract rtgMaxW from DERCapability")
@@ -180,7 +192,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_w)
 
     async def resolve_named_variable_der_rating_max_va(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxVA")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxVA")
         rtg_max_va = common.pow10_to_decimal_value(site_der_rating.max_va_value, site_der_rating.max_va_multiplier)
         if rtg_max_va is None:
             raise errors.UnresolvableVariableError("Unable to extract rtgMaxVA from DERCapability")
@@ -188,7 +201,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_va)
 
     async def resolve_named_variable_der_rating_max_var(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxVar")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxVar")
         rtg_max_var = common.pow10_to_decimal_value(site_der_rating.max_var_value, site_der_rating.max_var_multiplier)
         if rtg_max_var is None:
             raise errors.UnresolvableVariableError("Unable to extract rtgMaxVar from DERCapability")
@@ -196,7 +210,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_var)
 
     async def resolve_named_variable_der_rating_max_var_neg(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxVarNeg")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxVarNeg")
         rtg_max_var_neg = common.pow10_to_decimal_value(
             site_der_rating.max_var_neg_value, site_der_rating.max_var_neg_multiplier
         )
@@ -206,7 +221,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_var_neg)
 
     async def resolve_named_variable_der_rating_max_charge_rate_w(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxChargeRateW")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxChargeRateW")
         rtg_max_charge_rate_w = common.pow10_to_decimal_value(
             site_der_rating.max_charge_rate_w_value, site_der_rating.max_charge_rate_w_multiplier
         )
@@ -216,7 +232,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_charge_rate_w)
 
     async def resolve_named_variable_der_rating_max_discharge_rate_w(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxDischargeRateW")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxDischargeRateW")
         rtg_max_discharge_rate_w = common.pow10_to_decimal_value(
             site_der_rating.max_discharge_rate_w_value, site_der_rating.max_discharge_rate_w_multiplier
         )
@@ -226,7 +243,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_max_discharge_rate_w)
 
     async def resolve_named_variable_der_rating_min_pf_over_excited(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMinPFOverExcited")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMinPFOverExcited")
         rtg_min_pf_over_excited = common.pow10_to_decimal_value(
             site_der_rating.min_pf_over_excited_displacement, site_der_rating.min_pf_over_excited_multiplier
         )
@@ -236,7 +254,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_min_pf_over_excited)
 
     async def resolve_named_variable_der_rating_min_pf_under_excited(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMinPFUnderExcited")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMinPFUnderExcited")
         rtg_min_pf_under_excited = common.pow10_to_decimal_value(
             site_der_rating.min_pf_under_excited_displacement, site_der_rating.min_pf_under_excited_multiplier
         )
@@ -246,7 +265,8 @@ class EnvoyResolver(ExpressionResolver):
         return float(rtg_min_pf_under_excited)
 
     async def resolve_named_variable_der_rating_max_wh(self) -> float:
-        site_der_rating = await _select_single_site_der_rating(self.session, "rtgMaxWh")
+        async with self._session_factory() as session:
+            site_der_rating = await _select_single_site_der_rating(session, "rtgMaxWh")
         rtg_max_wh = common.pow10_to_decimal_value(site_der_rating.max_wh_value, site_der_rating.max_wh_multiplier)
         if rtg_max_wh is None:
             raise errors.UnresolvableVariableError("Unable to extract rtgMaxWh from DERCapability")

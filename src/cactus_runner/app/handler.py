@@ -98,18 +98,17 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 
     # We cannot start a test procedure if any of the precondition checks are failing:
     if active_test_procedure.definition.preconditions:
-        async with begin_session() as session:
-            backend = create_backend(session, envoy_client)
-            check_failure = await first_failing_check(
-                active_test_procedure.definition.preconditions.checks, active_test_procedure, backend
+        backend = create_backend(begin_session, envoy_client)
+        check_failure = await first_failing_check(
+            active_test_procedure.definition.preconditions.checks, active_test_procedure, backend
+        )
+        if check_failure:
+            return StartResult(
+                False,
+                http.HTTPStatus.PRECONDITION_FAILED,
+                "text/plain",
+                f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
             )
-            if check_failure:
-                return StartResult(
-                    False,
-                    http.HTTPStatus.PRECONDITION_FAILED,
-                    "text/plain",
-                    f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
-                )
 
     # We cannot start another test procedure if one is already running.
     # Check started_at since all listeners may have been removed after test completion
@@ -243,20 +242,19 @@ async def initialize_next_test(
 
     # Apply init_actions and handle immediate_start
     is_started = False
-    async with begin_session() as session:
-        backend = create_backend(session, envoy_client)
-        if runner_state.active_test_procedure.definition.preconditions:
-            await attempt_apply_actions(
-                runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, backend
-            )
+    backend = create_backend(begin_session, envoy_client)
+    if runner_state.active_test_procedure.definition.preconditions:
+        await attempt_apply_actions(
+            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, backend
+        )
 
-            if runner_state.active_test_procedure.definition.preconditions.immediate_start:
-                start_result = await attempt_start_for_state(runner_state, envoy_client)
-                if not start_result.success:
-                    raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
-                is_started = True
+        if runner_state.active_test_procedure.definition.preconditions.immediate_start:
+            start_result = await attempt_start_for_state(runner_state, envoy_client)
+            if not start_result.success:
+                raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
+            is_started = True
 
-        return is_started
+    return is_started
 
 
 async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C901
@@ -399,13 +397,12 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     # if this test has "init_actions" - now is the time to fire them
     if active_test_procedure.definition.preconditions:
         try:
-            async with begin_session() as session:
-                backend = create_backend(session, request.app[APPKEY_ENVOY_ADMIN_CLIENT])
-                await attempt_apply_actions(
-                    active_test_procedure.definition.preconditions.init_actions,
-                    request.app[APPKEY_RUNNER_STATE],
-                    backend,
-                )
+            backend = create_backend(begin_session, request.app[APPKEY_ENVOY_ADMIN_CLIENT])
+            await attempt_apply_actions(
+                active_test_procedure.definition.preconditions.init_actions,
+                request.app[APPKEY_RUNNER_STATE],
+                backend,
+            )
         except (action.FailedActionError, action.UnknownActionError) as e:
             return web.Response(
                 status=http.HTTPStatus.PRECONDITION_FAILED,
@@ -482,15 +479,14 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
     if runner_state.active_test_procedure is not None:
         finalized_test_procedure_name = runner_state.active_test_procedure.name
         zip_path: Path | None = None
-        async with begin_session() as session:
-            # This will either force the active test procedure to finish
-            # (or it will return the results of an earlier finish)
-            backend = create_backend(session=session, envoy_client=request.app[APPKEY_ENVOY_ADMIN_CLIENT])
-            try:
-                zip_path = await finalize.finish_active_test(runner_state, backend)
-            except Exception as exc:
-                logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
-                zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])
+        # This will either force the active test procedure to finish
+        # (or it will return the results of an earlier finish)
+        backend = create_backend(session_factory=begin_session, envoy_client=request.app[APPKEY_ENVOY_ADMIN_CLIENT])
+        try:
+            zip_path = await finalize.finish_active_test(runner_state, backend)
+        except Exception as exc:
+            logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
+            zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])
 
         # Clear the active test procedure and request history
         runner_state.active_test_procedure = None
@@ -631,15 +627,14 @@ async def status_handler(request: web.Request) -> web.Response:
     envoy_client = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
 
     if active_test_procedure is not None:
-        async with begin_session() as session:
-            backend = create_backend(session=session, envoy_client=envoy_client)
-            runner_status = await status.get_active_runner_status(
-                active_test_procedure=active_test_procedure,
-                request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-                last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-                backend=backend,
-                crop_minutes=15,
-            )
+        backend = create_backend(session_factory=begin_session, envoy_client=envoy_client)
+        runner_status = await status.get_active_runner_status(
+            active_test_procedure=active_test_procedure,
+            request_history=request.app[APPKEY_RUNNER_STATE].request_history,
+            last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+            backend=backend,
+            crop_minutes=15,
+        )
 
     else:
         runner_status = status.get_runner_status(
@@ -770,7 +765,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
     envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
     async with request.app[APPKEY_PROXY_LOCK]:
         async with begin_session() as session:
-            backend = EnvoyBackend(session=session, admin_client=envoy_client)
+            backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_client)
             trigger_handled = await event.handle_event_trigger(
                 trigger=event.generate_client_request_trigger(
                     proxy_parts, mount_point=MOUNT_POINT, before_serving=True
@@ -788,7 +783,7 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
         # Fire "after request" event trigger (only if an event didn't handle the before event)
         if not trigger_handled:
             async with begin_session() as session:
-                backend = create_backend(session, envoy_client)
+                backend = create_backend(lambda: session, envoy_client)
                 trigger_handled = await event.handle_event_trigger(
                     trigger=event.generate_client_request_trigger(
                         proxy_parts, mount_point=MOUNT_POINT, before_serving=False
@@ -865,7 +860,7 @@ async def proceed_handler(request: web.Request) -> web.Response:
         return web.Response(status=http.HTTPStatus.GONE, text=msg)
 
     async with begin_session() as session:
-        backend = create_backend(session, envoy_client)
+        backend = create_backend(lambda: session, envoy_client)
         trigger_handled = await event.handle_event_trigger(
             trigger=event.generate_proceed_trigger(),
             runner_state=runner_state,

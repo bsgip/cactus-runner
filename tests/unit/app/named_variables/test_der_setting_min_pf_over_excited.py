@@ -12,7 +12,7 @@ async def test_resolve_named_variable_der_setting_min_pf_over_excited(pg_empty_c
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERSetting"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_setting_min_pf_over_excited()
 
 
@@ -25,7 +25,7 @@ async def test_resolve_named_variable_der_setting_min_pf_over_excited_no_setting
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="setMinPFOverExcited"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_setting_min_pf_over_excited()
 
 
@@ -52,7 +52,7 @@ async def test_resolve_named_variable_der_setting_min_pf_over_excited_single_set
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_setting_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.95
@@ -108,7 +108,7 @@ async def test_resolve_named_variable_der_setting_min_pf_over_excited_many_setti
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_setting_min_pf_over_excited()
         assert isinstance(result, float)
         assert result == 0.45

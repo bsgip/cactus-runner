@@ -22,7 +22,7 @@ from cactus_runner.app import status
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
 from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 PENDING_STEP = StepInfo()

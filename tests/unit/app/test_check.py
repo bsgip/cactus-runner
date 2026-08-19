@@ -756,7 +756,7 @@ async def test_check_der_settings_contents(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
 
@@ -989,7 +989,7 @@ async def test_check_der_capability_contents(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
 
@@ -1269,7 +1269,7 @@ async def test_check_der_status_contents(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await check_der_status_contents(backend, resolved_params)
         assert_check_result(result, expected)
 
@@ -1325,7 +1325,7 @@ async def test_do_check_readings_for_types(
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in faked_srts]
         result = await do_check_readings_for_types(backend, srt_dtos, minimum_count)
         assert_check_result(result, expected)
@@ -1426,7 +1426,7 @@ async def test_do_check_single_level(
     async with generate_async_session(pg_base_config) as session:
         srts = await session.execute(select(SiteReadingType).where(SiteReadingType.site_reading_type_id.in_(srt_ids)))
         srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in srts.scalars().all()]
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await do_check_single_level(backend, srt_dtos, min_level, max_level)
         assert_check_result(result, expected)
 
@@ -1522,7 +1522,7 @@ async def test_do_check_levels_for_period(
             for srt in srts.scalars().all()
             if int(srt.site_reading_type_id) in srt_ids
         ]
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         window_period = timedelta(seconds=window_s)
         result = await do_check_levels_for_period(backend, srt_dtos, min_level, max_level, window_period)
         assert_check_result(result, expected)
@@ -1678,7 +1678,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await do_check_readings_on_minute_boundary(backend, faked_srts)
         assert_check_result(result, expected)
 
@@ -2102,7 +2102,7 @@ async def test_check_all_notifications_transmitted_no_logs(pg_base_config):
     """check_all_notifications_transmitted should fail if there are no logs"""
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
 
@@ -2126,7 +2126,7 @@ async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, True)
 
@@ -2159,7 +2159,7 @@ async def test_check_subscription_contents_no_site_edev_list(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
 
@@ -2241,7 +2241,7 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, False)
 
@@ -2335,7 +2335,7 @@ async def test_check_subscription_contents_success(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
 
@@ -2379,7 +2379,7 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
 
@@ -2409,7 +2409,7 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
 
@@ -2496,7 +2496,7 @@ async def test_check_response_contents_latest(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is a latest
         assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), True)
 
@@ -2594,7 +2594,7 @@ async def test_check_response_contents_all(
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         params: dict = {"all": True}
         if status is not None:
             params["status"] = status
@@ -2661,7 +2661,7 @@ async def test_check_response_contents_any(pg_base_config):
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is any response
         assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), True)
         assert_check_result(await check_response_contents({}, backend, active_test_procedure), True)
@@ -2704,7 +2704,7 @@ async def test_check_response_contents_empty(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is any response
         assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), False)
         assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), False)
@@ -2804,7 +2804,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         mock_admin_client = mock.Mock(spec=EnvoyBackend)
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # Check responses for DERC1 tag can be found
         assert_check_result(
             await check_response_contents({"subject_tag": "DERC1"}, backend, active_test_procedure), True
@@ -3194,7 +3194,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
@@ -3353,7 +3353,7 @@ async def test_check_der_capability_contents_error_messages_meaningful(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
@@ -3416,7 +3416,7 @@ async def test_do_check_readings_for_duration_envoy(pg_base_config, srt_ids: lis
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        backend = EnvoyBackend(session=session, admin_client=mock_admin_client)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await do_check_readings_for_duration(backend=backend, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
 

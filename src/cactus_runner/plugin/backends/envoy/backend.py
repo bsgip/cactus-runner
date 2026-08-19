@@ -1,6 +1,6 @@
 import itertools
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from cactus_schema.runner import EndDeviceMetadata
@@ -69,31 +69,32 @@ class EnvoyBackend(RunnerBackend):
     as suitable for long-lived or production use without modification.
 
     Attributes:
-        session: SQLAlchemy async session used for all database read operations.
+        _session_factory: Opens an SQLAlchemy async session used for all database read operations.
         admin_client: HTTP client for the envoy admin REST API, used for all write operations.
         context: Immutable test-run context set at test initialisation time.
     """
 
     def __init__(
         self,
-        session: AsyncSession,
+        session_factory: Callable[..., AsyncSession],
         admin_client: EnvoyAdminClient,
         test_context: RunnerBackendTestContext | None = None,
     ) -> None:
         """Initialises the backend with a database session and admin API client.
 
         Args:
-            session: An open SQLAlchemy async session bound to the envoy database.
+            session_factory: Opens an SQLAlchemy async session bound to the envoy database. Expected able
+                to be used as an async context manager.
             admin_client: An authenticated EnvoyAdminClient pointed at the running envoy instance.
             test_context: Optional immutable context describing the test run in progress.
         """
-        self.session = session
+        self._session_factory = session_factory
         self.admin_client = admin_client
         self.context = test_context
 
     def get_expression_resolver(self) -> EnvoyResolver:
         """Return an instance of an Envoy ExpressionResolver with the DB session attached."""
-        return EnvoyResolver(self.session)
+        return EnvoyResolver(session_factory=self._session_factory)
 
     async def has_set_max_w_varied(self) -> bool:
         """Check if setMaxW was varied during the test.
@@ -101,17 +102,18 @@ class EnvoyBackend(RunnerBackend):
         Any archive entry with a different max_w_value than the current SiteDERSetting for the
         same site means it changed
         """
-        return (
-            await self.session.execute(
-                select(ArchiveSiteDERSetting.site_id)
-                .join(
-                    SiteDERSetting,
-                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+        async with self._session_factory() as session:
+            return (
+                await session.execute(
+                    select(ArchiveSiteDERSetting.site_id)
+                    .join(
+                        SiteDERSetting,
+                        (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
+                        & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+                    )
+                    .limit(1)
                 )
-                .limit(1)
-            )
-        ).scalar() is not None
+            ).scalar() is not None
 
     async def get_active_site(self) -> dtos.Site | None:
         """Returns the active site, interpreted as the most recently modified EndDevice in the database.
@@ -121,7 +123,8 @@ class EnvoyBackend(RunnerBackend):
         """
         stmt = select(Site).order_by(Site.changed_time.desc()).limit(1)
 
-        site = (await self.session.execute(stmt)).scalar_one_or_none()
+        async with self._session_factory() as session:
+            site = (await session.execute(stmt)).scalar_one_or_none()
 
         if site:
             logger.debug(f"get_active_site: Resolved site {site.site_id} as the active site / EndDevice")
@@ -132,7 +135,8 @@ class EnvoyBackend(RunnerBackend):
 
     async def get_all_sites(self) -> Sequence[dtos.Site]:
         """Returns all registered sites ordered by site_id ascending."""
-        sites = (await self.session.execute(select(Site).order_by(Site.site_id.asc()))).scalars().all()
+        async with self._session_factory() as session:
+            sites = (await session.execute(select(Site).order_by(Site.site_id.asc()))).scalars().all()
 
         return [mappers.map_envoy_site_to_dto(s) for s in sites]
 
@@ -145,9 +149,10 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             The first matching SiteDERSetting, or None if the site has no DER settings.
         """
-        response = await self.session.execute(
-            select(SiteDERSetting).where(SiteDERSetting.site_id == int(site_id)).limit(1)
-        )
+        async with self._session_factory() as session:
+            response = await session.execute(
+                select(SiteDERSetting).where(SiteDERSetting.site_id == int(site_id)).limit(1)
+            )
         result = response.scalar_one_or_none()
 
         return mappers.map_envoy_site_der_settings_to_dto(result) if result is not None else None
@@ -161,9 +166,10 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             The first matching SiteDERRating, or None if the site has no DER capability record.
         """
-        response = await self.session.execute(
-            select(SiteDERRating).where(SiteDERRating.site_id == int(site_id)).limit(1)
-        )
+        async with self._session_factory() as session:
+            response = await session.execute(
+                select(SiteDERRating).where(SiteDERRating.site_id == int(site_id)).limit(1)
+            )
         der_rating = response.scalar_one_or_none()
 
         return mappers.map_envoy_site_der_ratings_to_dto(der_rating) if der_rating is not None else None
@@ -177,9 +183,10 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             The first matching SiteDERStatus, or None if the site has no DER status record.
         """
-        response = await self.session.execute(
-            select(SiteDERStatus).where(SiteDERStatus.site_id == int(site_id)).limit(1)
-        )
+        async with self._session_factory() as session:
+            response = await session.execute(
+                select(SiteDERStatus).where(SiteDERStatus.site_id == int(site_id)).limit(1)
+            )
         der_status = response.scalar_one_or_none()
 
         return mappers.map_envoy_site_der_status_to_dto(der_status) if der_status is not None else None
@@ -209,7 +216,10 @@ class EnvoyBackend(RunnerBackend):
         if site_reading_type_ids is not None:
             srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
             stmt = stmt.where(SiteReading.site_reading_type_id.in_(srt_ids))
-        results = await self.session.execute(stmt)
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
+
         readings = results.scalars().all()
         return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in readings]
 
@@ -231,7 +241,8 @@ class EnvoyBackend(RunnerBackend):
         if aggregator_client_id is not None:
             stmt = stmt.where(Subscription.aggregator_id == int(aggregator_client_id))
 
-        subscriptions = (await self.session.execute(stmt)).scalars().all()
+        async with self._session_factory() as session:
+            subscriptions = (await session.execute(stmt)).scalars().all()
 
         return [mappers.map_envoy_subscription_to_dto(sub) for sub in subscriptions]
 
@@ -241,7 +252,8 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             All TransmitNotificationLog entries, in no guaranteed order.
         """
-        all_logs = (await self.session.execute(select(TransmitNotificationLog))).scalars().all()
+        async with self._session_factory() as session:
+            all_logs = (await session.execute(select(TransmitNotificationLog))).scalars().all()
 
         return [mappers.map_envoy_transmit_notification_log_to_dto(lg) for lg in all_logs]
 
@@ -254,8 +266,9 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             All active, completed, and archived site controls.
         """
-        controls = (await self.session.execute(select(DynamicOperatingEnvelope))).scalars().all()
-        deleted_controls = (await self.session.execute(select(ArchiveDynamicOperatingEnvelope))).scalars().all()
+        async with self._session_factory() as session:
+            controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+            deleted_controls = (await session.execute(select(ArchiveDynamicOperatingEnvelope))).scalars().all()
 
         all_controls = itertools.chain(controls, deleted_controls)
 
@@ -268,7 +281,8 @@ class EnvoyBackend(RunnerBackend):
         Returns:
             All DynamicOperatingEnvelopeResponse entries, in no guaranteed order.
         """
-        response_result = await self.session.execute(select(DynamicOperatingEnvelopeResponse))
+        async with self._session_factory() as session:
+            response_result = await session.execute(select(DynamicOperatingEnvelopeResponse))
         responses = response_result.scalars().all()
 
         return [mappers.map_envoy_site_control_response_to_dto(r) for r in responses]
@@ -312,7 +326,9 @@ class EnvoyBackend(RunnerBackend):
         stmt = select(SiteReadingType)
         if site_ids is not None:
             stmt = stmt.where(SiteReadingType.site_id.in_([int(sid) for sid in site_ids]))
-        results = await self.session.execute(stmt)
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
 
         return [mappers.map_envoy_site_reading_type_to_dto(srt) for srt in results.scalars().all()]
 
@@ -333,7 +349,9 @@ class EnvoyBackend(RunnerBackend):
         stmt = select(SiteControlGroup)
         if fsa_ids is not None:
             stmt = stmt.where(SiteControlGroup.fsa_id.in_([int(fid) for fid in fsa_ids]))
-        results = await self.session.execute(stmt)
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
 
         return [mappers.map_envoy_site_control_group_to_dto(cg) for cg in results.scalars().all()]
 
@@ -342,8 +360,9 @@ class EnvoyBackend(RunnerBackend):
     ) -> Sequence[dtos.SiteControlGroupDefault]:
         """Fetches all SiteControlGroupDefault's for all SiteControlGroups, both current and historic
         (including update values)"""
-        active_control_groups = (await self.session.execute(select(SiteControlGroupDefault))).scalars().all()
-        deleted_control_groups = (await self.session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
+        async with self._session_factory() as session:
+            active_control_groups = (await session.execute(select(SiteControlGroupDefault))).scalars().all()
+            deleted_control_groups = (await session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
 
         all_controls = itertools.chain(active_control_groups, deleted_control_groups)
         return [map_envoy_site_control_group_default_to_dto(ctrl) for ctrl in all_controls]
@@ -519,8 +538,9 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             DB error if fails to commit result.
         """
-        self.session.add(mappers.map_dto_site_write_to_envoy(site))
-        await self.session.commit()
+        async with self._session_factory() as session:
+            session.add(mappers.map_dto_site_write_to_envoy(site))
+            await session.commit()
 
     async def get_end_device_metadata(self) -> EndDeviceMetadata | None:
         """Constructs and returns the current EndDeviceMetadata to be used in a status payload."""
@@ -530,7 +550,8 @@ class EnvoyBackend(RunnerBackend):
         except Exception:
             set_max_w = None
         try:
-            active_site: Site | None = await _get_active_site_with_der(self.session)
+            async with self._session_factory() as session:
+                active_site: Site | None = await _get_active_site_with_der(session)
             if active_site is None:
                 return None
             doe_modes_enabled = None
@@ -569,14 +590,15 @@ class EnvoyBackend(RunnerBackend):
 
         As part of the finalization steps.
         """
-        sites = await get_sites(self.session)
-        readings = await get_readings(self.session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
-        reading_counts = await get_reading_counts_grouped_by_reading_type(self.session)
+        async with self._session_factory() as session:
+            sites = await get_sites(session)
+            readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
+            reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
         # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
         # than the current SiteDERSetting for the same site means it changed
         set_max_w_varied = (
-            await self.session.execute(
+            await session.execute(
                 select(ArchiveSiteDERSetting.site_id)
                 .join(
                     SiteDERSetting,

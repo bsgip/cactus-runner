@@ -2,9 +2,6 @@ import datetime as dt
 import logging
 from typing import Protocol, runtime_checkable
 
-from cactus_test_definitions import errors
-
-
 logger = logging.getLogger(__name__)
 
 

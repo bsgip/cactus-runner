@@ -12,7 +12,7 @@ async def test_resolve_named_variable_der_rating_max_va_empty(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_rating_max_va()
 
 
@@ -25,7 +25,7 @@ async def test_resolve_named_variable_der_rating_max_va_no_setting(pg_base_confi
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="rtgMaxVA"):
-            resolver = EnvoyResolver(session)
+            resolver = EnvoyResolver(lambda: session)
             await resolver.resolve_named_variable_der_rating_max_va()
 
 
@@ -52,7 +52,7 @@ async def test_resolve_named_variable_der_rating_max_va_single_setting(pg_base_c
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_max_va()
         assert isinstance(result, float)
         assert result == 123.45
@@ -108,7 +108,7 @@ async def test_resolve_named_variable_der_rating_max_va_many_settings(pg_base_co
         await session.commit()
 
     async with begin_session() as session:
-        resolver = EnvoyResolver(session)
+        resolver = EnvoyResolver(lambda: session)
         result = await resolver.resolve_named_variable_der_rating_max_va()
         assert isinstance(result, float)
         assert result == 12300
