@@ -16,9 +16,9 @@ from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
-from envoy.server.manager.server import RuntimeServerConfigManager
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
 from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
@@ -39,6 +39,7 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_all_sites,
     get_csip_aus_site_reading_types_partitioned,
+    get_runtime_server_config_history,
     get_site_readings,
 )
 from cactus_runner.app.evaluator import (
@@ -990,22 +991,31 @@ async def do_check_readings_for_duration(
 async def do_check_readings_match_post_rate(
     session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
 ) -> CheckResult:
-    """Check that all readings have a time_period_seconds matching the configured mup_postrate_seconds."""
+    """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
+    at the time the reading was taken (accounting for the post rate changing mid test run, e.g. ALL-10)."""
 
-    post_rate_seconds = (await RuntimeServerConfigManager.fetch_current_config(session)).mup_postrate_seconds
+    default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
+    config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
 
     mismatched_count = 0
     for reading_type in site_reading_types:
         reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
         for reading in reading_data:
-            if reading.time_period_seconds != post_rate_seconds:
+            expected_post_rate_seconds = default_post_rate_seconds
+            for config in config_history:
+                if config.changed_time > reading.time_period_start:
+                    break
+                if config.mup_postrate_seconds is not None:
+                    expected_post_rate_seconds = config.mup_postrate_seconds
+
+            if reading.time_period_seconds != expected_post_rate_seconds:
                 mismatched_count += 1
 
     if mismatched_count > 0:
         return CheckResult(
             False,
             f"{mismatched_count} readings with time_period_seconds not matching "
-            f"the configured post rate ({post_rate_seconds}s)",
+            "the MUP post rate configured at the time they were taken",
         )
 
     return CheckResult(True, "All readings have a time_period_seconds matching the configured post rate")
