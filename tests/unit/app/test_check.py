@@ -22,8 +22,10 @@ from cactus_test_definitions.client import (
 from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.archive.server import ArchiveRuntimeServerConfig
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
+from envoy.server.model.server import RuntimeServerConfig
 from envoy.server.model.site import (
     Site,
     SiteDERRating,
@@ -69,6 +71,7 @@ from cactus_runner.app.check import (
     do_check_reading_type_mrids_match_pen,
     do_check_readings_for_duration,
     do_check_readings_for_types,
+    do_check_readings_match_post_rate,
     do_check_readings_on_minute_boundary,
     do_check_single_level,
     do_check_site_readings_and_params,
@@ -1777,8 +1780,10 @@ async def test_do_check_reading_type_mrids_match_pen(
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_duration")
+@mock.patch("cactus_runner.app.check.do_check_readings_match_post_rate")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params(
+    mock_do_check_readings_match_post_rate: mock.MagicMock,
     mock_do_check_readings_for_duration: mock.MagicMock,
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
@@ -1803,6 +1808,7 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
     mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_match_post_rate.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -1822,6 +1828,7 @@ async def test_do_check_site_readings_and_params(
         mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
         mock_do_check_readings_for_duration.assert_called_once_with(mock_session, site_reading_types)
+        mock_do_check_readings_match_post_rate.assert_called_once_with(mock_session, site_reading_types)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
@@ -1858,8 +1865,10 @@ async def test_do_check_site_readings_and_params(
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_duration")
+@mock.patch("cactus_runner.app.check.do_check_readings_match_post_rate")
 @pytest.mark.anyio
 async def test_do_check_site_readings_and_params_roleflags(
+    mock_do_check_readings_match_post_rate: mock.MagicMock,
     mock_do_check_readings_for_duration: mock.MagicMock,
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
@@ -1878,6 +1887,7 @@ async def test_do_check_site_readings_and_params_roleflags(
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
     mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_match_post_rate.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -3280,6 +3290,183 @@ async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int]
 
     async with generate_async_session(pg_base_config) as session:
         result = await do_check_readings_for_duration(session=session, site_reading_types=faked_srts)
+        assert_check_result(result, expected_result)
+
+
+@pytest.mark.parametrize(
+    "configured_post_rate_seconds, reading_periods, expected_result",
+    [
+        (None, [], True),  # No readings, default post rate (60)
+        (None, [60, 60], True),  # Matches default post rate (60)
+        (None, [60, 120], False),  # Doesn't match default post rate (60)
+        (300, [300, 300], True),  # Matches configured post rate
+        (300, [300, 60], False),  # One matches, one doesn't
+        (300, [60, 120], False),  # None match
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_match_post_rate(
+    pg_base_config,
+    configured_post_rate_seconds: int | None,
+    reading_periods: list[int],
+    expected_result: bool,
+):
+    """Tests that do_check_readings_match_post_rate validates time_period_seconds against mup_postrate_seconds"""
+    base_time = datetime(2024, 1, 1, tzinfo=UTC)
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        session.add_all([site, srt])
+
+        for i, period in enumerate(reading_periods):
+            session.add(
+                generate_class_instance(
+                    SiteReading,
+                    seed=1000 + i,
+                    site_reading_type=srt,
+                    time_period_seconds=period,
+                    time_period_start=base_time + timedelta(minutes=i),
+                )
+            )
+
+        if configured_post_rate_seconds is not None:
+            # Config must predate all the readings above to be considered "active" for the whole test
+            session.add(
+                RuntimeServerConfig(
+                    mup_postrate_seconds=configured_post_rate_seconds, changed_time=base_time - timedelta(days=1)
+                )
+            )
+
+        await session.commit()
+
+    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
+        assert_check_result(result, expected_result)
+
+
+@pytest.mark.anyio
+async def test_do_check_readings_match_post_rate_mid_run_change(pg_base_config):
+    """Regression test shaped like ALL-10 ('Update telemetry post rates'): the post rate changes mid test run
+    (60s -> 300s -> 60s), and readings taken in each segment should be checked against the rate that was active
+    at their own time_period_start, not whatever the rate happens to be by the time the check runs."""
+
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)  # 60s segment starts
+    t1 = t0 + timedelta(hours=1)  # rate changed to 300s
+    t2 = t1 + timedelta(hours=1)  # rate reverted to 60s
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        session.add_all([site, srt])
+
+        # Readings taken in each of the three segments - all should be considered valid
+        session.add_all(
+            [
+                generate_class_instance(
+                    SiteReading,
+                    seed=1,
+                    site_reading_type=srt,
+                    time_period_seconds=60,
+                    time_period_start=t0 + timedelta(minutes=10),
+                ),
+                generate_class_instance(
+                    SiteReading,
+                    seed=2,
+                    site_reading_type=srt,
+                    time_period_seconds=300,
+                    time_period_start=t1 + timedelta(minutes=10),
+                ),
+                generate_class_instance(
+                    SiteReading,
+                    seed=3,
+                    site_reading_type=srt,
+                    time_period_seconds=60,
+                    time_period_start=t2 + timedelta(minutes=10),
+                ),
+            ]
+        )
+
+        # The oldest state (60s) has been superseded twice, so it's archived
+        session.add(
+            ArchiveRuntimeServerConfig(
+                runtime_server_config_id=1, mup_postrate_seconds=60, created_time=t0, changed_time=t0
+            )
+        )
+        # The middle state (300s) has also been superseded, so it's archived too
+        session.add(
+            ArchiveRuntimeServerConfig(
+                runtime_server_config_id=1, mup_postrate_seconds=300, created_time=t0, changed_time=t1
+            )
+        )
+        # The current live state is the reverted 60s rate
+        session.add(
+            RuntimeServerConfig(runtime_server_config_id=1, mup_postrate_seconds=60, created_time=t0, changed_time=t2)
+        )
+
+        await session.commit()
+
+    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
+        assert_check_result(result, True)
+
+
+@pytest.mark.parametrize(
+    "reading_offset, reading_duration, expected_result",
+    [
+        (timedelta(seconds=1), 60, True),  # Just after the change, still posted at the old (60s) rate - a straggler
+        (timedelta(seconds=299), 60, True),  # Near the edge of the 300s window (max of 60/300) - still accepted
+        (timedelta(seconds=301), 60, False),  # Outside the window - old rate no longer accepted
+        (timedelta(seconds=-1), 300, True),  # Backdated: re-aggregated old samples into one new-rate (300s) reading
+        (timedelta(seconds=-299), 300, True),  # Still within the window on the backdated side
+        (timedelta(seconds=-301), 300, False),  # Outside the window - new rate not accepted this far back
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_match_post_rate_near_transition(
+    pg_base_config, reading_offset: timedelta, reading_duration: int, expected_result: bool
+):
+    """A reading taken close to a rate change (within the larger of the old/new rate) is allowed to match either
+    rate - covering both a client lagging on adopting a new rate, and a client re-aggregating older fine-grained
+    samples into one coarser, retroactively-dated reading."""
+
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)  # 60s rate starts
+    t1 = t0 + timedelta(hours=1)  # rate changes to 300s
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        session.add_all([site, srt])
+
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=1,
+                site_reading_type=srt,
+                time_period_seconds=reading_duration,
+                time_period_start=t1 + reading_offset,
+            )
+        )
+
+        session.add(
+            ArchiveRuntimeServerConfig(
+                runtime_server_config_id=1, mup_postrate_seconds=60, created_time=t0, changed_time=t0
+            )
+        )
+        session.add(
+            RuntimeServerConfig(runtime_server_config_id=1, mup_postrate_seconds=300, created_time=t0, changed_time=t1)
+        )
+
+        await session.commit()
+
+    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
 
 

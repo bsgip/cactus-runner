@@ -18,6 +18,7 @@ from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
 from envoy.server.model.doe import DynamicOperatingEnvelope
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.site import (
@@ -38,6 +39,7 @@ from cactus_runner.app.envoy_common import (
     get_active_site,
     get_all_sites,
     get_csip_aus_site_reading_types_partitioned,
+    get_runtime_server_config_history,
     get_site_readings,
 )
 from cactus_runner.app.evaluator import (
@@ -948,6 +950,7 @@ async def do_check_site_readings_and_params(
 
     if check_duration:
         check_results.append(await do_check_readings_for_duration(session, site_reading_types))
+        check_results.append(await do_check_readings_match_post_rate(session, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     check_results.append(await do_check_readings_for_types(session, site_reading_types, minimum_count))
@@ -983,6 +986,60 @@ async def do_check_readings_for_duration(
         return CheckResult(False, f"{' and '.join(error_parts)} found")
 
     return CheckResult(True, "All readings have a valid time_period_seconds set")
+
+
+async def do_check_readings_match_post_rate(
+    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+) -> CheckResult:
+    """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
+    at the time the reading was taken.
+
+    Post rate changes are rare, so rather than precisely reasoning about a client's polling/aggregation lag in
+    each direction, a reading taken close to a rate change (within the larger of the old/new rate either side of
+    the change) is allowed to match either rate. This covers both a client lagging on adopting a new rate, and a
+    client re-aggregating older fine-grained samples into one coarser, retroactively-dated reading."""
+
+    default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
+    config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
+
+    # Collapse config_history down to the points where the post rate actually changed
+    transitions: list[tuple[datetime, int, int]] = []  # (changed_time, old_rate, new_rate)
+    current_rate = default_post_rate_seconds
+    for config in config_history:
+        if config.mup_postrate_seconds is None or config.mup_postrate_seconds == current_rate:
+            continue
+        transitions.append((config.changed_time, current_rate, config.mup_postrate_seconds))
+        current_rate = config.mup_postrate_seconds
+
+    mismatched_count = 0
+    for reading_type in site_reading_types:
+        reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+        for reading in reading_data:
+            expected_post_rate_seconds = default_post_rate_seconds
+            for changed_time, _, new_rate in transitions:
+                if changed_time > reading.time_period_start:
+                    break
+                expected_post_rate_seconds = new_rate
+
+            if reading.time_period_seconds == expected_post_rate_seconds:
+                continue
+
+            near_a_transition = any(
+                abs((reading.time_period_start - changed_time).total_seconds()) <= max(old_rate, new_rate)
+                and reading.time_period_seconds in (old_rate, new_rate)
+                for changed_time, old_rate, new_rate in transitions
+            )
+            if not near_a_transition:
+                mismatched_count += 1
+
+    if mismatched_count > 0:
+        return CheckResult(
+            False,
+            f"{mismatched_count} readings with time_period_seconds not matching "
+            "the MUP post rate configured at the time they were taken",
+        )
+
+    return CheckResult(True, "All readings have a time_period_seconds matching the configured post rate")
 
 
 async def check_readings_site_active_power(
