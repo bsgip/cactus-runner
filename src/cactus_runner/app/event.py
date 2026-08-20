@@ -1,18 +1,15 @@
-from cactus_runner.plugin.backends.common import RunnerBackend
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum, auto
 from http import HTTPMethod
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from cactus_runner.app import evaluator
 from cactus_runner.app.action import apply_actions
 from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.uri import MountedProxyPathParts, does_endpoint_match
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.common import RunnerBackend
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +142,7 @@ async def is_listener_triggerable(  # noqa: C901
 
 
 async def handle_event_trigger(
-        trigger: EventTrigger, runner_state: RunnerState, backend: RunnerBackend
+    trigger: EventTrigger, runner_state: RunnerState, backend: RunnerBackend
 ) -> list[Listener]:
     """Runs through the currently active listeners for runner_state and potentially triggers their actions if trigger
     can be matched to an Event. Time based triggers can potentially trigger multiple listeners, HTTP triggers will only
@@ -179,11 +176,7 @@ async def handle_event_trigger(
                 continue
 
             logger.info(f"handle_event_trigger: Step {listener.step} is being triggered.")
-            await apply_actions(
-                listener=listener,
-                runner_state=runner_state,
-                backend=backend
-            )
+            await apply_actions(listener=listener, runner_state=runner_state, backend=backend)
 
             triggered_listeners.append(listener)
             if trigger.single_listener:

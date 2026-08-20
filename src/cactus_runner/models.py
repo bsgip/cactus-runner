@@ -5,7 +5,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
 
-import pandas as pd
 from cactus_schema.runner import (
     ClientInteraction,
     ClientInteractionType,
@@ -745,5 +744,3 @@ class ReportingData_v1(ReportingData_Base):  # noqa: N801
     sites: list[Site]
     timeline: Timeline | None
     set_max_w_varied: bool = False
-
-

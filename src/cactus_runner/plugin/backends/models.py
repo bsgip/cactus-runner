@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 from datetime import datetime
+
+import pandas as pd
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedure
-from dataclasses import dataclass
-import pandas as pd
+
 from cactus_runner.plugin import dtos
 
 
@@ -33,5 +35,3 @@ class FinalSerializableReportingData:
     serializable_reading_counts: dict[dtos.SiteReadingTypeFinalReport, int]
     serializable_sites: list[dtos.SiteFinalReport]
     set_max_w_varied: bool
-
-

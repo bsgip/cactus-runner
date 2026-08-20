@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
+from assertical.fake.sqlalchemy import create_mock_session
 from cactus_schema.runner import (
     ClientInteraction,
     CriteriaEntry,
@@ -202,9 +202,7 @@ async def test_get_active_runner_status_with_end_device_metadata(mocker):
     )
 
     # Act
-    runner_status = await status.get_active_runner_status(
-        active_test_procedure, Mock(), Mock(), mock_backend
-    )
+    runner_status = await status.get_active_runner_status(active_test_procedure, Mock(), Mock(), mock_backend)
 
     # Assert - EndDeviceMetadata
     metadata: EndDeviceMetadata | None = runner_status.end_device_metadata
@@ -239,9 +237,7 @@ async def test_get_active_runner_status_end_device_metadata_handles_errors(mocke
         finished_zip_path=None,
     )
 
-    runner_status = await status.get_active_runner_status(
-        active_test_procedure, Mock(), Mock(), mock_backend
-    )
+    runner_status = await status.get_active_runner_status(active_test_procedure, Mock(), Mock(), mock_backend)
 
     assert runner_status.end_device_metadata is None
 

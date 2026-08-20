@@ -696,5 +696,5 @@ async def test_handle_event_trigger_normal_operation(
     assert_list_type(Listener, result, len(expected_indexes))
     for listener in result:
         assert find_index(listener, listeners) in expected_indexes
-    
+
     assert not mock_backend.mock_calls

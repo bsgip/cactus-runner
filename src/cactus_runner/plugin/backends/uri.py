@@ -10,6 +10,7 @@ RANDOM_URI_LENGTH = 16
 
 logger = logging.getLogger(__name__)
 
+
 def candidate_random_uri() -> str:
     return f"/{secrets.token_urlsafe(RANDOM_URI_LENGTH)}"
 

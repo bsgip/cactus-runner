@@ -1,10 +1,10 @@
-from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 import pytest
 from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDERSetting
 
 from cactus_runner.app.database import begin_session
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 @pytest.mark.asyncio

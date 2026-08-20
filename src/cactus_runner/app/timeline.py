@@ -1,9 +1,9 @@
-from typing import cast
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from itertools import chain
+from typing import cast
 
 from dataclass_wizard import JSONWizard
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
@@ -14,7 +14,6 @@ from cactus_runner.app.envoy_common import (
 )
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend, get_csip_aus_site_reading_types_active_site
-
 
 ArchivableEntity = dtos.SiteControl | dtos.SiteReading | dtos.SiteControlGroupDefault
 

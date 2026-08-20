@@ -1,10 +1,8 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import UTC, datetime
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model import (
     DynamicOperatingEnvelope,
@@ -15,6 +13,7 @@ from envoy.server.model import (
     SiteDERStatus,
 )
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver

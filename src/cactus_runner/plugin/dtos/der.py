@@ -1,8 +1,8 @@
-from dataclass_wizard import JSONWizard
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from dataclass_wizard import JSONWizard
 from envoy_schema.server.schema.sep2.der import (
     AbnormalCategoryType,
     AlarmStatusType,
@@ -78,6 +78,7 @@ class SiteDERRating:
 class SiteDERStatus:
     """Represents the current status values associated with a SiteDER. Typically used for communicating
     the current snapshot of DER status"""
+
     # These values correspond to a flattened version of sep2 DERStatus
     alarm_status: AlarmStatusType | None = None
     generator_connect_status: ConnectStatusType | None = None
@@ -91,8 +92,11 @@ class SiteDERRatingFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
-    site_der_rating_id: str
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_der_rating_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     modes_supported: DERControlType | None
@@ -152,8 +156,11 @@ class SiteDERSettingFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
-    site_der_setting_id: str
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_der_setting_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     modes_enabled: DERControlType | None
@@ -215,8 +222,11 @@ class SiteDERAvailabilityFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
-    site_der_availability_id: str
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_der_availability_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     availability_duration_sec: int | None
@@ -236,8 +246,11 @@ class SiteDERStatusFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
-    site_der_status_id: str
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_der_status_id: int
+    site_id: int
     created_time: datetime
     changed_time: datetime
     alarm_status: AlarmStatusType | None
@@ -266,7 +279,10 @@ class SiteDERFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_id: int
     created_time: datetime
     changed_time: datetime
     site_der_rating: SiteDERRatingFinalReport | None

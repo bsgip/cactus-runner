@@ -417,8 +417,8 @@ def map_envoy_site_reading_type_to_final_report_dto(
 def map_envoy_site_der_rating_to_final_report_dto(site_der_rating: SiteDERRating) -> dtos.SiteDERRatingFinalReport:
     """Create the final reporting dto from a DB entry."""
     return dtos.SiteDERRatingFinalReport(
-        site_der_rating_id=f"{site_der_rating.site_der_rating_id}",
-        site_id=f"{site_der_rating.site_id}",
+        site_der_rating_id=site_der_rating.site_der_rating_id,
+        site_id=site_der_rating.site_id,
         created_time=site_der_rating.created_time,
         changed_time=site_der_rating.changed_time,
         modes_supported=site_der_rating.modes_supported,
@@ -475,8 +475,8 @@ def map_envoy_site_der_rating_to_final_report_dto(site_der_rating: SiteDERRating
 def map_envoy_site_der_setting_to_final_report_dto(site_der_setting: SiteDERSetting) -> dtos.SiteDERSettingFinalReport:
     """Create the final reporting dto from a DB entry."""
     return dtos.SiteDERSettingFinalReport(
-        site_der_setting_id=f"{site_der_setting.site_der_setting_id}",
-        site_id=f"{site_der_setting.site_id}",
+        site_der_setting_id=site_der_setting.site_der_setting_id,
+        site_id=site_der_setting.site_id,
         created_time=site_der_setting.created_time,
         changed_time=site_der_setting.changed_time,
         modes_enabled=site_der_setting.modes_enabled,
@@ -535,8 +535,8 @@ def map_envoy_site_der_setting_to_final_report_dto(site_der_setting: SiteDERSett
 def map_envoy_site_der_status_to_final_report_dto(site_der_status: SiteDERStatus) -> dtos.SiteDERStatusFinalReport:
     """Create a final report dto from a DB entry."""
     return dtos.SiteDERStatusFinalReport(
-        site_der_status_id=f"{site_der_status.site_der_status_id}",
-        site_id=f"{site_der_status.site_id}",
+        site_der_status_id=site_der_status.site_der_status_id,
+        site_id=site_der_status.site_id,
         created_time=site_der_status.created_time,
         changed_time=site_der_status.changed_time,
         alarm_status=site_der_status.alarm_status,
@@ -564,8 +564,8 @@ def map_envoy_site_der_availability_to_final_report_dto(
 ) -> dtos.SiteDERAvailabilityFinalReport:
     """Create a final report DTO from a DB entry."""
     return dtos.SiteDERAvailabilityFinalReport(
-        site_der_availability_id=f"{site_der_availability.site_der_availability_id}",
-        site_id=f"{site_der_availability.site_id}",
+        site_der_availability_id=site_der_availability.site_der_availability_id,
+        site_id=site_der_availability.site_id,
         created_time=site_der_availability.created_time,
         changed_time=site_der_availability.changed_time,
         availability_duration_sec=site_der_availability.availability_duration_sec,
@@ -600,7 +600,7 @@ def map_envoy_site_to_final_report_dto(site: Site) -> dtos.SiteFinalReport:
     if any([site_der_setting, site_der_rating, site_der_availability, site_der_status]):
         site_ders.append(
             dtos.SiteDERFinalReport(
-                site_id=f"{site.site_id}",
+                site_id=site.site_id,
                 created_time=site.created_time,
                 changed_time=site.changed_time,
                 site_der_rating=site_der_rating,

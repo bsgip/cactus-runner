@@ -74,10 +74,8 @@ async def attempt_apply_actions(
     actions: list[Action] | None, runner_state: RunnerState, backend: RunnerBackend
 ) -> None:
     if actions:
-        async with begin_session() as session:
-            for a in actions:
-                await action.apply_action(a, runner_state, backend)
-            await session.commit()  # Actions can write updates to the DB directly
+        for a in actions:
+            await action.apply_action(a, runner_state, backend)
 
 
 async def attempt_start_for_state(runner_state: RunnerState, envoy_client: EnvoyAdminClient) -> StartResult:

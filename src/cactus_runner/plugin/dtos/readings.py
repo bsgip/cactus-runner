@@ -1,15 +1,16 @@
-from dataclass_wizard import JSONWizard
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from dataclass_wizard import JSONWizard
 from envoy_schema.server.schema.sep2.types import (
     AccumulationBehaviourType,
+    CommodityType,
     DataQualifierType,
     FlowDirectionType,
     KindType,
     PhaseCode,
     RoleFlagsType,
-    UomType, CommodityType,
+    UomType,
 )
 
 __all__ = ["SiteReadingType", "SiteReading", "SiteReadingTypeFinalReport"]
@@ -57,11 +58,14 @@ class SiteReadingTypeFinalReport(JSONWizard):
     It is not intended to be something that is used within the tests but just that used for providing
     data for reports.
     """
-    site_reading_type_id: str
-    aggregator_id: str
-    site_id: str
+
+    # TODO: All ids here are currently integer type, to enable backward compatiblity for reporting.
+    # To fit in with different backends the ids should become string.
+    site_reading_type_id: int
+    aggregator_id: int
+    site_id: int
     mrid: str
-    group_id: str
+    group_id: int
     group_mrid: str
 
     uom: UomType

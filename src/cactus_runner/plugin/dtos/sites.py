@@ -31,7 +31,6 @@ class SiteWrite:
     registration_pin: int | None
 
 
-
 @dataclass(slots=True, frozen=True)
 class SiteFinalReport(JSONWizard):
     """A special case Site used only for the final reporting purposes.
@@ -39,6 +38,7 @@ class SiteFinalReport(JSONWizard):
     It isn't necessary to be used by tests so this has been separated for plugin development
     convenience.
     """
+
     site_id: str
     nmi: str | None
     aggregator_id: str

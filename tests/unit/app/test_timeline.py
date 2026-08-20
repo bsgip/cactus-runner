@@ -6,7 +6,6 @@ from typing import cast
 import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
 from envoy.server.model.archive import ArchiveSiteReading
 from envoy.server.model.archive.doe import (
@@ -608,7 +607,7 @@ def doe(
         if archive_time is None:
             extra_kwargs = {"deleted_time": deleted_time, "archive_time": deleted_time}
 
-    control =  generate_class_instance(
+    control = generate_class_instance(
         t,
         seed=seed,
         site_control_group_id=scg,

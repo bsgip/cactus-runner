@@ -33,8 +33,8 @@ from cactus_runner.models import (
     RunnerState,
     Site,
 )
-from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import RunnerBackend
 
 # Cactus runner supports returning different versions of the reporting data
 # Define the currently preferred reporting data version

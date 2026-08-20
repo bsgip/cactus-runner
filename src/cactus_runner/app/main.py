@@ -1,4 +1,3 @@
-from cactus_runner.plugin.backends.hookspec import create_backend
 import asyncio
 import atexit
 import contextlib
@@ -44,6 +43,7 @@ from cactus_runner.plugin.backends.envoy.admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
+from cactus_runner.plugin.backends.hookspec import create_backend
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ async def periodic_task(app: web.Application) -> None:
             runner_state = app[APPKEY_RUNNER_STATE]
             if runner_state.active_test_procedure is not None and not runner_state.active_test_procedure.is_finished():
                 async with begin_session() as session:
-                    backend = create_backend(session, app[APPKEY_ENVOY_ADMIN_CLIENT])
+                    backend = create_backend(lambda: session, app[APPKEY_ENVOY_ADMIN_CLIENT])
                     await event.handle_event_trigger(
                         trigger=event.generate_time_trigger(),
                         runner_state=runner_state,
