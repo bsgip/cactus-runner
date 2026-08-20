@@ -3416,19 +3416,23 @@ async def test_do_check_readings_match_post_rate_mid_run_change(pg_base_config):
 
 
 @pytest.mark.parametrize(
-    "straggler_offset, expected_result",
+    "reading_offset, reading_duration, expected_result",
     [
-        (timedelta(seconds=1), True),  # Well within the 60s grace window - old rate still accepted
-        (timedelta(seconds=59), True),  # Right at the edge of the grace window - still accepted
-        (timedelta(seconds=120), False),  # Outside the grace window - old rate no longer accepted
+        (timedelta(seconds=1), 60, True),  # Just after the change, still posted at the old (60s) rate - a straggler
+        (timedelta(seconds=299), 60, True),  # Near the edge of the 300s window (max of 60/300) - still accepted
+        (timedelta(seconds=301), 60, False),  # Outside the window - old rate no longer accepted
+        (timedelta(seconds=-1), 300, True),  # Backdated: re-aggregated old samples into one new-rate (300s) reading
+        (timedelta(seconds=-299), 300, True),  # Still within the window on the backdated side
+        (timedelta(seconds=-301), 300, False),  # Outside the window - new rate not accepted this far back
     ],
 )
 @pytest.mark.anyio
-async def test_do_check_readings_match_post_rate_grace_window(
-    pg_base_config, straggler_offset: timedelta, expected_result: bool
+async def test_do_check_readings_match_post_rate_near_transition(
+    pg_base_config, reading_offset: timedelta, reading_duration: int, expected_result: bool
 ):
-    """A client can't switch rates mid poll-cycle - one straggler reading taken shortly after a rate change is
-    allowed to still reflect the old rate, but only for one old-rate-period after the change."""
+    """A reading taken close to a rate change (within the larger of the old/new rate) is allowed to match either
+    rate - covering both a client lagging on adopting a new rate, and a client re-aggregating older fine-grained
+    samples into one coarser, retroactively-dated reading."""
 
     t0 = datetime(2024, 1, 1, tzinfo=UTC)  # 60s rate starts
     t1 = t0 + timedelta(hours=1)  # rate changes to 300s
@@ -3438,14 +3442,13 @@ async def test_do_check_readings_match_post_rate_grace_window(
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         session.add_all([site, srt])
 
-        # A straggler reading, taken shortly after the rate change, still reflecting the old (60s) rate
         session.add(
             generate_class_instance(
                 SiteReading,
                 seed=1,
                 site_reading_type=srt,
-                time_period_seconds=60,
-                time_period_start=t1 + straggler_offset,
+                time_period_seconds=reading_duration,
+                time_period_start=t1 + reading_offset,
             )
         )
 
