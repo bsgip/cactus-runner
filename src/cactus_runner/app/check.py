@@ -640,33 +640,73 @@ async def do_check_readings_for_types(
     return CheckResult(True, None)
 
 
-async def do_check_levels_for_all_readings(
+async def do_check_levels_for_readings(
     session: AsyncSession,
     site_reading_types: Sequence[SiteReadingType],
     min_level: float | None,
     max_level: float | None,
+    window_period: timedelta | None = None,
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's.
 
-    Makes sure that ALL readings received meet the specified levels. "Valid" is that ALL of the
-    site_reading_types supplied meets the conditions. Min max levels are >= and <= respectively for valid
-    result.
+    Makes sure that all readings meet the specified levels. "Valid" is that ALL of the site_reading_types
+    supplied meets the conditions. Min max levels are >= and <= respectively for valid result.
+
+    If window_period is None, every reading for the site_reading_types is checked. Otherwise only readings
+    within window_period of the latest received reading are checked - the end of the window is found by
+    retrieving the max `created_time` of all readings corresponding to the supplied `site_reading_types`, and
+    included readings are those with a reading period that lies wholly within
+    time_period_start >= latest created_time - window_period.
 
     Args:
         session: DB session to query
         site_reading_types: list of SiteReadingType's to check readings
         min_level: If not None - ensure that all readings are above this
         max_level: If not None - ensure that all readings are below this
+        window_period: If not None - restrict the check to readings within this trailing window of the latest
+            received reading
 
     Returns:
         CheckResult - True if all readings fall above and/or below limits else False
     """
     srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-    readings_query = (
-        select(SiteReading, SiteReadingType)
-        .join(SiteReadingType, SiteReading.site_reading_type_id == SiteReadingType.site_reading_type_id)
-        .where(SiteReading.site_reading_type_id.in_(srt_ids))
-    )
+
+    if window_period is None:
+        readings_query = (
+            select(SiteReading, SiteReadingType)
+            .join(SiteReadingType, SiteReading.site_reading_type_id == SiteReadingType.site_reading_type_id)
+            .where(SiteReading.site_reading_type_id.in_(srt_ids))
+        )
+        window_description = ""
+    else:
+        # Expression to retrieve the end of the reading window (the point at which the reading is calculated)
+        end_time_expr: ColumnElement[datetime] = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
+            "interval '1 second'"
+        )
+
+        # Retrieve latest reading entry creation time - should be trigger time
+        latest_time_query = select(func.max(SiteReading.created_time)).where(
+            SiteReading.site_reading_type_id.in_(srt_ids)
+        )
+        latest_time = (await session.execute(latest_time_query)).scalar_one()
+        if latest_time is None:
+            return CheckResult(False, "No readings found for level comparison")
+
+        start_time = latest_time - window_period
+
+        # Retrieve all readings within the window. For this we only count those with "completed" reading
+        # periods. Those periods that have a time_period_start before the start_time are discarded.
+        readings_query = (
+            select(SiteReading, SiteReadingType)
+            .join(SiteReadingType, SiteReading.site_reading_type_id == SiteReadingType.site_reading_type_id)
+            .where(
+                SiteReading.site_reading_type_id.in_(srt_ids),
+                SiteReading.time_period_start >= start_time,
+                end_time_expr <= latest_time,
+            )
+        )
+        window_description = f"; for window size {window_period.total_seconds()}s."
+
     results = await session.execute(readings_query)
     readings = results.all()
 
@@ -684,84 +724,8 @@ async def do_check_levels_for_all_readings(
             failure_msg += " "
         failure_msg += f"Not all readings below maximum target level of {max_level}."
 
-    return CheckResult(False, f"{failure_msg} Got {values}.") if failure_msg else CheckResult(True, None)
-
-
-async def do_check_levels_for_period(
-    session: AsyncSession,
-    site_reading_types: Sequence[SiteReadingType],
-    min_level: float | None,
-    max_level: float | None,
-    window_period: timedelta,
-) -> CheckResult:
-    """Performs a level check over a specified window of time.
-
-    The end of the window is found by retrieving the max `created_time` of all readings
-    corresponding to the supplied `site_reading_types`. The included readings include those that
-    have a reading period that lies wholly within the time_period_start >= latest created_time - window_period
-
-    Args:
-        session: DB session to query
-        site_reading_types: list of SiteReadingType's to check readings
-        min_level: If not None ensure that all SiteReadingType SiteReading values above this
-        max_level: If not None ensure that all SiteReadingType SiteReading values below this
-        window_period: Period of time since last SiteReadingType SiteReading committed to DB that
-            comparison is to occur
-
-    Returns:
-        CheckResult - True if all readings for window are above and/or below min max levels else False
-    """
-    srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-
-    # Expression to retrieve the end of the reading window (the point at which the reading is calculated)
-    end_time_expr: ColumnElement[datetime] = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
-        "interval '1 second'"
-    )
-
-    # Retrieve latest reading entry creation time - should be trigger time
-    latest_time_query = select(func.max(SiteReading.created_time)).where(SiteReading.site_reading_type_id.in_(srt_ids))
-    latest_time_result = await session.execute(latest_time_query)
-    latest_time = latest_time_result.scalar_one()
-
-    # No readings returned
-    if latest_time is None:
-        return CheckResult(False, "No readings found for level comparison")
-
-    start_time = latest_time - window_period
-
-    # Retrieve all readings within the window. For this we only count those with "completed" reading periods
-    # Those periods that have a time_period_start before the start_time are discarded.
-    readings_query = (
-        select(SiteReading, SiteReadingType)
-        .join(SiteReadingType, SiteReading.site_reading_type_id == SiteReadingType.site_reading_type_id)
-        .where(
-            SiteReading.site_reading_type_id.in_(srt_ids),
-            SiteReading.time_period_start >= start_time,
-            end_time_expr <= latest_time,
-        )
-    )
-
-    results = await session.execute(readings_query)
-    readings = results.all()
-
-    # No readings returned
-    if not readings:
-        return CheckResult(False, "No readings found for level comparison")
-
-    # Convert readings to numbers
-    window_values = [sr.value * 10**srt.power_of_ten_multiplier for sr, srt in readings]
-    failure_msg = ""
-
-    # Confirm readings fall within the window
-    if min_level is not None and any(v < min_level for v in window_values):
-        failure_msg += f"Not all readings above minimum target level of {min_level}."
-    if max_level is not None and any(v > max_level for v in window_values):
-        if failure_msg:
-            failure_msg += " "
-        failure_msg += f"Not all readings below maximum target level of {max_level}."
-
     return (
-        CheckResult(False, f"{failure_msg} Got {window_values}; for window size {window_period.total_seconds()}s.")
+        CheckResult(False, f"{failure_msg} Got {values}{window_description}.")
         if failure_msg
         else CheckResult(True, None)
     )
@@ -792,11 +756,8 @@ async def do_check_reading_levels_for_types(
     if all(el is None for el in [max_level, min_level, window_seconds]):
         # Nothing to do, check passes
         return CheckResult(True, None)
-    if not window_seconds:
-        return await do_check_levels_for_all_readings(session, site_reading_types, min_level, max_level)
-    return await do_check_levels_for_period(
-        session, site_reading_types, min_level, max_level, timedelta(seconds=window_seconds)
-    )
+    window_period = timedelta(seconds=window_seconds) if window_seconds else None
+    return await do_check_levels_for_readings(session, site_reading_types, min_level, max_level, window_period)
 
 
 def timestamp_on_minute_boundary(d: datetime) -> bool:
