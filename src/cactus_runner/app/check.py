@@ -992,23 +992,46 @@ async def do_check_readings_match_post_rate(
     session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
 ) -> CheckResult:
     """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
-    at the time the reading was taken (accounting for the post rate changing mid test run, e.g. ALL-10)."""
+    at the time the reading was taken (accounting for the post rate changing mid test run, e.g. ALL-10).
+
+    A client can't switch rates mid poll-cycle - if it was already partway through an old-rate interval when the
+    rate changed, that one straggler reading will still reflect the old rate. To allow for that, a reading taken
+    within one old-rate-period of a change is permitted to match either the old or the new rate."""
 
     default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
     config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
+
+    # Collapse config_history down to the points where the post rate actually changed (many config updates won't
+    # touch mup_postrate_seconds at all) so grace windows are only opened for genuine rate transitions.
+    rate_changes: list[tuple[datetime, int]] = []  # (changed_time, new_rate)
+    current_rate = default_post_rate_seconds
+    for config in config_history:
+        if config.mup_postrate_seconds is None or config.mup_postrate_seconds == current_rate:
+            continue
+        rate_changes.append((config.changed_time, config.mup_postrate_seconds))
+        current_rate = config.mup_postrate_seconds
 
     mismatched_count = 0
     for reading_type in site_reading_types:
         reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
         for reading in reading_data:
             expected_post_rate_seconds = default_post_rate_seconds
-            for config in config_history:
-                if config.changed_time > reading.time_period_start:
+            previous_post_rate_seconds = default_post_rate_seconds
+            transition_time: datetime | None = None
+            for changed_time, rate in rate_changes:
+                if changed_time > reading.time_period_start:
                     break
-                if config.mup_postrate_seconds is not None:
-                    expected_post_rate_seconds = config.mup_postrate_seconds
+                previous_post_rate_seconds = expected_post_rate_seconds
+                expected_post_rate_seconds = rate
+                transition_time = changed_time
 
-            if reading.time_period_seconds != expected_post_rate_seconds:
+            matches_expected = reading.time_period_seconds == expected_post_rate_seconds
+            within_grace_window = transition_time is not None and reading.time_period_start < (
+                transition_time + timedelta(seconds=previous_post_rate_seconds)
+            )
+            matches_grace = within_grace_window and reading.time_period_seconds == previous_post_rate_seconds
+
+            if not matches_expected and not matches_grace:
                 mismatched_count += 1
 
     if mismatched_count > 0:
