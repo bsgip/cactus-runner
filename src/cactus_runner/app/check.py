@@ -992,17 +992,12 @@ async def do_check_readings_match_post_rate(
     session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
 ) -> CheckResult:
     """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
-    at the time the reading was taken (accounting for the post rate changing mid test run, e.g. ALL-10).
-
-    A client can't switch rates mid poll-cycle - if it was already partway through an old-rate interval when the
-    rate changed, that one straggler reading will still reflect the old rate. To allow for that, a reading taken
-    within one old-rate-period of a change is permitted to match either the old or the new rate."""
+    at the time the reading was taken. Allow one old pollrate leeway to enact this change."""
 
     default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
     config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
 
-    # Collapse config_history down to the points where the post rate actually changed (many config updates won't
-    # touch mup_postrate_seconds at all) so grace windows are only opened for genuine rate transitions.
+    # Collapse config_history down to the points where the post rate changed
     rate_changes: list[tuple[datetime, int]] = []  # (changed_time, new_rate)
     current_rate = default_post_rate_seconds
     for config in config_history:
@@ -1018,6 +1013,8 @@ async def do_check_readings_match_post_rate(
             expected_post_rate_seconds = default_post_rate_seconds
             previous_post_rate_seconds = default_post_rate_seconds
             transition_time: datetime | None = None
+
+            # Walk through the rate changes to find whichever rate was active at this reading's start
             for changed_time, rate in rate_changes:
                 if changed_time > reading.time_period_start:
                     break
@@ -1026,6 +1023,8 @@ async def do_check_readings_match_post_rate(
                 transition_time = changed_time
 
             matches_expected = reading.time_period_seconds == expected_post_rate_seconds
+
+            # Allow one old-rate right after a transition
             within_grace_window = transition_time is not None and reading.time_period_start < (
                 transition_time + timedelta(seconds=previous_post_rate_seconds)
             )
