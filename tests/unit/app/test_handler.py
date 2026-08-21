@@ -2,7 +2,7 @@ import asyncio
 import http
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, Mock, call
 
 import pytest
 from aiohttp import ContentTypeError
@@ -25,14 +25,14 @@ from cactus_schema.runner import (
     TestUser,
 )
 from cactus_test_definitions import CSIPAusVersion
-from cactus_test_definitions.client import TestProcedureId
+from cactus_test_definitions.client import TestProcedure, TestProcedureId
 from cactus_test_definitions.client.test_procedures import get_yaml_contents
 from multidict import CIMultiDict
 
 from cactus_runner.app import action, handler
 from cactus_runner.app.proxy import ProxyResult
 from cactus_runner.app.shared import (
-    APPKEY_ENVOY_ADMIN_CLIENT,
+    APPKEY_BACKEND_PROVIDER,
     APPKEY_INITIALISED_CERTS,
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
@@ -41,10 +41,13 @@ from cactus_runner.app.uri import uri_proxy_path_extract
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
+    InitialisedCertificates,
     Listener,
     ProxyRouteOverride,
     RunnerState,
 )
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.hookspec import BackendProvider
 from tests.integration.certificate1 import (
     TEST_CERTIFICATE_PEM as TEST_CERTIFICATE_1_PEM,
 )
@@ -91,19 +94,24 @@ async def test_initialise_handler(
     test_procedure_id: TestProcedureId, use_device_cert: bool, is_immediate_start: bool, mocker, pg_base_config
 ):
     # Arrange
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     mock_request = MagicMock()
     mock_request.text = AsyncMock(
         return_value=run_request(test_procedure_id=test_procedure_id, use_device_cert=use_device_cert).to_json()
     )
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)  # No start_index
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mock_register_aggregator = mocker.patch(
-        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
-    )
+    mock_backend.register_aggregator.return_value = 1
     mock_attempt_apply_actions = mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
     start_result = MagicMock()
     start_result.success = True
@@ -134,8 +142,8 @@ async def test_initialise_handler(
         mock_request.app[APPKEY_RUNNER_STATE].client_interactions[0].interaction_type
         == ClientInteractionType.TEST_PROCEDURE_INIT
     )
-    mock_reset_db.assert_called_once()
-    mock_register_aggregator.assert_called_once()
+    mock_backend.reset_state.assert_called_once()
+    mock_backend.register_aggregator.assert_called_once()
     mock_attempt_apply_actions.assert_called_once()
     if is_immediate_start:
         mock_attempt_start_for_state.assert_called_once()
@@ -207,7 +215,7 @@ async def test_new_init_handler_conflict_response_if_existing_active_test_proced
 
 
 @pytest.mark.asyncio
-async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
+async def test_new_init_handler_conflict_response_if_certificate_clash():
 
     # Arrange
     run_request_aggregator_cert = run_request(test_procedure_id=TestProcedureId.ALL_01, use_device_cert=False)
@@ -218,15 +226,22 @@ async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
     run_request_both_certs.run_group.test_certificates.device = (
         run_request_device_cert.run_group.test_certificates.device
     )
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     mock_request = MagicMock()
     mock_request.text = AsyncMock(return_value=run_request_both_certs.to_json())
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
+    mock_backend.register_aggregator.return_value = 1
 
     # Act
     raw_response = await handler.initialise_handler(request=mock_request)
@@ -245,10 +260,14 @@ async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
     mock_request.text = AsyncMock(return_value=run_request_neither_cert.to_json())
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    # mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
     # Act
     raw_response = await handler.initialise_handler(request=mock_request)
 
@@ -260,19 +279,26 @@ async def test_new_init_handler_conflict_response_if_certificate_clash(mocker):
 
 
 @pytest.mark.asyncio
-async def test_new_init_handler_bad_request_invalid_test_procedure(mocker):
+async def test_new_init_handler_bad_request_invalid_test_procedure():
     # Arrange
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = run_request(test_procedure_id=TestProcedureId.ALL_01)
     request.test_definition.yaml_definition = "invalid test procedure definition"
     mock_request = MagicMock()
     mock_request.text = AsyncMock(return_value=request.to_json())
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mocker.patch("cactus_runner.app.handler.precondition.register_aggregator", return_value=1)
+    mock_backend.register_aggregator.return_value = 1
 
     # Act
     raw_response = await handler.initialise_handler(request=mock_request)
@@ -291,17 +317,22 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
 ):
     # Arrange
     test_procedure_id = TestProcedureId.ALL_01
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     mock_request = MagicMock()
     mock_request.text = AsyncMock(return_value=run_request(test_procedure_id=test_procedure_id).to_json())
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mock_register_aggregator = mocker.patch(
-        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
-    )
+    mock_backend.register_aggregator.return_value = 1
     mock_attempt_apply_actions = mocker.patch(
         "cactus_runner.app.handler.attempt_apply_actions", side_effect=precondition_failure
     )
@@ -315,8 +346,8 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
     assert raw_response.text.startswith("Failed to apply preconditions")
     assert raw_response.status == http.HTTPStatus.PRECONDITION_FAILED
 
-    mock_reset_db.assert_called_once()
-    mock_register_aggregator.assert_called_once()
+    mock_backend.reset_state.assert_called_once()
+    mock_backend.register_aggregator.assert_called_once()
     mock_attempt_apply_actions.assert_called_once()
 
 
@@ -347,17 +378,22 @@ async def test_new_init_handler_precondition_failed_response_if_preconditions_fa
 async def test_new_init_handler_immediate_start_failure(start_result: handler.StartResult, mocker, pg_base_config):
     # Arrange
     test_procedure_id = TestProcedureId.ALL_01
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     mock_request = MagicMock()
     mock_request.text = AsyncMock(return_value=run_request(test_procedure_id=test_procedure_id).to_json())
     mock_request.raise_for_status = MagicMock()
     mock_request.query.get = MagicMock(return_value=None)
+    mock_request.app = {
+        APPKEY_RUNNER_STATE: Mock(spec=RunnerState),
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     mock_request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
     mock_request.app[APPKEY_RUNNER_STATE].client_interactions = []
 
-    mock_reset_db = mocker.patch("cactus_runner.app.handler.precondition.reset_db")
-    mock_register_aggregator = mocker.patch(
-        "cactus_runner.app.handler.precondition.register_aggregator", return_value=1
-    )
+    mock_backend.register_aggregator.return_value = 1
     mock_attempt_apply_actions = mocker.patch("cactus_runner.app.handler.attempt_apply_actions")
     mock_attempt_start_for_state = mocker.patch(
         "cactus_runner.app.handler.attempt_start_for_state", return_value=start_result
@@ -374,8 +410,8 @@ async def test_new_init_handler_immediate_start_failure(start_result: handler.St
     )
     assert raw_response.status == start_result.status
 
-    mock_reset_db.assert_called_once()
-    mock_register_aggregator.assert_called_once()
+    mock_backend.reset_state.assert_called_once()
+    mock_backend.register_aggregator.assert_called_once()
     mock_attempt_apply_actions.assert_called_once()
     mock_attempt_start_for_state.assert_called_once()
 
@@ -386,15 +422,22 @@ async def test_finalize_handler(mocker, tmp_path):
     `mocker` is a fixture provided by the `pytest-mock` plugin
     """
 
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = MagicMock()
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(
+            active_test_procedure=generate_class_instance(ActiveTestProcedure, seed=101, optional_is_none=True)
+        ),
+    }
     zip_path = tmp_path / "test.zip"
     zip_path.write_bytes(bytes([99, 55]))
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.return_value = zip_path
 
     mock_safely_write_error_zip = mocker.patch("cactus_runner.app.handler.finalize.safely_write_error_zip")
-
-    mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
 
@@ -409,7 +452,16 @@ async def test_finalize_handler_finish_error(mocker):
     `mocker` is a fixture provided by the `pytest-mock` plugin
     """
 
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = MagicMock()
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(
+            active_test_procedure=generate_class_instance(ActiveTestProcedure, seed=101, optional_is_none=True)
+        ),
+    }
     mock_finish_active_test = mocker.patch("cactus_runner.app.handler.finalize.finish_active_test")
     mock_finish_active_test.side_effect = Exception("mock exception")
 
@@ -417,8 +469,6 @@ async def test_finalize_handler_finish_error(mocker):
     mock_safely_write_error_zip = mocker.patch(
         "cactus_runner.app.handler.finalize.safely_write_error_zip", return_value=fake_error_path
     )
-
-    mocker.patch("cactus_runner.app.handler.begin_session")
 
     response = await handler.finalize_handler(request=request)
 
@@ -429,9 +479,21 @@ async def test_finalize_handler_finish_error(mocker):
 
 @pytest.mark.asyncio
 async def test_finalize_handler_resets_runner_state(mocker):
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = MagicMock()
-    request.app[APPKEY_RUNNER_STATE].request_history = [None]  # a non-empty list stand-in
-    mocker.patch("cactus_runner.app.handler.begin_session")
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(
+            active_test_procedure=generate_class_instance(
+                ActiveTestProcedure,
+                seed=101,
+                optional_is_none=True,
+            ),
+            request_history=[generate_class_instance(RequestEntry, seed=202)],
+        ),
+    }
     mocker.patch("cactus_runner.app.handler.status.get_active_runner_status").return_value = generate_class_instance(
         RunnerStatus, step_status={}
     )
@@ -492,12 +554,18 @@ async def test_next_test_handler_not_initialised_conflict():
 
 @pytest.mark.asyncio
 async def test_next_test_handler_success(mocker):
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = MagicMock()
     request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(active_test_procedure=None),
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     set_initialised_certs(request)
 
-    mock_reset_playlist_db = mocker.patch("cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock())
     mock_initialize_next_test = mocker.patch(
         "cactus_runner.app.handler.initialize_next_test", new=AsyncMock(return_value=True)
     )
@@ -511,18 +579,24 @@ async def test_next_test_handler_success(mocker):
     assert isinstance(body, InitResponseBody)
     assert body.is_started is True
 
-    mock_reset_playlist_db.assert_awaited_once()
+    mock_backend.reset_playlist_state.assert_awaited_once()
     mock_initialize_next_test.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_next_test_handler_immediate_start_failure(mocker):
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
     request = MagicMock()
     request.text = AsyncMock(return_value=run_request(test_procedure_id=TestProcedureId.ALL_01).to_json())
-    request.app[APPKEY_RUNNER_STATE].active_test_procedure = None
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(active_test_procedure=None),
+        APPKEY_INITIALISED_CERTS: Mock(spec=InitialisedCertificates),
+    }
     set_initialised_certs(request)
 
-    mocker.patch("cactus_runner.app.handler.precondition.reset_playlist_db", new=AsyncMock())
     mocker.patch(
         "cactus_runner.app.handler.initialize_next_test",
         new=AsyncMock(side_effect=RuntimeError("Unable to trigger immediate start: boom")),
@@ -544,10 +618,16 @@ async def test_next_test_handler_immediate_start_failure(mocker):
     ],
 )
 @pytest.mark.asyncio
-async def test_health_handler(mocker, is_db_healthy: bool, is_admin_api_healthy: bool, expected_status):
-    mocker.patch("cactus_runner.app.handler.is_db_healthy").return_value = is_db_healthy
-    mocker.patch("cactus_runner.app.handler.is_admin_api_healthy").return_value = is_admin_api_healthy
-    response = await handler.health_handler(MagicMock())
+async def test_health_handler(is_db_healthy: bool, is_admin_api_healthy: bool, expected_status):
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
+    request = MagicMock()
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+    }
+    mock_backend.is_healthy.return_value = is_db_healthy and is_admin_api_healthy
+    response = await handler.health_handler(request)
     assert isinstance(response, Response)
     assert response.status == expected_status
 
@@ -557,9 +637,23 @@ async def test_status_handler(mocker):
     """
     `mocker` is a fixture provided by the `pytest-mock` plugin
     """
-    request = MagicMock()
     get_active_runner_status_spy = mocker.spy(handler.status, "get_active_runner_status")
-    mocker.patch("cactus_runner.app.handler.begin_session")
+
+    mock_backend = Mock(spec=RunnerBackend)
+    mock_provider = Mock(spec=BackendProvider)
+    mock_provider.create_backend = AsyncMock(return_value=mock_backend)
+    request = MagicMock()
+    request.app = {
+        APPKEY_BACKEND_PROVIDER: mock_provider,
+        APPKEY_RUNNER_STATE: RunnerState(
+            active_test_procedure=generate_class_instance(
+                ActiveTestProcedure,
+                seed=101,
+                optional_is_none=True,
+                definition=generate_class_instance(TestProcedure, seed=202),
+            )
+        ),
+    }
 
     response = await handler.status_handler(request=request)
     assert isinstance(response, Response)
@@ -627,7 +721,7 @@ async def test_proxied_request_handler_before_request_trigger(pg_base_config, mo
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
-    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_BACKEND_PROVIDER] = Mock(spec=BackendProvider)
     request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     handling_listener = generate_class_instance(Listener, actions=[])
@@ -717,7 +811,7 @@ async def test_proxied_request_handler_replaces_existing_proxied_request_interac
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
-    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_BACKEND_PROVIDER] = Mock(spec=BackendProvider)
     request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     # Seed a prior PROXIED_REQUEST so the replace branch is exercised
@@ -763,7 +857,7 @@ async def test_proxied_request_handler_after_request_trigger(pg_base_config, moc
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
-    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_BACKEND_PROVIDER] = Mock(spec=BackendProvider)
     request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
     handling_listener = generate_class_instance(Listener, actions=[])
 
@@ -853,7 +947,7 @@ async def test_proxied_request_handler_handles_proxy_overrides(pg_base_config, m
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
-    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_BACKEND_PROVIDER] = Mock(spec=BackendProvider)
     request.app[APPKEY_PROXY_LOCK] = asyncio.Lock()
 
     handler.SERVER_URL = "http://example.com:1234"
@@ -924,7 +1018,7 @@ async def test_proceed_handler(proceed_handled: bool, pg_base_config, mocker):
     )
     request.app = {}
     request.app[APPKEY_RUNNER_STATE] = RunnerState(active_test_procedure=mock_active_test_procedure)
-    request.app[APPKEY_ENVOY_ADMIN_CLIENT] = MagicMock()
+    request.app[APPKEY_BACKEND_PROVIDER] = Mock(spec=BackendProvider)
 
     handling_listener = generate_class_instance(Listener, actions=[])
 

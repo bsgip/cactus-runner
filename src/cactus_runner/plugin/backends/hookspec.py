@@ -1,9 +1,8 @@
-from collections.abc import Callable
+import os
 
 import apluggy
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.database import begin_session
+from cactus_runner.app.database import begin_session, initialise_database_connection
 from cactus_runner.app.env import ENVOY_ADMIN_BASICAUTH_PASSWORD, ENVOY_ADMIN_BASICAUTH_USERNAME, ENVOY_ADMIN_URL
 from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
@@ -13,16 +12,6 @@ from cactus_runner.plugin.backends.models import RunnerBackendTestContext
 project_name = "cactus_runner.backend"
 hookspec = apluggy.HookspecMarker(project_name)
 hookimpl = apluggy.HookimplMarker(project_name)
-
-
-# TEST: temporary implementation only
-def create_backend(session_factory: Callable[..., AsyncSession], envoy_client: EnvoyAdminClient) -> RunnerBackend:
-    """TEMPORARY IMPLEMENTATION ONLY.
-
-    Factory producing an EnvoyBackend. It will be modified to become the
-    hookspec and form the entrypoint for hte plugin architecture.
-    """
-    return EnvoyBackend(session_factory=session_factory, admin_client=envoy_client)
 
 
 def create_plugin_manager() -> apluggy.PluginManager:
@@ -45,10 +34,25 @@ class BackendSpec:
         """
         ...
 
+    @hookspec
+    async def startup(self) -> None:
+        """Run any startup checks necessary before the application should start.
+
+        e.g. DB connection exists. Raise errors on issue to stop application from starting
+        """
+        ...
+
+    @hookspec
+    async def shutdown(self) -> None:
+        """Called as part of the final cleanup handler."""
+        ...
+
 
 class DefaultEnvoyPlugin:
-    def __init_(self) -> None:
-        self._admin_client = EnvoyAdminClient(
+    """The default plugin implementation for the project."""
+
+    def __init__(self, admin_client: EnvoyAdminClient | None = None) -> None:
+        self._admin_client = admin_client or EnvoyAdminClient(
             base_url=ENVOY_ADMIN_URL,
             auth_params=EnvoyAdminClientAuthParams(
                 username=ENVOY_ADMIN_BASICAUTH_USERNAME, password=ENVOY_ADMIN_BASICAUTH_PASSWORD
@@ -56,18 +60,43 @@ class DefaultEnvoyPlugin:
         )
 
     @hookimpl(trylast=True)
-    async def create_backend(self, context: RunnerBackendTestContext) -> RunnerBackend:
+    async def create_backend(self, context: RunnerBackendTestContext | None) -> RunnerBackend:
+        """Simply returns a created EnvoyBackend instance."""
         return EnvoyBackend(session_factory=begin_session, admin_client=self._admin_client, test_context=context)
+
+    @hookimpl(trylast=True)
+    async def startup(self) -> None:
+        # Ensure the DB connection is up and running before starting the app.
+        postgres_dsn = os.getenv("DATABASE_URL")
+        if postgres_dsn is None:
+            raise Exception("DATABASE_URL environment variable is not specified")
+        initialise_database_connection(postgres_dsn)
+
+    @hookimpl(trylast=True)
+    async def shutdown(self) -> None:
+        """Closes the admin client session."""
+        await self._admin_client.close_session()
 
 
 class BackendProvider:
     def __init__(self, plugin_manager: apluggy.PluginManager) -> None:
         self._plugin_manager = plugin_manager
 
-    async def create_backend(self, context: RunnerBackendTestContext) -> RunnerBackend:
+    async def create_backend(self, context: RunnerBackendTestContext | None) -> RunnerBackend:
         backends: list[RunnerBackend] | None = await self._plugin_manager.ahook.create_backend(context=context)
 
         if not backends:
             raise RuntimeError("No backend plugin available")
 
         return backends[0]
+
+    async def startup(self) -> None:
+        """Called at beginning of application creation.
+
+        Exception should be raised if deemed not ok to proceed.
+        """
+        await self._plugin_manager.ahook.startup()
+
+    async def shutdown(self) -> None:
+        """Called at final shutdown of the backend provider."""
+        await self._plugin_manager.ahook.shutdown()

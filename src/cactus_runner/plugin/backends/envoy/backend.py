@@ -30,13 +30,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from cactus_runner.app.envoy_common import get_reading_counts_grouped_by_reading_type, get_sites
+from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
+from cactus_runner.app.precondition import register_aggregator, reset_db, reset_playlist_db
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends.common import RunnerBackend, RunnerBackendTestContext
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
 from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
 from cactus_runner.plugin.backends.envoy.readings import MANDATORY_READING_SPECIFIERS, get_readings
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
-from cactus_runner.plugin.backends.models import FinalSerializableReportingData
+from cactus_runner.plugin.backends.models import FinalSerializableReportingData, RunnerBackendTestContext
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,7 @@ class EnvoyBackend(RunnerBackend):
             test_context: Optional immutable context describing the test run in progress.
         """
         self._session_factory = session_factory
-        self.admin_client = admin_client
+        self._admin_client = admin_client
         self.context = test_context
 
     def get_expression_resolver(self) -> EnvoyResolver:
@@ -377,7 +379,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.update_runtime_config(mappers.map_dto_runtime_config_to_request(config))
+        await self._admin_client.update_runtime_config(mappers.map_dto_runtime_config_to_request(config))
 
     async def create_site_control_group(self, group: dtos.SiteControlGroupWrite) -> str:
         """Creates a new DERProgram via the admin API.
@@ -392,7 +394,7 @@ class EnvoyBackend(RunnerBackend):
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
         return (
-            f"{await self.admin_client.post_site_control_group(mappers.map_dto_site_control_group_to_request(group))}"
+            f"{await self._admin_client.post_site_control_group(mappers.map_dto_site_control_group_to_request(group))}"
         )
 
     async def update_site_control_group(self, group_id: str, group: dtos.SiteControlGroupWrite) -> None:
@@ -405,7 +407,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.put_site_control_group(
+        await self._admin_client.put_site_control_group(
             int(group_id), mappers.map_dto_site_control_group_to_request(group)
         )
 
@@ -429,7 +431,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.post_site_control_default(
+        await self._admin_client.post_site_control_default(
             int(site_control_group_id),
             mappers.map_dto_site_control_group_default_to_request(default),
         )
@@ -443,10 +445,10 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If any admin API call returns a non-2xx response.
         """
-        groups_response = await self.admin_client.get_all_site_control_groups()
+        groups_response = await self._admin_client.get_all_site_control_groups()
         if groups_response.site_control_groups:
             for g in groups_response.site_control_groups:
-                await self.admin_client.delete_site_controls_in_range(
+                await self._admin_client.delete_site_controls_in_range(
                     g.site_control_group_id,
                     datetime(2000, 1, 1, tzinfo=UTC),
                     datetime(2100, 1, 1, tzinfo=UTC),
@@ -467,7 +469,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.create_site_controls(
+        await self._admin_client.create_site_controls(
             int(site_control_group_id),
             [mappers.map_dto_site_control_create_to_request(control)],
         )
@@ -484,7 +486,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.update_single_site(
+        await self._admin_client.update_single_site(
             int(site_id), mappers.map_dto_post_rate_to_site_update_request(post_rate_seconds)
         )
 
@@ -498,7 +500,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.delete_all_site_control_groups()
+        await self._admin_client.delete_all_site_control_groups()
 
     async def delete_site(self, site_id: str) -> None:
         """Deletes a site via the admin API.
@@ -509,7 +511,7 @@ class EnvoyBackend(RunnerBackend):
         Raises:
             aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
         """
-        await self.admin_client.delete_single_site(int(site_id))
+        await self._admin_client.delete_single_site(int(site_id))
 
     async def remove_function_set_assignment(self, fsa_id: str) -> None:
         """Removes a function set assignment from all site control groups.
@@ -527,7 +529,7 @@ class EnvoyBackend(RunnerBackend):
                 request = SiteControlGroupRequest(
                     description=scg.description, primacy=scg.primacy, fsa_id=None, display_id=scg.display_id
                 )
-                await self.admin_client.put_site_control_group(int(scg.site_control_group_id), request)
+                await self._admin_client.put_site_control_group(int(scg.site_control_group_id), request)
 
     async def register_site(self, site: dtos.SiteWrite) -> None:
         """Registers a site.
@@ -624,3 +626,28 @@ class EnvoyBackend(RunnerBackend):
             serializable_sites=serializable_sites,
             set_max_w_varied=set_max_w_varied,
         )
+
+    async def reset_playlist_state(self) -> None:
+        """Wrapper for reset_playlist_db."""
+        await reset_playlist_db(self._admin_client)
+
+    async def is_healthy(self) -> bool:
+        """Wrapping the db and client health checks."""
+        try:
+            async with self._session_factory() as session:
+                db_healthy = await is_db_healthy(session)
+
+            client_healthy = await is_admin_api_healthy(self._admin_client)
+            return db_healthy and client_healthy
+        except Exception as exc:
+            logger.error("Backend healthcheck failed.", exc_info=exc)
+            return False
+
+    async def reset_state(self) -> None:
+        """Performs a full db reset."""
+        logger.debug("Resetting envoy database")
+        await reset_db()
+
+    async def register_aggregator(self, lfdi: str | None, subscription_domain: str | None) -> str:
+        """Returns the aggregator ID that should be used for registering devices"""
+        return await register_aggregator(lfdi, subscription_domain)

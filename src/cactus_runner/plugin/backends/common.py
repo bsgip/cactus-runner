@@ -8,7 +8,7 @@ from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, U
 
 from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.plugin import dtos
-from cactus_runner.plugin.backends.models import FinalSerializableReportingData, RunnerBackendTestContext
+from cactus_runner.plugin.backends.models import FinalSerializableReportingData
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 
@@ -31,17 +31,6 @@ class RunnerBackend(Protocol):
     # Common lifecycle management hooks
     # -----------------------------------------------------------------
 
-    async def set_test_context(self, context: RunnerBackendTestContext) -> None:
-        """Receives the immutable test-run context at test initialisation time.
-
-        Called once per test before any other backend methods. Implementations should store this
-        context if they need to condition behaviour on test metadata (e.g. client identity, run ID).
-
-        Args:
-            context: Immutable snapshot of the active test procedure's identity and configuration.
-        """
-        ...
-
     def get_expression_resolver(self) -> ExpressionResolver:
         """Returns an expression resolver for the backend.
 
@@ -49,11 +38,39 @@ class RunnerBackend(Protocol):
         """
         ...
 
-    async def has_set_max_w_varied(self) -> bool:
-        """Determine if set_max_w has changed since it was first recorded by the backend.
+    async def reset_playlist_state(self) -> None:
+        """Perform operations to reset state as part of a backend's participation in delivering playlist tests.
 
-        Only used for producing the final reporting data. If not concerned for reporting purposes
-        then return whatever you like as it will not affect the testing outcome.
+        Expectation is that this reset is not as drastic as that as part of a full state reset. Reusable resources
+        between subsequent tests should be retained.
+        """
+        ...
+
+    async def reset_state(self) -> None:
+        """Perform a more drastic reset of state typically as part of starting a test.
+
+        An example of this would be to remove all DB entries made for an aggregator and attached resources.
+        In the example of default envoy, it is a DB reset.
+        """
+        ...
+
+    async def is_healthy(self) -> bool:
+        """Called whenever a health check is performed.
+
+        It is advisable to return the False whenever a service is found to be unresponsive.
+        """
+        ...
+
+    async def register_aggregator(self, lfdi: str | None, subscription_domain: str | None) -> str:
+        """Registers an aggregator within the backend.
+
+        Args:
+            lfdi: Corresponding to the certificate that the aggregator client will be using.
+            subscription_domain: Used to provide clear ownership of a domain by a designated
+                aggregator client for later verification against subscription notificationURIs.
+
+        Returns:
+            The aggregator ID that should be used for registering devices.
         """
         ...
 

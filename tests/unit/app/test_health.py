@@ -2,27 +2,32 @@ import unittest.mock as mock
 
 import pytest
 
-from cactus_runner.app.database import remove_database_connection
+from cactus_runner.app.database import begin_session, remove_database_connection
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 
 
 @pytest.mark.anyio
 async def test_is_db_healthy_no_db():
     remove_database_connection()
-    result = await is_db_healthy()
+    mock_client = mock.Mock(spec=EnvoyAdminClient)
+    mock_client.get_aggregators.return_value = True
+    backend = EnvoyBackend(session_factory=begin_session, admin_client=mock_client)
+    result = await backend.is_healthy()
     assert result is False
 
 
 @pytest.mark.anyio
 async def test_is_db_healthy_with_empty_db(pg_empty_config):
-    result = await is_db_healthy()
+    async with begin_session() as session:
+        result = await is_db_healthy(session)
     assert result is True
 
 
 @pytest.mark.anyio
 async def test_is_db_healthy_with_full_db(pg_base_config):
-    result = await is_db_healthy()
+    async with begin_session() as session:
+        result = await is_db_healthy(session)
     assert result is True
 
 
