@@ -82,6 +82,8 @@ async def test_all_01_full(
         for filename in filenames:
             if filename.startswith(prefix):
                 return filename
+            if filename == "errors.txt":
+                print(f"errors.txt: {zip.read('errors.txt')}")
         raise Exception(f"No filename prefixed by '{prefix}' found in filenames.")
 
     summary_data = zip.read(get_filename(prefix="CactusTestProcedureSummary", filenames=zip.namelist()))

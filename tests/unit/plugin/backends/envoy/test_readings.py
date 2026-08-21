@@ -20,7 +20,7 @@ from pandas import DataFrame
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
 )
-from cactus_runner.app.readings import (
+from cactus_runner.plugin.backends.envoy.readings import (
     ReadingSpecifier,
     get_readings,
     group_reading_types,

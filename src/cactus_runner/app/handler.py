@@ -22,9 +22,8 @@ from cactus_test_definitions.client import Action, TestProcedure
 from envoy.server.api.depends.lfdi_auth import LFDIAuthDepends
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 
-from cactus_runner.app import action, auth, event, finalize, precondition, proxy, status
+from cactus_runner.app import action, auth, event, finalize, proxy, status
 from cactus_runner.app.check import first_failing_check
-from cactus_runner.app.database import begin_session
 from cactus_runner.app.env import (
     DEV_SKIP_AUTHORIZATION_CHECK,
     ENVOY_PROXY_PREFIX,
@@ -32,8 +31,6 @@ from cactus_runner.app.env import (
     MOUNT_POINT,
     SERVER_URL,
 )
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
-from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.requests_archive import (
     get_all_request_ids,
     prune_old_request_response_pairs,
@@ -42,7 +39,7 @@ from cactus_runner.app.requests_archive import (
 )
 from cactus_runner.app.schema_validator import validate_proxy_request_schema
 from cactus_runner.app.shared import (
-    APPKEY_ENVOY_ADMIN_CLIENT,
+    APPKEY_BACKEND_PROVIDER,
     APPKEY_INITIALISED_CERTS,
     APPKEY_PROXY_LOCK,
     APPKEY_RUNNER_STATE,
@@ -56,6 +53,9 @@ from cactus_runner.models import (
     RunnerState,
     StepInfo,
 )
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.context import generate_plugin_context
+from cactus_runner.plugin.backends.hookspec import BackendProvider
 
 logger = logging.getLogger(__name__)
 
@@ -69,16 +69,14 @@ class StartResult:
 
 
 async def attempt_apply_actions(
-    actions: list[Action] | None, runner_state: RunnerState, envoy_client: EnvoyAdminClient
+    actions: list[Action] | None, runner_state: RunnerState, backend: RunnerBackend
 ) -> None:
     if actions:
-        async with begin_session() as session:
-            for a in actions:
-                await action.apply_action(a, runner_state, session, envoy_client)
-            await session.commit()  # Actions can write updates to the DB directly
+        for a in actions:
+            await action.apply_action(a, runner_state, backend)
 
 
-async def attempt_start_for_state(runner_state: RunnerState, envoy_client: EnvoyAdminClient) -> StartResult:
+async def attempt_start_for_state(runner_state: RunnerState, provider: BackendProvider) -> StartResult:
     """Try to transition a runner_state to "started" from the "initialised" state. Returns a StartResult indicating
     the result of that attempt.
 
@@ -96,17 +94,17 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 
     # We cannot start a test procedure if any of the precondition checks are failing:
     if active_test_procedure.definition.preconditions:
-        async with begin_session() as session:
-            check_failure = await first_failing_check(
-                active_test_procedure.definition.preconditions.checks, active_test_procedure, session
+        backend = await provider.create_backend(context=generate_plugin_context(active_test_procedure))
+        check_failure = await first_failing_check(
+            active_test_procedure.definition.preconditions.checks, active_test_procedure, backend
+        )
+        if check_failure:
+            return StartResult(
+                False,
+                http.HTTPStatus.PRECONDITION_FAILED,
+                "text/plain",
+                f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
             )
-            if check_failure:
-                return StartResult(
-                    False,
-                    http.HTTPStatus.PRECONDITION_FAILED,
-                    "text/plain",
-                    f"Unable to start test procedure, pre condition check has failed: {check_failure.description}",
-                )
 
     # We cannot start another test procedure if one is already running.
     # Check started_at since all listeners may have been removed after test completion
@@ -127,7 +125,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 
     # Fire any precondition actions
     if active_test_procedure.definition.preconditions:
-        await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, envoy_client)
+        await attempt_apply_actions(active_test_procedure.definition.preconditions.actions, runner_state, backend)
 
     # Activate the first listener
     await action.action_enable_steps(active_test_procedure, {"steps": [active_test_procedure.listeners[0].step]})
@@ -154,7 +152,7 @@ async def attempt_start_for_state(runner_state: RunnerState, envoy_client: Envoy
 async def setup_test_procedure_from_request(
     run_request: RunRequest,
     client_lfdi: str,
-    client_aggregator_id: int,
+    client_aggregator_id: str,
     client_type: ClientCertificateType,
 ) -> ActiveTestProcedure:
     """Create an ActiveTestProcedure from a RunRequest.
@@ -214,10 +212,10 @@ async def setup_test_procedure_from_request(
 async def initialize_next_test(
     run_request: RunRequest,
     client_lfdi: str,
-    client_aggregator_id: int,
+    client_aggregator_id: str,
     client_certificate_type: ClientCertificateType,
     runner_state: RunnerState,
-    envoy_client: EnvoyAdminClient,
+    provider: BackendProvider,
 ) -> bool:
     """Initialize the next test procedure in a playlist, reusing the certificate details captured at initialisation.
 
@@ -240,13 +238,14 @@ async def initialize_next_test(
 
     # Apply init_actions and handle immediate_start
     is_started = False
+    backend = await provider.create_backend(generate_plugin_context(runner_state.active_test_procedure))
     if runner_state.active_test_procedure.definition.preconditions:
         await attempt_apply_actions(
-            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, envoy_client
+            runner_state.active_test_procedure.definition.preconditions.init_actions, runner_state, backend
         )
 
         if runner_state.active_test_procedure.definition.preconditions.immediate_start:
-            start_result = await attempt_start_for_state(runner_state, envoy_client)
+            start_result = await attempt_start_for_state(runner_state, provider)
             if not start_result.success:
                 raise RuntimeError(f"Unable to trigger immediate start: {start_result.content}")
             is_started = True
@@ -307,10 +306,12 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
         ClientInteraction(interaction_type=ClientInteractionType.TEST_PROCEDURE_INIT, timestamp=datetime.now(UTC))
     )
 
-    # Reset envoy database
+    # Reset backend state
     # This must happen before the aggregator is registered or any test preconditions applied
-    logger.debug("Resetting envoy database")
-    await precondition.reset_db()
+    provider = request.app[APPKEY_BACKEND_PROVIDER]
+    backend_no_context = await provider.create_backend(context=None)
+    logger.debug("Resetting backend state")
+    await backend_no_context.reset_state()
 
     # Get the certificate of the aggregator to register
     aggregator_certificate = run_request.run_group.test_certificates.aggregator
@@ -354,7 +355,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
         )
 
     # Now install the certificate we intend to use
-    client_aggregator_id = await precondition.register_aggregator(
+    client_aggregator_id = await backend_no_context.register_aggregator(
         lfdi=aggregator_lfdi, subscription_domain=subscription_domain
     )
     if aggregator_lfdi is None:
@@ -394,10 +395,11 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     # if this test has "init_actions" - now is the time to fire them
     if active_test_procedure.definition.preconditions:
         try:
+            backend = await provider.create_backend(context=generate_plugin_context(active_test_procedure))
             await attempt_apply_actions(
                 active_test_procedure.definition.preconditions.init_actions,
                 request.app[APPKEY_RUNNER_STATE],
-                request.app[APPKEY_ENVOY_ADMIN_CLIENT],
+                backend,
             )
         except (action.FailedActionError, action.UnknownActionError) as e:
             return web.Response(
@@ -414,7 +416,7 @@ async def initialise_handler(request: web.Request) -> web.Response:  # noqa: C90
     ):
         is_started = True
         start_result = await attempt_start_for_state(
-            request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+            request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_BACKEND_PROVIDER]
         )
         if not start_result.success:
             logger.error(f"Unable to trigger immediate start: {start_result.content}")
@@ -447,7 +449,7 @@ async def start_handler(request: web.Request) -> web.Response:
         409 (Conflict) if the test procedure already has enabled listeners (and has presumably already been started)
     """
 
-    result = await attempt_start_for_state(request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_ENVOY_ADMIN_CLIENT])
+    result = await attempt_start_for_state(request.app[APPKEY_RUNNER_STATE], request.app[APPKEY_BACKEND_PROVIDER])
     return web.Response(status=result.status, text=result.content, content_type=result.content_type)
 
 
@@ -475,14 +477,15 @@ async def finalize_handler(request: web.Request) -> web.FileResponse | web.Respo
     if runner_state.active_test_procedure is not None:
         finalized_test_procedure_name = runner_state.active_test_procedure.name
         zip_path: Path | None = None
-        async with begin_session() as session:
-            # This will either force the active test procedure to finish
-            # (or it will return the results of an earlier finish)
-            try:
-                zip_path = await finalize.finish_active_test(runner_state, session)
-            except Exception as exc:
-                logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
-                zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])
+        # This will either force the active test procedure to finish
+        # (or it will return the results of an earlier finish)
+        provider = request.app[APPKEY_BACKEND_PROVIDER]
+        backend = await provider.create_backend(generate_plugin_context(runner_state.active_test_procedure))
+        try:
+            zip_path = await finalize.finish_active_test(runner_state, backend)
+        except Exception as exc:
+            logger.error("Exception trying to finish_active_test. Will yield error zip", exc_info=exc)
+            zip_path = finalize.safely_write_error_zip([f"Exception generating zip: {exc}"])
 
         # Clear the active test procedure and request history
         runner_state.active_test_procedure = None
@@ -565,8 +568,9 @@ async def next_test_handler(request: web.Request) -> web.Response:
         )
 
     # Do a partial clear of the DB for the next test (preserves aggregator/certs)
-    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
-    await precondition.reset_playlist_db(envoy_client)
+    provider = request.app[APPKEY_BACKEND_PROVIDER]
+    backend = await provider.create_backend(context=None)
+    await backend.reset_playlist_state()
 
     try:
         is_started = await initialize_next_test(
@@ -575,7 +579,7 @@ async def next_test_handler(request: web.Request) -> web.Response:
             certs.client_aggregator_id,
             certs.client_certificate_type,
             runner_state,
-            envoy_client,
+            provider,
         )
     except ValueError as e:
         return web.Response(status=http.HTTPStatus.BAD_REQUEST, text=str(e))
@@ -603,7 +607,9 @@ async def health_handler(request: web.Request) -> web.Response:
     Returns:
         aiohttp.web.Response: No response body - Either a HTTP 200 on success or 503 on failure.
     """
-    if await is_db_healthy() and await is_admin_api_healthy(request.app[APPKEY_ENVOY_ADMIN_CLIENT]):
+    provider = request.app[APPKEY_BACKEND_PROVIDER]
+    backend = await provider.create_backend(context=None)
+    if await backend.is_healthy():
         return web.Response(status=http.HTTPStatus.OK)
     else:
         return web.Response(status=http.HTTPStatus.SERVICE_UNAVAILABLE)
@@ -622,14 +628,15 @@ async def status_handler(request: web.Request) -> web.Response:
     active_test_procedure = request.app[APPKEY_RUNNER_STATE].active_test_procedure
 
     if active_test_procedure is not None:
-        async with begin_session() as session:
-            runner_status = await status.get_active_runner_status(
-                session=session,
-                active_test_procedure=active_test_procedure,
-                request_history=request.app[APPKEY_RUNNER_STATE].request_history,
-                last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
-                crop_minutes=15,
-            )
+        provider = request.app[APPKEY_BACKEND_PROVIDER]
+        backend = await provider.create_backend(context=generate_plugin_context(active_test_procedure))
+        runner_status = await status.get_active_runner_status(
+            active_test_procedure=active_test_procedure,
+            request_history=request.app[APPKEY_RUNNER_STATE].request_history,
+            last_client_interaction=request.app[APPKEY_RUNNER_STATE].last_client_interaction,
+            backend=backend,
+            crop_minutes=15,
+        )
 
     else:
         runner_status = status.get_runner_status(
@@ -757,18 +764,14 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
 
     # Fire "before request" event trigger, proxy, then fire "after request" event trigger.
     # The lock serialises this entire block so concurrent device requests cannot interleave.
-    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
     async with request.app[APPKEY_PROXY_LOCK]:
-        async with begin_session() as session:
-            trigger_handled = await event.handle_event_trigger(
-                trigger=event.generate_client_request_trigger(
-                    proxy_parts, mount_point=MOUNT_POINT, before_serving=True
-                ),
-                runner_state=runner_state,
-                session=session,
-                envoy_client=envoy_client,
-            )
-            await session.commit()
+        provider = request.app[APPKEY_BACKEND_PROVIDER]
+        backend = await provider.create_backend(generate_plugin_context(active_test_procedure))
+        trigger_handled = await event.handle_event_trigger(
+            trigger=event.generate_client_request_trigger(proxy_parts, mount_point=MOUNT_POINT, before_serving=True),
+            runner_state=runner_state,
+            backend=backend,
+        )
 
         # Proxy the request to the utility server
         proxy_result = await proxy.proxy_request(
@@ -777,16 +780,14 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
 
         # Fire "after request" event trigger (only if an event didn't handle the before event)
         if not trigger_handled:
-            async with begin_session() as session:
-                trigger_handled = await event.handle_event_trigger(
-                    trigger=event.generate_client_request_trigger(
-                        proxy_parts, mount_point=MOUNT_POINT, before_serving=False
-                    ),
-                    runner_state=runner_state,
-                    session=session,
-                    envoy_client=envoy_client,
-                )
-                await session.commit()
+            backend = await provider.create_backend(generate_plugin_context(active_test_procedure))
+            trigger_handled = await event.handle_event_trigger(
+                trigger=event.generate_client_request_trigger(
+                    proxy_parts, mount_point=MOUNT_POINT, before_serving=False
+                ),
+                runner_state=runner_state,
+                backend=backend,
+            )
 
     # There will only ever be a maximum of 1 entry in this list
     # The request events will only trigger a max of one listener
@@ -841,7 +842,7 @@ async def proceed_handler(request: web.Request) -> web.Response:
 
     runner_state: RunnerState = request.app[APPKEY_RUNNER_STATE]
     active_test_procedure = runner_state.active_test_procedure
-    envoy_client: EnvoyAdminClient = request.app[APPKEY_ENVOY_ADMIN_CLIENT]
+    provider: BackendProvider = request.app[APPKEY_BACKEND_PROVIDER]
 
     # It shouldn't be possible to send a 'proceed' if there is no active test procedure
     if active_test_procedure is None:
@@ -854,14 +855,12 @@ async def proceed_handler(request: web.Request) -> web.Response:
         logger.error(msg)
         return web.Response(status=http.HTTPStatus.GONE, text=msg)
 
-    async with begin_session() as session:
-        trigger_handled = await event.handle_event_trigger(
-            trigger=event.generate_proceed_trigger(),
-            runner_state=runner_state,
-            session=session,
-            envoy_client=envoy_client,
-        )
-        await session.commit()
+    backend = await provider.create_backend(generate_plugin_context(active_test_procedure))
+    trigger_handled = await event.handle_event_trigger(
+        trigger=event.generate_proceed_trigger(),
+        runner_state=runner_state,
+        backend=backend,
+    )
 
     body = ProceedResponse(handled=bool(trigger_handled)).to_json()
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=body)
