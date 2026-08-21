@@ -25,6 +25,7 @@ from cactus_runner.app.log import (
 )
 from cactus_runner.app.requests_archive import copy_request_response_files_to_archive
 from cactus_runner.app.status import get_active_runner_status
+from cactus_runner.app.warning import append_warnings
 from cactus_runner.models import (
     CheckResult,
     PackedReadings,
@@ -263,7 +264,8 @@ async def finish_active_test(runner_state: RunnerState, backend: RunnerBackend) 
     capped_request_history = _cap_request_history(runner_state.request_history)
 
     # Run finalize-time warning analysers so status/reporting/zip all see the final warning set
-    await backend.generate_warnings(active_test_procedure, capped_request_history)
+    warnings = await backend.generate_warnings()
+    append_warnings(warnings, active_test_procedure)
 
     # Collect status summary
     try:

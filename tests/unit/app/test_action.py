@@ -879,7 +879,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
         does = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
         assert len(does) == 2
 
-        if does[0].dynamic_operating_envelope_id == derc_id_by_alias[existing_derc_tag]:
+        if f"{does[0].dynamic_operating_envelope_id}" == derc_id_by_alias[existing_derc_tag]:
             existing = does[0]
             inserted = does[1]
         else:

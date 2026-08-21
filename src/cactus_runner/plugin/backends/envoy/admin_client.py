@@ -1,7 +1,6 @@
 """envoy integration
 - admin client
 """
-from cactus_runner.app.envoy_common import EnvoyConfigurationError
 
 import logging
 from dataclasses import dataclass
@@ -40,6 +39,8 @@ from envoy_schema.admin.schema.uri import (
     SiteGroupUri,
     SiteUri,
 )
+
+from cactus_runner.app.envoy_common import EnvoyConfigurationError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -293,5 +294,3 @@ async def get_exclusive_site_group(client: EnvoyAdminClient, site_id: int) -> Si
             f"Couldn't find SiteGroup with name '{exclusive_site_name}' - this is likely a bug with envoy admin API"
         )
     return site_group
-
-

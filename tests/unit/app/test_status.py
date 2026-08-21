@@ -22,7 +22,6 @@ from cactus_runner.app import status
 from cactus_runner.app.timeline import Timeline, TimelineDataStream, duration_to_label
 from cactus_runner.models import ActiveTestProcedure, CheckResult, StepInfo
 from cactus_runner.plugin.backends.common import RunnerBackend
-from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 PENDING_STEP = StepInfo()
@@ -151,11 +150,11 @@ async def test_get_active_runner_status(mocker, resolve_max_w_result, timeline_s
 
 
 @pytest.mark.anyio
-async def test_get_active_runner_status_timestamp_finished(mocker):
+async def test_get_active_runner_status_timestamp_finished():
     """finished_at on the active test procedure gets passed on to the RunnerStatus"""
     expected_finished_at = datetime(2023, 5, 7, tzinfo=UTC)
 
-    mock_session = create_mock_session()
+    mock_backend = Mock(spec=RunnerBackend)
     active_test_procedure = Mock()
     active_test_procedure.step_status = {"step_name": StepInfo()}
     active_test_procedure.listeners = []
@@ -166,14 +165,14 @@ async def test_get_active_runner_status_timestamp_finished(mocker):
     active_test_procedure.finished_at = expected_finished_at
 
     runner_status = await status.get_active_runner_status(
-        session=mock_session,
+        backend=mock_backend,
         active_test_procedure=active_test_procedure,
         request_history=Mock(),
         last_client_interaction=Mock(),
     )
 
     assert runner_status.timestamp_finished == expected_finished_at
-    assert_mock_session(mock_session)
+    mock_backend.get_expression_resolver.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -191,7 +190,6 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     active_test_procedure.warnings = {}
     request_history = Mock()
     last_client_interaction = Mock()
-    mock_envoy_client = Mock(spec=EnvoyAdminClient)
 
     _ = await status.get_active_runner_status(
         active_test_procedure=active_test_procedure,
@@ -201,7 +199,6 @@ async def test_get_active_runner_status_calls_get_runner_status_summary(mocker):
     )
     get_runner_status_summary_spy.assert_called_once_with(step_status=active_test_procedure.step_status)
     mock_backend.get_expression_resolver.assert_called_once()
-    mock_envoy_client.assert_not_called()
 
 
 @pytest.mark.anyio

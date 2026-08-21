@@ -3,7 +3,7 @@ import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
-from cactus_schema.runner import EndDeviceMetadata, RequestEntry
+from cactus_schema.runner import EndDeviceMetadata, WarningEntry
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model import (
     DynamicOperatingEnvelope,
@@ -36,7 +36,6 @@ from cactus_runner.app.envoy_common import (
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.precondition import register_aggregator, reset_db, reset_playlist_db
 from cactus_runner.app.warning import run_post_test_analysers
-from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
@@ -648,9 +647,7 @@ class EnvoyBackend(RunnerBackend):
         response = await get_exclusive_site_group(self._admin_client, int(site_id))
         return mappers.map_envoy_site_group_response_to_dto(response)
 
-    async def generate_warnings(
-        self, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
-    ) -> None:
+    async def generate_warnings(self) -> list[WarningEntry]:
         """Performs the warning production following post test run analysis as part of finalization."""
         async with self._session_factory() as session:
-            await run_post_test_analysers(session, active_test_procedure, request_history)
+            return await run_post_test_analysers(session)

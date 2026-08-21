@@ -1,4 +1,3 @@
-from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from datetime import timedelta
 from decimal import Decimal
 from enum import IntEnum, IntFlag
@@ -32,6 +31,7 @@ from envoy_schema.admin.schema.site_control import (
     SiteControlRequest,
     UpdateDefaultValue,
 )
+from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from envoy_schema.server.schema.sep2.der import (
     AlarmStatusType,
     ConnectStatusType,
@@ -626,9 +626,9 @@ def map_envoy_site_to_final_report_dto(site: Site) -> dtos.SiteFinalReport:
         site_ders=site_ders,
     )
 
+
 def map_envoy_site_group_response_to_dto(site_group_response: SiteGroupResponse) -> dtos.SiteGroup:
     """Create a SiteGroup DTO from an Envoy admin client response."""
     return dtos.SiteGroup(
-        site_group_id=f"{site_group_response.site_group_id}",
-        total_sites=site_group_response.total_sites
+        site_group_id=f"{site_group_response.site_group_id}", total_sites=site_group_response.total_sites
     )

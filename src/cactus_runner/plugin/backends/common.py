@@ -3,11 +3,10 @@ from datetime import datetime
 from operator import attrgetter
 from typing import Protocol, runtime_checkable
 
-from cactus_schema.runner import EndDeviceMetadata, RequestEntry
+from cactus_schema.runner import EndDeviceMetadata, WarningEntry
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 
 from cactus_runner.app.envoy_common import ReadingLocation
-from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.models import FinalSerializableReportingData
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
@@ -275,7 +274,7 @@ class RunnerBackend(Protocol):
         """Updates an existing DERProgram, replacing all mutable fields.
 
         Args:
-            group_id: The string-encoded identifier of the group to update.
+            group_id: The string-encoded identifier of the group to update.common
             group: The updated DERProgram definition. All fields are replaced.
 
         Raises:
@@ -557,13 +556,11 @@ class RunnerBackend(Protocol):
         """
         ...
 
-    async def generate_warnings(
-        self, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
-    ) -> None:
+    async def generate_warnings(self) -> list[WarningEntry]:
         """Generate warnings as part of the post analysis process in finalization.
 
-        The warnings are to be added to the active_test_procedure.warnings collection as part of invocation.
-        If not interested in your own plugin implementation simply return None.
+        The warnings will be added to the active_test_procedure.warnings collection.
+        If not interested in your own plugin implementation simply return an empty list.
         """
         ...
 

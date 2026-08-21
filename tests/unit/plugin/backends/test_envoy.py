@@ -11,6 +11,7 @@ from envoy.server.model import (
     SiteDERRating,
     SiteDERSetting,
     SiteDERStatus,
+    SiteGroup,
 )
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,15 +24,20 @@ from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
     """Tests that the get_site_controls returns all controls as expected."""
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
-        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
-        session.add(site1)
+        site_group = generate_class_instance(SiteGroup, seed=202)
+        site_control_group = generate_class_instance(
+            SiteControlGroup,
+            seed=101,
+            required_site_group_id=None,
+        )
+        session.add(site_group)
+        session.add(site_control_group)
 
         for idx, control_id in enumerate(range(1, 6)):
             control = generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=idx,
-                site=site1,
+                site_group_id=site_group.site_group_id,
                 site_control_group=site_control_group,
                 calculation_log_id=None,
                 dynamic_operating_envelope_id=control_id,
@@ -42,7 +48,7 @@ async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
             control = generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=idx * 1001,
-                site_id=site1.site_id,
+                site_group_id=site_group.site_group_id,
                 deleted_time=datetime(2022, 11, 14, tzinfo=UTC),
                 site_control_group_id=site_control_group.site_control_group_id,
                 calculation_log_id=None,
