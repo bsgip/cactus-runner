@@ -10,6 +10,7 @@ from cactus_schema.runner import (
     ClientInteractionType,
     RequestEntry,
     StepStatus,
+    WarningEntry,
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import Event, TestProcedure
@@ -136,9 +137,11 @@ class ActiveTestProcedure:
     finished_zip_path: Path | None = (
         None  # Path to finalised ZIP file on disk. If not None this test is "done" and shouldn't update events/state
     )
+    finished_at: datetime | None = None  # When did the test finish (None if it hasn't finished yet)
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
     proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
+    warnings: dict[str, WarningEntry] = field(default_factory=dict)
 
     def is_finished(self) -> bool:
         """True if the active test procedure has been marked as finished. That is, there is no more test data to
@@ -743,4 +746,4 @@ class ReportingData_v1(ReportingData_Base):  # noqa: N801
     readings: list[PackedReadings]
     sites: list[Site]
     timeline: Timeline | None
-    set_max_w_varied: bool = False
+    warnings: list[WarningEntry] = field(default_factory=list)

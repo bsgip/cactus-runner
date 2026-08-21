@@ -11,7 +11,7 @@ import pytest
 from assertical.asserts.generator import assert_class_instance_equality
 from assertical.asserts.time import assert_nowish
 from assertical.fake.generator import generate_class_instance
-from cactus_schema.runner.schema import RequestEntry
+from cactus_schema.runner.schema import RequestEntry, WarningEntry
 
 from cactus_runner.app import finalize
 from cactus_runner.app.timeline import Timeline
@@ -249,6 +249,7 @@ async def test_generate_json_reporting_data(version):
     sites = [generate_class_instance(Site) for _ in range(site_count)]
     timeline = None
     errors = []
+    warnings = [generate_class_instance(WarningEntry, seed=i) for i in range(2)]
 
     # Act
     reporting_data_str = await finalize.generate_json_reporting_data(
@@ -260,6 +261,7 @@ async def test_generate_json_reporting_data(version):
         timeline=timeline,
         errors=errors,
         version=version,
+        warnings=warnings,
     )
     assert reporting_data_str is not None
     reporting_data = ReportingData.from_json(version, reporting_data_str)
@@ -272,6 +274,26 @@ async def test_generate_json_reporting_data(version):
     assert len(readings) == len(reporting_data.readings)
     assert_class_instance_equality(list[Site], sites, reporting_data.sites)
     assert_class_instance_equality(Timeline, timeline, reporting_data.timeline)
+    assert_class_instance_equality(list[WarningEntry], warnings, reporting_data.warnings)
+
+
+@pytest.mark.asyncio
+async def test_generate_json_reporting_data_defaults_warnings_to_empty_list():
+    runner_state = RunnerState()
+
+    reporting_data_str = await finalize.generate_json_reporting_data(
+        runner_state=runner_state,
+        check_results={},
+        readings={},
+        reading_counts={},
+        sites=[],
+        timeline=None,
+        errors=[],
+        version=1,
+    )
+    assert reporting_data_str is not None
+    reporting_data = ReportingData.from_json(1, reporting_data_str)
+    assert reporting_data.warnings == []
 
 
 def test_cap_request_history_within_limit(mocker):

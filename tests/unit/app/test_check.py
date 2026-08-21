@@ -19,6 +19,7 @@ from cactus_test_definitions.client import (
     Step,
     TestProcedure,
 )
+from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
@@ -62,6 +63,7 @@ from cactus_runner.app.check import (
     check_readings_voltage,
     check_response_contents,
     check_subscription_contents,
+    determine_check_results,
     do_check_levels_for_period,
     do_check_reading_levels_for_types,
     do_check_reading_type_mrids_match_pen,
@@ -2444,16 +2446,22 @@ async def test_check_response_contents_latest(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
         )
@@ -2550,17 +2558,23 @@ async def test_check_response_contents_all(
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         for idx, control_id in enumerate(control_ids):
             control = generate_class_instance(
                 DynamicOperatingEnvelope,
                 seed=idx,
-                site=site1,
+                site_group_id=sg1.site_group_id,
                 site_control_group=site_control_group,
                 calculation_log_id=None,
                 dynamic_operating_envelope_id=control_id,
@@ -2571,7 +2585,7 @@ async def test_check_response_contents_all(
             control = generate_class_instance(
                 ArchiveDynamicOperatingEnvelope,
                 seed=idx * 1001,
-                site_id=site1.site_id,
+                site_group_id=sg1.site_group_id,
                 deleted_time=datetime(2022, 11, 14, tzinfo=UTC),
                 site_control_group_id=site_control_group.site_control_group_id,
                 calculation_log_id=None,
@@ -2610,16 +2624,22 @@ async def test_check_response_contents_any(pg_base_config):
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
         )
@@ -2738,17 +2758,23 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
-        site_control_group = generate_class_instance(SiteControlGroup, seed=101)
+        site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
         site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
+        sg1 = generate_class_instance(SiteGroup, seed=303)
+        session.add(sg1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, group=sg1, site=site1))
+
         # Create control with ID 100 (tagged as DERC1)
         der_control_1 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=303,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
             dynamic_operating_envelope_id=100,
@@ -2759,7 +2785,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         der_control_2 = generate_class_instance(
             DynamicOperatingEnvelope,
             seed=304,
-            site=site1,
+            site_group_id=sg1.site_group_id,
             site_control_group=site_control_group,
             calculation_log_id=None,
             dynamic_operating_envelope_id=200,
@@ -3453,10 +3479,93 @@ def test_check_all_polls_at_correct_time_path_matching(request_path: str, expect
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, expected)
+
+
+def test_check_all_polls_at_correct_time_multiple_endpoints():
+    """A list of distinct endpoint patterns can be checked together in a single check - each distinct concrete
+    path across all given endpoints is validated independently at the same poll_interval_seconds."""
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # /derp and /derc are distinct endpoints, each polled correctly every 60s
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/derp",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ] + [
+        generate_class_instance(
+            RequestEntry,
+            seed=100 + i,
+            path="/derc",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoints": ["/derp", "/derc"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+    )
+
+    assert_check_result(result, True)
+
+
+def test_check_all_polls_at_correct_time_multiple_endpoints_one_fails():
+    """With multiple endpoints, a single path missing polls causes an overall failure and is named in the result."""
+    base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    poll_interval = 60
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
+    )
+
+    # /derp polls correctly; /derc has two isolated misses landing in the same 300s window
+    good_requests = [
+        generate_class_instance(
+            RequestEntry,
+            seed=i,
+            path="/derp",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=i * poll_interval),
+        )
+        for i in range(10)
+    ]
+    bad_offsets = [0, 310, 550, 600]
+    bad_requests = [
+        generate_class_instance(
+            RequestEntry,
+            seed=100 + i,
+            path="/derc",
+            method=http.HTTPMethod.GET,
+            timestamp=base_time + timedelta(seconds=offset),
+        )
+        for i, offset in enumerate(bad_offsets)
+    ]
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        good_requests + bad_requests,
+        {"endpoints": ["/derp", "/derc"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+    )
+
+    assert_check_result(result, False)
+    assert result.description is not None
+    assert "/derc" in result.description
 
 
 @pytest.mark.parametrize(
@@ -3493,7 +3602,7 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, expected)
@@ -3502,18 +3611,17 @@ def test_check_all_polls_at_correct_time_pagination_filtering(url: str, expected
 @pytest.mark.parametrize(
     "offsets_seconds, expected_passed, description_contains",
     [
-        ([0, 540], False, "found 0"),  # Too few: 2 requests spread over 9 minutes, empty windows
-        ([0, 30, 60, 90, 120], True, None),  # 5 requests in 3-minute window: fine
-        (
-            [0, 15, 30, 45, 60, 75, 90],
-            False,
-            "Total polls",
-        ),  # 7 requests in 90s: caught by global max (expected~2, max=5)
+        ([0, 60, 120, 180, 240], True, None),  # Consistent 60s cadence: fine
+        # Two isolated misses (gap > 90s) both landing in the same 300s window: flagged
+        ([0, 310, 550, 600], False, "missed poll(s) > 1 allowed"),
+        # A single isolated miss is tolerated
+        ([0, 200, 260, 320, 380], True, None),
     ],
 )
-def test_check_all_polls_at_correct_time_per_window_minimum(
+def test_check_all_polls_at_correct_time_under_polling_gaps(
     offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
 ):
+    """Under-polling: a gap > 1.5x the poll interval is a missed poll; at most 1 miss is tolerated per 5x window."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     poll_interval = 60
 
@@ -3535,7 +3643,7 @@ def test_check_all_polls_at_correct_time_per_window_minimum(
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, expected_passed)
@@ -3545,23 +3653,18 @@ def test_check_all_polls_at_correct_time_per_window_minimum(
 
 
 @pytest.mark.parametrize(
-    "total_polls, test_duration_seconds, expected_passed",
+    "offsets_seconds, expected_passed, description_contains",
     [
-        # 5-min test (expected=5): max=min(15,8)=8
-        (8, 300, True),  # exactly at max
-        (9, 300, False),  # one over
-        # 30-min test (expected=30): max=min(90,33)=33
-        (33, 1800, True),  # exactly at max
-        (34, 1800, False),  # one over
-        # 1-min test (expected=1): max=min(3,4)=3
-        (3, 60, True),
-        (4, 60, False),
+        # 6 requests within a single 180s window: exactly at max
+        ([0, 30, 60, 90, 120, 150, 400], True, None),
+        # 7 requests within a single 180s window: one over
+        ([0, 25, 50, 75, 100, 125, 150, 400], False, "poll(s) > 6 allowed"),
     ],
 )
-def test_check_all_polls_at_correct_time_global_maximum(
-    total_polls: int, test_duration_seconds: int, expected_passed: bool
+def test_check_all_polls_at_correct_time_over_polling_window(
+    offsets_seconds: list[int], expected_passed: bool, description_contains: str | None
 ):
-    """Global maximum: min(expected_total * 3, expected_total + 3) over the whole test."""
+    """Over-polling: no more than floor(1.5 * 3 + 2) = 6 requests per 3x-interval (180s) window."""
     base_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
     poll_interval = 60
 
@@ -3569,10 +3672,6 @@ def test_check_all_polls_at_correct_time_global_maximum(
         ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
     )
 
-    # Space polls evenly so per-window minimum is always satisfied
-    offsets = (
-        [int(i * test_duration_seconds / (total_polls - 1)) for i in range(total_polls)] if total_polls > 1 else [0]
-    )
     request_history = [
         generate_class_instance(
             RequestEntry,
@@ -3581,19 +3680,19 @@ def test_check_all_polls_at_correct_time_global_maximum(
             method=http.HTTPMethod.GET,
             timestamp=base_time + timedelta(seconds=offset),
         )
-        for i, offset in enumerate(offsets)
+        for i, offset in enumerate(offsets_seconds)
     ]
 
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, expected_passed)
-    if not expected_passed:
+    if description_contains is not None:
         assert result.description is not None
-        assert "Total polls" in result.description
+        assert description_contains in result.description
 
 
 def test_check_all_polls_at_correct_time_last_window_no_false_positive():
@@ -3621,7 +3720,7 @@ def test_check_all_polls_at_correct_time_last_window_no_false_positive():
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "GET"},
     )
 
     assert_check_result(result, True)
@@ -3636,22 +3735,41 @@ def test_check_all_polls_at_correct_time_filters_by_request_type():
         ActiveTestProcedure, started_at=base_time, step_status={}, finished_zip_path=None
     )
 
-    # Mix of GET and POST requests - only POSTs should count
+    # GETs are correctly spaced, but if wrongly counted alongside the POSTs they wouldn't change the POST-only
+    # outcome below - POSTs alone have two isolated misses (gap > 90s) landing in the same 300s window.
     request_history = [
         generate_class_instance(RequestEntry, seed=1, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time),
         generate_class_instance(
-            RequestEntry, seed=2, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time + timedelta(minutes=1)
+            RequestEntry, seed=2, path="/mup/1", method=http.HTTPMethod.GET, timestamp=base_time + timedelta(seconds=60)
+        ),
+        generate_class_instance(RequestEntry, seed=3, path="/mup/1", method=http.HTTPMethod.POST, timestamp=base_time),
+        generate_class_instance(
+            RequestEntry,
+            seed=4,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=310),
         ),
         generate_class_instance(
-            RequestEntry, seed=3, path="/mup/1", method=http.HTTPMethod.POST, timestamp=base_time + timedelta(minutes=9)
+            RequestEntry,
+            seed=5,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=550),
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=6,
+            path="/mup/1",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=600),
         ),
     ]
 
-    # only 1 POST exists, so earlier windows will be empty
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
     )
 
     assert_check_result(result, False)
@@ -3688,7 +3806,7 @@ def test_check_all_polls_at_correct_time_request_type_variants(request_type_str:
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/1", "poll_interval_seconds": poll_interval, "request_type_str": request_type_str},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": poll_interval, "request_type_str": request_type_str},
     )
 
     assert_check_result(result, True)
@@ -3723,7 +3841,7 @@ def test_check_all_polls_at_correct_time_wildcard_checks_each_path_independently
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         request_history,
-        {"endpoint": "/mup/*", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
+        {"endpoints": ["/mup/*"], "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
     )
 
     assert_check_result(result, True)
@@ -3762,14 +3880,28 @@ def test_check_all_polls_at_correct_time_wildcard_fails_when_one_path_misses_pol
             seed=101,
             path="/mup/3",
             method=http.HTTPMethod.POST,
-            timestamp=base_time + timedelta(seconds=540),  # 9 minutes later — empty windows in between
+            timestamp=base_time + timedelta(seconds=310),  # gap > 90s: missed poll
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=102,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=550),  # another gap > 90s: second missed poll, same window
+        ),
+        generate_class_instance(
+            RequestEntry,
+            seed=103,
+            path="/mup/3",
+            method=http.HTTPMethod.POST,
+            timestamp=base_time + timedelta(seconds=600),
         ),
     ]
 
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         good_requests + bad_requests,
-        {"endpoint": "/mup/*", "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
+        {"endpoints": ["/mup/*"], "poll_interval_seconds": poll_interval, "request_type_str": "POST"},
     )
 
     assert_check_result(result, False)
@@ -3780,9 +3912,9 @@ def test_check_all_polls_at_correct_time_wildcard_fails_when_one_path_misses_pol
 @pytest.mark.parametrize(
     "params, description_contains",
     [
-        ({"poll_interval_seconds": 60, "request_type_str": "GET"}, "No endpoint specified"),
-        ({"endpoint": "/mup/1", "request_type_str": "GET"}, "No poll_interval_seconds specified"),
-        ({"endpoint": "/mup/1", "poll_interval_seconds": 60}, "No request_type_str specified"),
+        ({"poll_interval_seconds": 60, "request_type_str": "GET"}, "No endpoints specified"),
+        ({"endpoints": ["/mup/1"], "request_type_str": "GET"}, "No poll_interval_seconds specified"),
+        ({"endpoints": ["/mup/1"], "poll_interval_seconds": 60}, "No request_type_str specified"),
     ],
 )
 def test_check_all_polls_at_correct_time_missing_params(params: dict, description_contains: str):
@@ -3808,9 +3940,43 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
     result = check_all_polls_at_correct_time(
         active_test_procedure,
         [],
-        {"endpoint": "/mup/1", "poll_interval_seconds": 60, "request_type_str": "GET"},
+        {"endpoints": ["/mup/1"], "poll_interval_seconds": 60, "request_type_str": "GET"},
     )
 
     assert_check_result(result, False)
     assert result.description is not None
     assert "Test has not started" in result.description
+
+
+@mock.patch("cactus_runner.app.check.run_check")
+@pytest.mark.anyio
+async def test_determine_check_results_distinguishes_same_type_checks(mock_run_check: mock.MagicMock):
+    """repeat check type (eg response-contents) with different parameters - must not
+    collide/overwrite each other in the returned dict (as previously happened when keying off check.type)"""
+
+    checks = [
+        Check(type="response-contents", parameters={"status": 1, "subject_tag": "DERC1"}),
+        Check(type="response-contents", parameters={"status": 2, "subject_tag": "DERC1"}),
+        Check(type="response-contents", parameters={"status": 3, "subject_tag": "DERC1"}),
+        Check(type="all-steps-complete", parameters={}),
+    ]
+    results_by_check_type_and_status = {
+        ("response-contents", 1): CheckResult(True, "received"),
+        ("response-contents", 2): CheckResult(False, "not started"),
+        ("response-contents", 3): CheckResult(False, "not completed"),
+        ("all-steps-complete", None): CheckResult(True, "all steps done"),
+    }
+
+    async def run_check_se(check: Check, *args, **kwargs) -> CheckResult:
+        return results_by_check_type_and_status[(check.type, check.parameters.get("status"))]
+
+    mock_run_check.side_effect = run_check_se
+
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, started_at=datetime(2024, 1, 1, tzinfo=UTC), step_status={}, finished_zip_path=None
+    )
+
+    check_results = await determine_check_results(checks, active_test_procedure, mock.Mock(), None)
+
+    assert len(check_results) == 4, "Every check should have its own entry - none should overwrite another"
+    assert sum(1 for r in check_results.values() if not r.passed) == 2, "The two failing DERC1 checks must survive"

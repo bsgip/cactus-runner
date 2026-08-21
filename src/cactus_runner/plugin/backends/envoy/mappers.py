@@ -1,3 +1,4 @@
+from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from datetime import timedelta
 from decimal import Decimal
 from enum import IntEnum, IntFlag
@@ -272,8 +273,8 @@ def map_dto_site_control_group_default_to_request(
 def map_dto_site_control_create_to_request(control: dtos.SiteControlWrite) -> SiteControlRequest:
     """Maps a SiteControlCreate DTO to an admin API request."""
     return SiteControlRequest(
-        site_id=int(control.site_id),
-        calculation_log_id=None,
+        site_group_id=int(control.site_group_id),
+        calculation_log_id=int(control.calculation_log_id) if control.calculation_log_id is not None else None,
         duration_seconds=control.duration_seconds,
         start_time=control.start_time,
         randomize_start_seconds=control.randomize_start_seconds,
@@ -623,4 +624,11 @@ def map_envoy_site_to_final_report_dto(site: Site) -> dtos.SiteFinalReport:
         registration_pin=site.registration_pin,
         post_rate_seconds=site.post_rate_seconds,
         site_ders=site_ders,
+    )
+
+def map_envoy_site_group_response_to_dto(site_group_response: SiteGroupResponse) -> dtos.SiteGroup:
+    """Create a SiteGroup DTO from an Envoy admin client response."""
+    return dtos.SiteGroup(
+        site_group_id=f"{site_group_response.site_group_id}",
+        total_sites=site_group_response.total_sites
     )

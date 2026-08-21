@@ -85,9 +85,10 @@ class SiteControlGroupDefaultWrite:
 class SiteControlWrite:
     """Write DTO — maps to envoy_schema SiteControlRequest."""
 
-    site_id: str
+    site_group_id: str
     start_time: datetime
     duration_seconds: int
+    calculation_log_id: str | None
     randomize_start_seconds: int | None = None
     display_id: int | None = None
     set_energized: bool | None = None

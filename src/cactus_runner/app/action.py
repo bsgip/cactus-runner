@@ -191,20 +191,23 @@ async def action_create_der_control(  # noqa: C901
 
     display_id: int | None = None
 
-    site_ids: list[str]
+    site_group_ids: list[str]
     if not end_device_indexes:
         # We need to know the "active" site - we are interpreting that as the LAST site created/modified by the client
         active_site = await backend.get_active_site()
         if active_site is None:
             raise Exception("No active EndDevice could be resolved. Has an EndDevice been registered?")
-        site_ids = [active_site.site_id]
+
+        active_site_group = await backend.get_exclusive_site_group(active_site.site_id)
+        site_group_ids = [active_site_group.site_group_id]
     else:
-        site_ids = []
+        site_group_ids = []
         all_sites = await backend.get_all_sites()
         for idx in end_device_indexes:
             if idx < 0 or idx >= len(all_sites):
                 raise Exception(f"end_device_index {idx} doesn't map to a valid EndDevice. {len(all_sites)} registered")
-            site_ids.append(all_sites[idx].site_id)
+            exclusive_site_group = await backend.get_exclusive_site_group(all_sites[idx].site_id)
+            site_group_ids.append(exclusive_site_group.site_group_id)
 
         # We also need a unique display_id if we are "sharing" this DERControl virtually across multiple EndDevices
         # We could just use the current count of DERControls but that will recycle between test runs - not ideal
@@ -215,7 +218,7 @@ async def action_create_der_control(  # noqa: C901
         now_seconds = int(datetime.now(UTC).timestamp())
         display_id = existing_control_count << 32 | (now_seconds & 0xFFFFFFFF)
 
-    if len(site_ids) > 1 and annotation:
+    if len(site_group_ids) > 1 and annotation:
         raise Exception("Cannot combine 'tag' and 'end_device_indexes' parameters. This is a test definition error.")
 
     # We need the parent SiteControlGroup.site_control_group_id to nest this control under. This can be resolved via
@@ -277,12 +280,12 @@ async def action_create_der_control(  # noqa: C901
             )
         await backend.update_runtime_config(dtos.RuntimeConfigWrite(site_control_pow10_encoding=effective_mult))
 
-    for site_id in site_ids:
+    for site_group_id in site_group_ids:
         await backend.create_site_control(
-            # TODO: Temporary int casting as stepped implementation to plugin architecture
             site_control_group_id=site_control_group_id,
             control=dtos.SiteControlWrite(
-                site_id=site_id,
+                calculation_log_id=None,
+                site_group_id=site_group_id,
                 duration_seconds=duration_seconds,
                 start_time=start_time,
                 randomize_start_seconds=randomize_seconds,

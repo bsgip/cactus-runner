@@ -7,6 +7,7 @@ import sqlalchemy.exc
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
+from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
@@ -18,13 +19,16 @@ from envoy.server.model.doe import (
 )
 from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
     RoleFlagsType,
     UomType,
 )
+from sqlalchemy import func, select
 
+from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     count_all_site_controls_with_cancelled,
@@ -32,11 +36,130 @@ from cactus_runner.app.envoy_common import (
     get_all_site_control_groups,
     get_all_sites,
     get_csip_aus_site_reading_types,
+    get_exclusive_site_group,
     get_reading_counts_grouped_by_reading_type,
     get_site_control_group_defaults_with_archive,
     get_site_controls_active_archived,
     get_site_readings,
 )
+from cactus_runner.app.precondition import register_aggregator, reset_db
+
+
+@pytest.mark.anyio
+async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: EnvoyAdminClient):
+
+    await reset_db()
+    agg_id = await register_aggregator(None, None)
+
+    # Create the basics - two sites and take stock of the existing SiteGroups
+    async with generate_async_session(pg_base_config) as session:
+        session.add(generate_class_instance(Site, seed=101, aggregator_id=agg_id, site_id=11))
+        session.add(generate_class_instance(Site, seed=202, aggregator_id=agg_id, site_id=22))
+        await session.commit()
+        site_group_count_before = (await session.execute(select(func.count()).select_from(SiteGroup))).scalar_one()
+        site_group_assignment_count_before = (
+            await session.execute(select(func.count()).select_from(SiteGroupAssignment))
+        ).scalar_one()
+
+    async with generate_async_session(pg_base_config) as session:
+        site_11 = (await session.execute(select(Site).where(Site.site_id == 11))).scalar_one()
+        site_group_11 = await get_exclusive_site_group(envoy_admin_client, site_11)
+        assert isinstance(site_group_11, SiteGroupResponse)
+        assert site_group_11.total_sites == 1
+
+    # Check the site group count increased and assigned as expected
+    async with generate_async_session(pg_base_config) as session:
+        site_group_count_after = (await session.execute(select(func.count()).select_from(SiteGroup))).scalar_one()
+        assert site_group_count_after == (site_group_count_before + 1), "New SiteGroup should be created"
+
+        site_group_assignment_count_after = (
+            await session.execute(select(func.count()).select_from(SiteGroupAssignment))
+        ).scalar_one()
+        assert site_group_assignment_count_after == (site_group_assignment_count_before + 1), (
+            "New SiteGroupAssignment should be created"
+        )
+
+        new_site_group = (
+            await session.execute(select(SiteGroup).order_by(SiteGroup.site_group_id.desc()).limit(1))
+        ).scalar_one()
+        assert new_site_group.default_group is False
+        assert "11" in new_site_group.name and "22" not in new_site_group.name
+        assert site_group_11.site_group_id == new_site_group.site_group_id
+
+        # There should be a single assignment to the new group for site 11
+        site_group_11_assignments = (
+            (
+                await session.execute(
+                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(site_group_11_assignments) == 1
+        assert site_group_11_assignments[0].site_id == 11
+
+    # Now we redo the call - nothing should've changed
+    async with generate_async_session(pg_base_config) as session:
+        site_11 = (await session.execute(select(Site).where(Site.site_id == 11))).scalar_one()
+        assert (
+            await get_exclusive_site_group(envoy_admin_client, site_11)
+        ).site_group_id == site_group_11.site_group_id
+    async with generate_async_session(pg_base_config) as session:
+        assert (
+            site_group_count_after == (await session.execute(select(func.count()).select_from(SiteGroup))).scalar_one()
+        )
+        assert (
+            site_group_assignment_count_after
+            == (await session.execute(select(func.count()).select_from(SiteGroupAssignment))).scalar_one()
+        )
+        site_group_11_assignments = (
+            (
+                await session.execute(
+                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(site_group_11_assignments) == 1
+        assert site_group_11_assignments[0].site_id == 11
+
+    # Finally do it for site 22
+    async with generate_async_session(pg_base_config) as session:
+        site_22 = (await session.execute(select(Site).where(Site.site_id == 22))).scalar_one()
+        site_group_22 = await get_exclusive_site_group(envoy_admin_client, site_22)
+        assert site_group_22.site_group_id != site_group_11.site_group_id
+        assert site_group_22.total_sites == 1
+    async with generate_async_session(pg_base_config) as session:
+        assert (site_group_count_after + 1) == (
+            await session.execute(select(func.count()).select_from(SiteGroup))
+        ).scalar_one()
+        assert (site_group_assignment_count_after + 1) == (
+            await session.execute(select(func.count()).select_from(SiteGroupAssignment))
+        ).scalar_one()
+        site_group_11_assignments = (
+            (
+                await session.execute(
+                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(site_group_11_assignments) == 1
+        assert site_group_11_assignments[0].site_id == 11
+        site_group_22_assignments = (
+            (
+                await session.execute(
+                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_22.site_group_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(site_group_22_assignments) == 1
+        assert site_group_22_assignments[0].site_id == 22
 
 
 @pytest.mark.anyio
@@ -481,8 +604,8 @@ async def test_get_site_control_group_defaults_with_archive(pg_base_config):
     """Really simple test - can get_site_control_group_defaults_with_archive fetch all active/archive site defaults"""
     # Arrange
     async with generate_async_session(pg_base_config) as session:
-        scg1 = generate_class_instance(SiteControlGroup, seed=101)
-        scg2 = generate_class_instance(SiteControlGroup, seed=202)
+        scg1 = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
+        scg2 = generate_class_instance(SiteControlGroup, seed=202, required_site_group_id=None)
         session.add(scg1)
         session.add(scg2)
 
@@ -588,33 +711,40 @@ async def test_get_site_controls_active_archived(pg_base_config):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
+        sg1 = generate_class_instance(SiteGroup, seed=101)
+        session.add(sg1)
+
+        site1 = generate_class_instance(Site, seed=11, aggregator_id=1, site_id=1)
         session.add(site1)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, seed=1001, site=site1, group=sg1))
 
         session.add(
             generate_class_instance(
                 SiteControlGroup,
                 site_control_group_id=1,
+                required_site_group_id=None,
                 dynamic_operating_envelopes=[
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=101,
                         import_limit_active_watts=Decimal("1.11"),
-                        site=site1,
+                        site_group_id=sg1.site_group_id,
                         calculation_log_id=None,
                     ),
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=202,
                         import_limit_active_watts=Decimal("2.22"),
-                        site=site1,
+                        site_group_id=sg1.site_group_id,
                         calculation_log_id=None,
                     ),
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=303,
                         import_limit_active_watts=Decimal("3.33"),
-                        site=site1,
+                        site_group_id=sg1.site_group_id,
                         calculation_log_id=None,
                     ),
                 ],
@@ -626,13 +756,16 @@ async def test_get_site_controls_active_archived(pg_base_config):
                 ArchiveDynamicOperatingEnvelope,
                 seed=404,
                 deleted_time=None,
-                site_id=1,
+                site_group_id=sg1.site_group_id,
                 import_limit_active_watts=Decimal("4.44"),
             )
         )
         session.add(
             generate_class_instance(
-                ArchiveDynamicOperatingEnvelope, seed=505, site_id=1, import_limit_active_watts=Decimal("5.55")
+                ArchiveDynamicOperatingEnvelope,
+                seed=505,
+                site_group_id=sg1.site_group_id,
+                import_limit_active_watts=Decimal("5.55"),
             )
         )
         await session.commit()
@@ -717,17 +850,29 @@ async def test_get_all_site_control_groups(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
         session.add(
             generate_class_instance(
-                SiteControlGroup, seed=101, site_control_group_id=1, changed_time=datetime(2022, 11, 10)
+                SiteControlGroup,
+                seed=101,
+                site_control_group_id=1,
+                changed_time=datetime(2022, 11, 10),
+                required_site_group_id=None,
             )
         )
         session.add(
             generate_class_instance(
-                SiteControlGroup, seed=202, site_control_group_id=22, changed_time=datetime(2022, 11, 11)
+                SiteControlGroup,
+                seed=202,
+                site_control_group_id=22,
+                changed_time=datetime(2022, 11, 11),
+                required_site_group_id=None,
             )
         )
         session.add(
             generate_class_instance(
-                SiteControlGroup, seed=303, site_control_group_id=3, changed_time=datetime(2000, 11, 10)
+                SiteControlGroup,
+                seed=303,
+                site_control_group_id=3,
+                changed_time=datetime(2000, 11, 10),
+                required_site_group_id=None,
             )
         )
         await session.commit()
@@ -744,32 +889,42 @@ async def test_count_all_site_controls_with_cancelled(pg_base_config):
 
     async with generate_async_session(pg_base_config) as session:
         # Add active site
+        sg1 = generate_class_instance(SiteGroup, seed=101)
+        sg2 = generate_class_instance(SiteGroup, seed=202)
+        session.add(sg1)
+        session.add(sg2)
+
         site1 = generate_class_instance(Site, seed=11, aggregator_id=1, site_id=1)
         site2 = generate_class_instance(Site, seed=22, aggregator_id=1, site_id=2)
         session.add(site1)
         session.add(site2)
+        await session.flush()
+
+        session.add(generate_class_instance(SiteGroupAssignment, seed=1001, site=site1, group=sg1))
+        session.add(generate_class_instance(SiteGroupAssignment, seed=2002, site=site2, group=sg2))
 
         session.add(
             generate_class_instance(
                 SiteControlGroup,
                 site_control_group_id=1,
+                required_site_group_id=None,
                 dynamic_operating_envelopes=[
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=101,
-                        site=site1,
+                        site_group_id=sg1.site_group_id,
                         calculation_log_id=None,
                     ),
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=202,
-                        site=site1,
+                        site_group_id=sg1.site_group_id,
                         calculation_log_id=None,
                     ),
                     generate_class_instance(
                         DynamicOperatingEnvelope,
                         seed=303,
-                        site=site2,
+                        site_group_id=sg2.site_group_id,
                         calculation_log_id=None,
                     ),
                 ],
@@ -782,17 +937,17 @@ async def test_count_all_site_controls_with_cancelled(pg_base_config):
                     ArchiveDynamicOperatingEnvelope,
                     seed=404,
                     deleted_time=None,
-                    site_id=1,
+                    site_group_id=sg1.site_group_id,
                 ),
                 generate_class_instance(
                     ArchiveDynamicOperatingEnvelope,
                     seed=505,
-                    site_id=1,
+                    site_group_id=sg1.site_group_id,
                 ),
                 generate_class_instance(
                     ArchiveDynamicOperatingEnvelope,
                     seed=606,
-                    site_id=2,
+                    site_group_id=sg2.site_group_id,
                 ),
             ]
         )

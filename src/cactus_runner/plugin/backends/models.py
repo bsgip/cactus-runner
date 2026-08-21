@@ -34,4 +34,3 @@ class FinalSerializableReportingData:
     serializable_readings: dict[dtos.SiteReadingTypeFinalReport, pd.DataFrame]
     serializable_reading_counts: dict[dtos.SiteReadingTypeFinalReport, int]
     serializable_sites: list[dtos.SiteFinalReport]
-    set_max_w_varied: bool

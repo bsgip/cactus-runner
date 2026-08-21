@@ -3,7 +3,7 @@ import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
-from cactus_schema.runner import EndDeviceMetadata
+from cactus_schema.runner import EndDeviceMetadata, RequestEntry
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
 from envoy.server.model import (
     DynamicOperatingEnvelope,
@@ -29,12 +29,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from cactus_runner.app.envoy_common import get_reading_counts_grouped_by_reading_type, get_sites
+from cactus_runner.app.envoy_common import (
+    get_reading_counts_grouped_by_reading_type,
+    get_sites,
+)
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
 from cactus_runner.app.precondition import register_aggregator, reset_db, reset_playlist_db
+from cactus_runner.app.warning import run_post_test_analysers
+from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
+from cactus_runner.plugin.backends.envoy.admin_client import get_exclusive_site_group
 from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
 from cactus_runner.plugin.backends.envoy.readings import MANDATORY_READING_SPECIFIERS, get_readings
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
@@ -597,20 +603,6 @@ class EnvoyBackend(RunnerBackend):
             readings = await get_readings(session, reading_specifiers=MANDATORY_READING_SPECIFIERS)
             reading_counts = await get_reading_counts_grouped_by_reading_type(session)
 
-        # Check if setMaxW was varied during the test - any archive entry with a different max_w_value
-        # than the current SiteDERSetting for the same site means it changed
-        set_max_w_varied = (
-            await session.execute(
-                select(ArchiveSiteDERSetting.site_id)
-                .join(
-                    SiteDERSetting,
-                    (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                    & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
-                )
-                .limit(1)
-            )
-        ).scalar() is not None
-
         # Convert to serialisable types
         serializable_readings = {
             mappers.map_envoy_site_reading_type_to_final_report_dto(k): v for k, v in readings.items()
@@ -624,7 +616,6 @@ class EnvoyBackend(RunnerBackend):
             serializable_readings=serializable_readings,
             serializable_reading_counts=serializable_reading_counts,
             serializable_sites=serializable_sites,
-            set_max_w_varied=set_max_w_varied,
         )
 
     async def reset_playlist_state(self) -> None:
@@ -651,3 +642,15 @@ class EnvoyBackend(RunnerBackend):
     async def register_aggregator(self, lfdi: str | None, subscription_domain: str | None) -> str:
         """Returns the aggregator ID that should be used for registering devices"""
         return await register_aggregator(lfdi, subscription_domain)
+
+    async def get_exclusive_site_group(self, site_id: str) -> dtos.SiteGroup:
+        """Gets the site_group exclusive to the given site_id."""
+        response = await get_exclusive_site_group(self._admin_client, int(site_id))
+        return mappers.map_envoy_site_group_response_to_dto(response)
+
+    async def generate_warnings(
+        self, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
+    ) -> None:
+        """Performs the warning production following post test run analysis as part of finalization."""
+        async with self._session_factory() as session:
+            await run_post_test_analysers(session, active_test_procedure, request_history)

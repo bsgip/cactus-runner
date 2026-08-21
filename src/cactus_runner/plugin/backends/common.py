@@ -3,10 +3,11 @@ from datetime import datetime
 from operator import attrgetter
 from typing import Protocol, runtime_checkable
 
-from cactus_schema.runner import EndDeviceMetadata
+from cactus_schema.runner import EndDeviceMetadata, RequestEntry
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 
 from cactus_runner.app.envoy_common import ReadingLocation
+from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.models import FinalSerializableReportingData
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
@@ -296,6 +297,13 @@ class RunnerBackend(Protocol):
         """
         ...
 
+    async def get_exclusive_site_group(self, site_id: str) -> dtos.SiteGroup:
+        """Gets the SiteGroup which site has exclusive access to - that is, anything added to the returned SiteGroup
+        will ONLY be visible to site (no other sites will have membership).
+
+        This method will create SiteGroup if none exists via the admin client"""
+        ...
+
     # ------------------------------------------------------------------
     # DER Controls
     # ------------------------------------------------------------------
@@ -546,6 +554,16 @@ class RunnerBackend(Protocol):
 
         It isn't exactly that important but to implement there are very specific reporting shapes
         that need to be met to create the final report JSON as part of finalization.
+        """
+        ...
+
+    async def generate_warnings(
+        self, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
+    ) -> None:
+        """Generate warnings as part of the post analysis process in finalization.
+
+        The warnings are to be added to the active_test_procedure.warnings collection as part of invocation.
+        If not interested in your own plugin implementation simply return None.
         """
         ...
 

@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from enum import IntEnum
 from itertools import chain
 
+from envoy.server.model import SiteGroupAssignment
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
@@ -25,6 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
+
+
+class EnvoyConfigurationError(Exception):
+    """Unknown Cactus Runner Action"""
 
 
 class ReadingLocation(IntEnum):
@@ -199,7 +204,9 @@ async def get_sites(session: AsyncSession) -> Sequence[Site]:
 async def count_all_site_controls_with_cancelled(session: AsyncSession, site_id: int | None) -> int:
     active_stmt = select(func.count()).select_from(DynamicOperatingEnvelope)
     if site_id is not None:
-        active_stmt = active_stmt.where(DynamicOperatingEnvelope.site_id == site_id)
+        active_stmt = active_stmt.join(
+            SiteGroupAssignment, DynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id
+        ).where(SiteGroupAssignment.site_id == site_id)
 
     archive_stmt = (
         select(func.count())
@@ -207,7 +214,9 @@ async def count_all_site_controls_with_cancelled(session: AsyncSession, site_id:
         .where(ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None))
     )
     if site_id is not None:
-        archive_stmt = archive_stmt.where(ArchiveDynamicOperatingEnvelope.site_id == site_id)
+        archive_stmt = archive_stmt.join(
+            SiteGroupAssignment, ArchiveDynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id
+        ).where(SiteGroupAssignment.site_id == site_id)
 
     return (await session.execute(active_stmt)).scalar_one() + (await session.execute(archive_stmt)).scalar_one()
 
@@ -223,7 +232,9 @@ async def get_site_controls_active_archived(
     active_controls = (
         (
             await session.execute(
-                select(DynamicOperatingEnvelope).where(DynamicOperatingEnvelope.site_id == site.site_id)
+                select(DynamicOperatingEnvelope)
+                .join(SiteGroupAssignment, DynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id)
+                .where(SiteGroupAssignment.site_id == site.site_id)
             )
         )
         .scalars()
@@ -233,7 +244,12 @@ async def get_site_controls_active_archived(
     deleted_controls = (
         (
             await session.execute(
-                select(ArchiveDynamicOperatingEnvelope).where(ArchiveDynamicOperatingEnvelope.site_id == site.site_id)
+                select(ArchiveDynamicOperatingEnvelope)
+                .join(
+                    SiteGroupAssignment,
+                    ArchiveDynamicOperatingEnvelope.site_group_id == SiteGroupAssignment.site_group_id,
+                )
+                .where(SiteGroupAssignment.site_id == site.site_id)
             )
         )
         .scalars()
