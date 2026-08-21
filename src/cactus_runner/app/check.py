@@ -31,6 +31,7 @@ from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 from sqlalchemy import ColumnElement, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -731,6 +732,71 @@ async def do_check_levels_for_readings(
     )
 
 
+async def do_check_latest_reading_level(
+    session: AsyncSession,
+    site_reading_types: Sequence[SiteReadingType],
+    min_level: float | None,
+    max_level: float | None,
+) -> CheckResult:
+    """Checks that the LATEST SiteReading (by reading period end, i.e. time_period_start + time_period_seconds) for
+    each of the supplied SiteReadingType's falls within the specified level.
+
+    Unlike do_check_levels_for_readings (which checks every historical reading, optionally windowed), this only
+    considers the single most recent reading per type. Suited to gating a Preconditions check on "the device is
+    currently operating at roughly the right level" rather than asserting behaviour across a whole test.
+
+    Args:
+        session: DB session to query
+        site_reading_types: list of SiteReadingType's to check readings
+        min_level: If not None - ensure the latest reading is above this
+        max_level: If not None - ensure the latest reading is below this
+
+    Returns:
+        CheckResult - True if the latest reading for every type is above/below the supplied limits.
+    """
+    srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
+
+    end_time_expr: ColumnElement[datetime] = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
+        "interval '1 second'"
+    )
+
+    ranked_subquery = (
+        select(
+            SiteReading,
+            func.row_number()
+            .over(partition_by=SiteReading.site_reading_type_id, order_by=end_time_expr.desc())
+            .label("rank"),
+        )
+        .where(SiteReading.site_reading_type_id.in_(srt_ids))
+        .subquery()
+    )
+    RankedReading = aliased(SiteReading, ranked_subquery)  # noqa: N806
+
+    query = (
+        select(RankedReading, SiteReadingType)
+        .join(SiteReadingType, SiteReadingType.site_reading_type_id == ranked_subquery.c.site_reading_type_id)
+        .where(ranked_subquery.c.rank == 1)
+    )
+
+    results = await session.execute(query)
+    latest_readings = results.all()
+
+    if not latest_readings:
+        return CheckResult(False, "No readings found for level comparison")
+
+    values = [sr.value * 10**srt.power_of_ten_multiplier for sr, srt in latest_readings]
+    failure_msg = ""
+
+    if min_level is not None and any(v < min_level for v in values):
+        failure_msg += f"Not all latest readings above minimum target level of {min_level}."
+    if max_level is not None and any(v > max_level for v in values):
+        if failure_msg:
+            failure_msg += " "
+        failure_msg += f"Not all latest readings below maximum target level of {max_level}."
+
+    return CheckResult(False, f"{failure_msg} Got {values}.") if failure_msg else CheckResult(True, None)
+
+
 async def do_check_reading_levels_for_types(
     session: AsyncSession,
     site_reading_types: Sequence[SiteReadingType],
@@ -738,9 +804,12 @@ async def do_check_reading_levels_for_types(
 ) -> CheckResult:
     """Performs selected reading value level checks.
 
-    It assumes that reading type checks have been performed prior. The type of check depends whether a window
-    period has been provided or not. No window period means all readings for the test are checked. With a
-    window period, only readings within that trailing window (relative to the latest reading) are checked.
+    It assumes that reading type checks have been performed prior. The type of check depends on the parameters
+    provided:
+    - latest_reading_only=True only considers the single most recent reading per type (suited to gating a
+      Preconditions check on current device state). Mutually exclusive with window_seconds.
+    - Otherwise, no window period means all readings for the test are checked, and a window period means only
+      readings within that trailing window (relative to the latest reading) are checked.
 
     Args:
         session: DB session
@@ -753,9 +822,12 @@ async def do_check_reading_levels_for_types(
     max_level = resolved_parameters.get("maximum_level")
     min_level = resolved_parameters.get("minimum_level")
     window_seconds = resolved_parameters.get("window_seconds")
-    if all(el is None for el in [max_level, min_level, window_seconds]):
+    latest_reading_only = resolved_parameters.get("latest_reading_only", False)
+    if all(el is None for el in [max_level, min_level, window_seconds]) and not latest_reading_only:
         # Nothing to do, check passes
         return CheckResult(True, None)
+    if latest_reading_only:
+        return await do_check_latest_reading_level(session, site_reading_types, min_level, max_level)
     window_period = timedelta(seconds=window_seconds) if window_seconds else None
     return await do_check_levels_for_readings(session, site_reading_types, min_level, max_level, window_period)
 
