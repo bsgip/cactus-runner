@@ -1,6 +1,6 @@
 import io
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 from urllib.parse import quote
 
@@ -24,6 +24,8 @@ from cactus_schema.runner import (
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
 from envoy.server.model.site import Site, SiteDERSetting
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, RoleFlagsType, UomType
 from pytest_aiohttp.plugin import TestClient
 
 from cactus_runner.app.database import remove_database_connection
@@ -41,6 +43,10 @@ URI_ENCODED_CERT_1 = quote(RAW_CERT_1)
 
 RAW_CERT_2 = TEST_CERTIFICATE_2_PEM.decode()
 URI_ENCODED_CERT_2 = quote(RAW_CERT_2)
+
+# Must match the "pen" set on the TestConfig produced by the run_request_generator fixture below.
+TEST_PEN = 12345
+MAX_EXPORT_W = 10000.0
 
 
 @pytest.mark.parametrize(
@@ -91,8 +97,64 @@ async def test_client_interactions(
             max_w_multiplier=0,
             max_charge_rate_w_multiplier=0,
             max_discharge_rate_w_multiplier=0,
+            max_discharge_rate_w_value=int(MAX_EXPORT_W),
         )
         session.add(new_der_settings)
+
+        # GEN-01's preconditions gate the test start on the site/DER currently reporting active power readings
+        # within a band of the DER's rated export capacity - so we need some readings in place before /start.
+        if test_procedure_id == TestProcedureId.GEN_01:
+            now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+            site_reading_type = generate_class_instance(
+                SiteReadingType,
+                seed=1001,
+                site=new_site,
+                aggregator_id=agg_id,
+                mrid="0" * 24 + f"{TEST_PEN:08d}",
+                group_mrid="1" * 24 + f"{TEST_PEN:08d}",
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                kind=KindType.POWER,
+                power_of_ten_multiplier=0,
+                role_flags=int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_PREMISES_AGGREGATION_POINT),
+            )
+            session.add(site_reading_type)
+            session.add(
+                generate_class_instance(
+                    SiteReading,
+                    seed=2001,
+                    site_reading_type=site_reading_type,
+                    time_period_start=now,
+                    time_period_seconds=300,
+                    value=int(-0.75 * MAX_EXPORT_W),  # within [-1.05, -0.5] * MAX_EXPORT_W
+                )
+            )
+
+            device_reading_type = generate_class_instance(
+                SiteReadingType,
+                seed=1002,
+                site=new_site,
+                aggregator_id=agg_id,
+                mrid="2" * 24 + f"{TEST_PEN:08d}",
+                group_mrid="3" * 24 + f"{TEST_PEN:08d}",
+                uom=UomType.REAL_POWER_WATT,
+                data_qualifier=DataQualifierType.AVERAGE,
+                kind=KindType.POWER,
+                power_of_ten_multiplier=0,
+                role_flags=int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_DER | RoleFlagsType.IS_SUBMETER),
+            )
+            session.add(device_reading_type)
+            session.add(
+                generate_class_instance(
+                    SiteReading,
+                    seed=2002,
+                    site_reading_type=device_reading_type,
+                    time_period_start=now,
+                    time_period_seconds=300,
+                    value=int(0.75 * MAX_EXPORT_W),  # within [0.5, 1.05] * MAX_EXPORT_W
+                )
+            )
 
         await session.commit()
 

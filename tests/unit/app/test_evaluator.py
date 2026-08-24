@@ -107,7 +107,11 @@ DATABASE_SET_MAX_W = 2020.0
         ),
         (Negate(NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W)), -DATABASE_SET_MAX_W),
         (
-            Negate(Expression(OperationType.MULTIPLY, Constant(1.05), NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W))),  # noqa: E501
+            Negate(
+                Expression(
+                    OperationType.MULTIPLY, Constant(1.05), NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W)
+                )
+            ),  # noqa: E501
             -DATABASE_SET_MAX_W * 1.05,
         ),
     ],
