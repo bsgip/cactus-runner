@@ -125,3 +125,10 @@ The `dotenv` command makes the environment variables in a .env file available to
 
 3. Use Bruno to interact with the cactus runner. See ["Running a Test Case"](demo/README.md) section from the demo README on how to do this.
 
+## Plugin Development
+
+The harness is able to be attached to any server defined using an [apluggy](https://github.com/nextline-dev/apluggy) plugin. The default implementation is for a 
+short-lived [Envoy](https://github.com/bsgip/envoy) instance, but could be expanded to any server administrative interface.
+
+For more in-depth information see [PLUGINS](PLUGINS.md)
+
