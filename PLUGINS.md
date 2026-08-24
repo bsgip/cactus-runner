@@ -209,14 +209,14 @@ from cactus_runner.app.evaluator import UnresolvableVariableError
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 class MyExpressionResolver(ExpressionResolver):
-    def __init__(self, backend: MyCustomBackend) -> None:
-        self._backend = backend
+    def __init__(self, server_interface: MyCustomServerInterface) -> None:
+        self._admin_session = server_interface
 
     async def resolve_named_variable_der_setting_max_w(self) -> float:
-        site = await self._backend.get_active_site()
+        site = await self._admin_session.get_active_site()
         if site is None:
             raise UnresolvableVariableError("No active site found")
-        der_setting = await self._backend.get_der_settings(site.site_id)
+        der_setting = await self._admin_session.get_der_settings(site.site_id)
         if der_setting is None or der_setting.max_w_value is None:
             raise UnresolvableVariableError("setMaxW is not set")
         return float(der_setting.max_w_value)
