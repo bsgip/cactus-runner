@@ -19,6 +19,8 @@ def create_plugin_manager() -> apluggy.PluginManager:
     pm.add_hookspecs(BackendSpec)
 
     # Built-in default backend
+    # TODO: Revise the default plugin admin client session construction to allow for appropriate resource allocation
+    # and cleanup.
     pm.register(DefaultEnvoyPlugin())
 
     return pm
@@ -51,6 +53,8 @@ class BackendSpec:
 class DefaultEnvoyPlugin:
     """The default plugin implementation for the project."""
 
+    # TODO: Revise the admin_client to be a factory instead. The client session will be allocated as part of the
+    # plugin registration without cleanup for a non-default backend implementation.
     def __init__(self, admin_client: EnvoyAdminClient | None = None) -> None:
         self._admin_client = admin_client or EnvoyAdminClient(
             base_url=ENVOY_ADMIN_URL,
