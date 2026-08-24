@@ -64,13 +64,13 @@ from cactus_runner.app.check import (
     check_response_contents,
     check_subscription_contents,
     determine_check_results,
-    do_check_levels_for_period,
+    do_check_latest_reading_level,
+    do_check_levels_for_readings,
     do_check_reading_levels_for_types,
     do_check_reading_type_mrids_match_pen,
     do_check_readings_for_duration,
     do_check_readings_for_types,
     do_check_readings_on_minute_boundary,
-    do_check_single_level,
     do_check_site_readings_and_params,
     first_failing_check,
     is_nth_bit_set_properly,
@@ -1330,34 +1330,146 @@ LEVEL_SCENARIOS: list[ReadingTestScenario] = [
 
 
 @pytest.mark.parametrize(
-    "srt_ids, readings, mult, min_level, max_level, expected",
+    "srt_ids, readings, mult, min_level, max_level, window_s, expected",
     [
+        # No window - not all readings are >= 60.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, None, False),
+        # No window - >= 50.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, None, None, True),
+        # No window - <= 59.9
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, None, False),
+        # No window - <= 60.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, None, True),
+        # No window - 50.0 <= value <= 70.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, None, True),
+        # No window - 40.0 <= value <= 45.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, None, False),
+        # No window - -1.0 <= value <= 101.0 with pow10 == 1 (raw [5, 10, 0] scaled to [50, 100, 0])
+        ([2], [LEVEL_SCENARIOS[1]], 1, -1.0, 101.0, None, True),
+        # No window - 50.0 <= value <= 60.0 with pow10 == -1 (raw [501, 510, 600] scaled to [50.1, 51.0, 60.0])
+        ([3], [LEVEL_SCENARIOS[2]], -1, 50.0, 60.0, None, True),
+        # No window - two reading types, all readings within 50.0 <= value <= 61.0
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 50.0, 61.0, None, True),
+        # No window - two reading types with 60.5 <= value <= 62.0 (not all readings in range)
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, None, False),
+        # No window - no readings for the chosen SiteReadingType
+        ([3], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, None, False),
+        # No window - a low outlier reading anywhere in the test's history fails the check
+        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, None, False),
         # >= 60.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, True),
-        # >= 60.1
-        ([1], [LEVEL_SCENARIOS[0]], 0, 60.1, None, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, 180, False),
+        # Window too small
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, 30, False),
+        # >= 50.0
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, None, 180, True),
         # <= 59.9
-        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, 180, False),
         # <= 60.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, 180, True),
         # 50.0 <= value <= 70.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, 180, True),
         # 40.0 <= value <= 45.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, 180, False),
         # -40.0 <= value <= 45.0 with pow10 == 1
-        ([2], [LEVEL_SCENARIOS[1]], 1, -40.0, 45.0, True),
+        ([1], [LEVEL_SCENARIOS[1]], 1, -40.0, 45.0, 180, False),
         # value == 60.0 with pow10 == -1
-        ([3], [LEVEL_SCENARIOS[2]], -1, 60.0, 60.0, True),
+        ([3], [LEVEL_SCENARIOS[2]], -1, 60.0, 60.0, 180, False),
+        # Window size includes first low reading
+        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, 600, False),
+        # Window size doesn't include first low reading
+        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, 180, True),
         # Two reading types with 59.0 <= value <= 62.0
-        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, True),
-        # Two reading type with 60.5 <= value <= 62.0 (one site reading type passes, one fails)
-        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, False),
-        # No readings for the chosen SiteReadingType
-        ([3], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, False),
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 50.0, 62.0, 180, True),
+        # Two reading type with 60.5 <= value <= 62.0
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, 180, False),
+        # Testing window contains window boundary reading (where period start == window start)
+        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 180, False),
+        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 179, True),
     ],
 )
 @pytest.mark.anyio
-async def test_do_check_single_level(
+async def test_do_check_levels_for_readings(
+    pg_base_config,
+    srt_ids: list[int],
+    readings: list[ReadingTestScenario],
+    mult: int,
+    min_level: float | None,
+    max_level: float | None,
+    window_s: int | None,
+    expected: bool,
+):
+    """Tests that do_check_levels_for_readings can handle various queries against a static DB model, both with
+    and without a window_period"""
+    async with generate_async_session(pg_base_config) as session:
+        # Load 3 SiteReadingTypes
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt1 = generate_class_instance(
+            SiteReadingType, seed=101, power_of_ten_multiplier=mult, site_reading_type_id=1, aggregator_id=1, site=site
+        )
+        srt2 = generate_class_instance(
+            SiteReadingType, seed=202, power_of_ten_multiplier=mult, site_reading_type_id=2, aggregator_id=1, site=site
+        )
+        srt3 = generate_class_instance(
+            SiteReadingType, seed=303, power_of_ten_multiplier=mult, site_reading_type_id=3, aggregator_id=1, site=site
+        )
+
+        session.add_all([site, srt1, srt2, srt3])
+        srt_d = {1: srt1, 2: srt2, 3: srt3}
+
+        time_now = datetime.now()
+        # Load scenario readings
+        for i, reading_scenario in enumerate(readings, 1):
+            for j, reading_value in enumerate(reading_scenario.readings, 1):
+                session.add(
+                    generate_class_instance(
+                        SiteReading,
+                        seed=i * len(reading_scenario.readings) + j,
+                        site_reading_type=srt_d[reading_scenario.srt_id],
+                        value=reading_value,
+                        created_time=time_now + timedelta(minutes=j),
+                        time_period_start=time_now + timedelta(minutes=j) - timedelta(seconds=60),
+                        time_period_seconds=60,
+                    )
+                )
+
+        await session.commit()
+
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        window_period = timedelta(seconds=window_s) if window_s is not None else None
+        result = await do_check_levels_for_readings(session, faked_srts, min_level, max_level, window_period)
+        assert_check_result(result, expected)
+
+
+@pytest.mark.parametrize(
+    "srt_ids, readings, mult, min_level, max_level, expected",
+    [
+        # last reading in LEVEL_SCENARIOS[0] = 60, check larger, smaller, equal
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.1, None, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, False),
+        # last reading in LEVEL_SCENARIOS[1] = 0
+        ([2], [LEVEL_SCENARIOS[1]], 1, -40.0, 45.0, True),
+        # last reading in LEVEL_SCENARIOS[2] = 600, but give it a pow10 of -1 = 60
+        ([3], [LEVEL_SCENARIOS[2]], -1, 60.0, 60.0, True),
+        # Two reading types with 59.0 <= value <= 62.0
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, True),
+        # one site reading type passes, one fails
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, False),
+        # No readings for the chosen SiteReadingType
+        ([3], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, False),
+        # Only the latest reading matters - an early low outlier doesn't fail the check
+        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, True),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_latest_reading_level(
     pg_base_config,
     srt_ids: list[int],
     readings: list[ReadingTestScenario],
@@ -1366,7 +1478,7 @@ async def test_do_check_single_level(
     max_level: float | None,
     expected: bool,
 ):
-    """Tests that do_check_single_level can handle various queries against a static DB model"""
+    """Tests that do_check_latest_reading_level only considers the single most recent reading per type"""
     async with generate_async_session(pg_base_config) as session:
         # Load 3 SiteReadingTypes
         site = generate_class_instance(Site, aggregator_id=1, site_id=1)
@@ -1407,137 +1519,73 @@ async def test_do_check_single_level(
     ]
 
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_single_level(session, faked_srts, min_level, max_level)
+        result = await do_check_latest_reading_level(session, faked_srts, min_level, max_level)
         assert_check_result(result, expected)
 
 
 @pytest.mark.parametrize(
-    "srt_ids, readings, mult, min_level, max_level, window_s, expected",
+    "resolved_params, expected_window_period, called",
     [
-        # >= 60.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, 180, False),
-        # Window too small
-        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, 30, False),
-        # >= 50.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, None, 180, True),
-        # <= 59.9
-        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, 180, False),
-        # <= 60.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, 180, True),
-        # 50.0 <= value <= 70.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, 180, True),
-        # 40.0 <= value <= 45.0
-        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, 180, False),
-        # -40.0 <= value <= 45.0 with pow10 == 1
-        ([1], [LEVEL_SCENARIOS[1]], 1, -40.0, 45.0, 180, False),
-        # value == 60.0 with pow10 == -1
-        ([3], [LEVEL_SCENARIOS[2]], -1, 60.0, 60.0, 180, False),
-        # Window size includes first low reading
-        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, 600, False),
-        # Window size doesn't include first low reading
-        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, 180, True),
-        # Two reading types with 59.0 <= value <= 62.0
-        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 50.0, 62.0, 180, True),
-        # Two reading type with 60.5 <= value <= 62.0
-        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, 180, False),
-        # Testing window contains window boundary reading (where period start == window start)
-        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 180, False),
-        ([2], [LEVEL_SCENARIOS[3]], 0, 50.5, None, 179, True),
-    ],
-)
-@pytest.mark.anyio
-async def test_do_check_levels_for_period(
-    pg_base_config,
-    srt_ids: list[int],
-    readings: list[ReadingTestScenario],
-    mult: int,
-    min_level: float | None,
-    max_level: float | None,
-    window_s: int,
-    expected: bool,
-):
-    """Tests that do_check_levels_for_period can handle various queries against a static DB model"""
-    async with generate_async_session(pg_base_config) as session:
-        # Load 3 SiteReadingTypes
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
-        srt1 = generate_class_instance(
-            SiteReadingType, seed=101, power_of_ten_multiplier=mult, site_reading_type_id=1, aggregator_id=1, site=site
-        )
-        srt2 = generate_class_instance(
-            SiteReadingType, seed=202, power_of_ten_multiplier=mult, site_reading_type_id=2, aggregator_id=1, site=site
-        )
-        srt3 = generate_class_instance(
-            SiteReadingType, seed=303, power_of_ten_multiplier=mult, site_reading_type_id=3, aggregator_id=1, site=site
-        )
-
-        session.add_all([site, srt1, srt2, srt3])
-        srt_d = {1: srt1, 2: srt2, 3: srt3}
-
-        time_now = datetime.now()
-        # Load scenario readings
-        for i, reading_scenario in enumerate(readings, 1):
-            for j, reading_value in enumerate(reading_scenario.readings, 1):
-                session.add(
-                    generate_class_instance(
-                        SiteReading,
-                        seed=i * len(reading_scenario.readings) + j,
-                        site_reading_type=srt_d[reading_scenario.srt_id],
-                        value=reading_value,
-                        created_time=time_now + timedelta(minutes=j),
-                        time_period_start=time_now + timedelta(minutes=j) - timedelta(seconds=60),
-                        time_period_seconds=60,
-                    )
-                )
-
-        await session.commit()
-
-    faked_srts = [
-        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
-    ]
-
-    async with generate_async_session(pg_base_config) as session:
-        window_period = timedelta(seconds=window_s)
-        result = await do_check_levels_for_period(session, faked_srts, min_level, max_level, window_period)
-        assert_check_result(result, expected)
-
-
-@pytest.mark.parametrize(
-    "resolved_params, outcome",
-    [
-        ({"minimum_level": 1, "maximum_level": 2, "window_seconds": 3}, (True, True)),
-        ({"minimum_level": 1, "maximum_level": 2}, (True, False)),
-        ({"minimum_level": 1}, (True, False)),
-        ({"maximum_level": 2}, (True, False)),
-        ({}, (False, False)),
+        ({"minimum_level": 1, "maximum_level": 2, "window_seconds": 3}, timedelta(seconds=3), True),
+        ({"minimum_level": 1, "maximum_level": 2}, None, True),
+        ({"minimum_level": 1}, None, True),
+        ({"maximum_level": 2}, None, True),
+        ({}, None, False),
     ],
 )
 @pytest.mark.anyio
 async def test_do_check_reading_levels_for_types(
-    mocker: pytest_mock.MockerFixture, resolved_params: dict[str, Any], outcome: tuple[bool, bool]
+    mocker: pytest_mock.MockerFixture,
+    resolved_params: dict[str, Any],
+    expected_window_period: timedelta | None,
+    called: bool,
 ) -> None:
     """Ensures that the matching function works as expected for the correct combinations of resolved parameters.
 
     Args:
         mocker: the mocker fixture
         resolved_params: dictionary passed in containing parameters resolved during evaluation
-        outcome: indicates the combination of called level functions to be expected to have been called
-            for the given combination of resolved parameters (bool, bool) relating to windowed level
-            and single level respectively
+        expected_window_period: the window_period do_check_levels_for_readings should be called with
+        called: whether do_check_levels_for_readings should be called at all
     """
-    mock_single_level = mocker.patch("cactus_runner.app.check.do_check_single_level")
-    mock_level_period = mocker.patch("cactus_runner.app.check.do_check_levels_for_period")
+    mock_levels = mocker.patch("cactus_runner.app.check.do_check_levels_for_readings")
     session = mocker.AsyncMock()
 
     result = await do_check_reading_levels_for_types(session, [], resolved_params)
-    match outcome:
-        case (True, True):
-            mock_level_period.assert_called_once()
-        case (True, False):
-            mock_single_level.assert_called_once()
-        case (False, False):
-            assert_check_result(result, True)
-        case _:
-            raise AssertionError("Unhandled test case found")
+    if called:
+        mock_levels.assert_called_once_with(session, [], mock.ANY, mock.ANY, expected_window_period)
+    else:
+        mock_levels.assert_not_called()
+        assert_check_result(result, True)
+
+
+@pytest.mark.parametrize(
+    "resolved_params",
+    [
+        {"minimum_level": 1, "maximum_level": 2, "latest_reading_only": True},
+        {"minimum_level": 1, "latest_reading_only": True},
+        {"latest_reading_only": True},  # No levels at all - still routes to the latest-reading check
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_reading_levels_for_types_latest_reading_only(
+    mocker: pytest_mock.MockerFixture,
+    resolved_params: dict[str, Any],
+) -> None:
+    """latest_reading_only=True should route to do_check_latest_reading_level instead of the windowed/whole-test
+    check, and should never call do_check_levels_for_readings"""
+    mock_levels = mocker.patch("cactus_runner.app.check.do_check_levels_for_readings")
+    mock_latest = mocker.patch("cactus_runner.app.check.do_check_latest_reading_level")
+    mock_latest.return_value = CheckResult(True, None)
+    session = mocker.AsyncMock()
+
+    result = await do_check_reading_levels_for_types(session, [], resolved_params)
+
+    mock_levels.assert_not_called()
+    mock_latest.assert_called_once_with(
+        session, [], resolved_params.get("minimum_level"), resolved_params.get("maximum_level")
+    )
+    assert_check_result(result, True)
 
 
 @pytest.mark.parametrize(
