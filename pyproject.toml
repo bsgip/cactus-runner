@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
   "aiohttp>=3.11.12,<4",
   "cactus-schema>=1.3.4,<2",
-  "cactus-test-definitions>=1.15.0,<2",
+  "cactus-test-definitions @ git+https://github.com/bsgip/cactus-test-definitions.git@d6e34296f3622bfb868fe2b56bf7f861f988bf71",
   "envoy @ git+https://github.com/bsgip/envoy.git@v1.6.0",
   "psycopg[binary]>=3.2.5,<4",
   "asyncpg>=0.30.0,<1",

@@ -8,6 +8,7 @@ from cactus_test_definitions.variable_expressions import (
     Expression,
     NamedVariable,
     NamedVariableType,
+    Negate,
     OperationType,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,11 +27,13 @@ class ResolvedParam:
 
 def is_resolvable_variable(v: Any) -> bool:  # noqa: ANN401
     """Returns True if the supplied value is a variable definition that requires resolving"""
-    return isinstance(v, NamedVariable) or isinstance(v, Expression) or isinstance(v, Constant)
+    return isinstance(v, NamedVariable) or isinstance(v, Expression) or isinstance(v, Constant) or isinstance(v, Negate)
 
 
 async def resolve_variable(  # noqa: C901
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure, v: NamedVariable | Expression | Constant
+    session: AsyncSession,
+    active_test_procedure: ActiveTestProcedure,
+    v: NamedVariable | Expression | Constant | Negate,
 ) -> Any:  # noqa: ANN401
     """Attempts to resolve the specified variable (potentially from the database)
 
@@ -122,6 +125,12 @@ async def resolve_variable(  # noqa: C901
 
         except Exception as err:
             raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {err}") from err
+    elif isinstance(v, Negate):
+        operand_value = await resolve_variable(session, active_test_procedure, v.operand)
+        try:
+            return -operand_value
+        except Exception as err:
+            raise UnresolvableVariableError(f"Unable to negate operand: {err}") from err
     else:
         raise UnresolvableVariableError(f"Unsupported variable type {type(v)}")
 
