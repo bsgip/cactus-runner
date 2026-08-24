@@ -136,14 +136,9 @@ async def test_custom_plugin_is_selected_before_default_plugin():
     pm.register(CustomPlugin())
 
     provider = BackendProvider(pm)
-    try:
-        backend = await provider.create_backend(context=None)
+    backend = await provider.create_backend(context=None)
 
-        assert backend == "custom-backend"
-    finally:
-        for plugin in pm.get_plugins():
-            if isinstance(plugin, DefaultEnvoyPlugin):
-                await plugin.shutdown()
+    assert backend == "custom-backend"
 
 
 @pytest.mark.anyio
@@ -157,6 +152,11 @@ async def test_create_plugin_manager_registers_default_plugin():
     """
     pm = create_plugin_manager()
 
-    backends = await pm.ahook.create_backend(context=None)
+    try:
+        backends = await pm.ahook.create_backend(context=None)
 
-    assert len(backends) == 1
+        assert len(backends) == 1
+    finally:
+        for plugin in pm.get_plugins():
+            if isinstance(plugin, DefaultEnvoyPlugin):
+                await plugin.shutdown()
