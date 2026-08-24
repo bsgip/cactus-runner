@@ -14,6 +14,7 @@ from cactus_test_definitions.variable_expressions import (
     Expression,
     NamedVariable,
     NamedVariableType,
+    Negate,
     OperationType,
 )
 from envoy.server.model.site import Site, SiteDERSetting
@@ -51,6 +52,7 @@ class MyTestingClass:
         (Constant(1.23), True),
         (Constant(timedelta(5)), True),
         (Expression(OperationType.ADD, Constant(1.23), NamedVariable(NamedVariableType.NOW)), True),
+        (Negate(NamedVariable(NamedVariableType.NOW)), True),
     ],
 )
 def test_is_resolvable_variable(input: Any, expected: bool):
@@ -102,6 +104,11 @@ DATABASE_SET_MAX_W = 2020.0
         (
             Expression(OperationType.DIVIDE, NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W), Constant(2)),
             1010.0,
+        ),
+        (Negate(NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W)), -DATABASE_SET_MAX_W),
+        (
+            Negate(Expression(OperationType.MULTIPLY, Constant(1.05), NamedVariable(NamedVariableType.DERSETTING_SET_MAX_W))),  # noqa: E501
+            -DATABASE_SET_MAX_W * 1.05,
         ),
     ],
 )
