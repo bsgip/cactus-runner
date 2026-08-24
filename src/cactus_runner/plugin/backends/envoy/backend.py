@@ -41,7 +41,7 @@ from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
 from cactus_runner.plugin.backends.envoy.admin_client import get_exclusive_site_group
 from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
-from cactus_runner.plugin.backends.envoy.readings import MANDATORY_READING_SPECIFIERS, get_readings
+from cactus_runner.app.readings import MANDATORY_READING_SPECIFIERS, get_readings
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 from cactus_runner.plugin.backends.models import FinalSerializableReportingData, RunnerBackendTestContext
 
