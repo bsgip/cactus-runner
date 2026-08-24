@@ -1,6 +1,6 @@
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http import HTTPStatus
 from urllib.parse import quote
 
@@ -104,7 +104,7 @@ async def test_client_interactions(
         # GEN-01's preconditions gate the test start on the site/DER currently reporting active power readings
         # within a band of the DER's rated export capacity - so we need some readings in place before /start.
         if test_procedure_id == TestProcedureId.GEN_01:
-            now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+            now = datetime.now(UTC).replace(second=0, microsecond=0)
 
             site_reading_type = generate_class_instance(
                 SiteReadingType,
