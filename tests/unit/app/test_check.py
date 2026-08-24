@@ -64,6 +64,7 @@ from cactus_runner.app.check import (
     check_response_contents,
     check_subscription_contents,
     determine_check_results,
+    do_check_latest_reading_level,
     do_check_levels_for_readings,
     do_check_reading_levels_for_types,
     do_check_reading_type_mrids_match_pen,
@@ -1444,6 +1445,85 @@ async def test_do_check_levels_for_readings(
 
 
 @pytest.mark.parametrize(
+    "srt_ids, readings, mult, min_level, max_level, expected",
+    [
+        # last reading in LEVEL_SCENARIOS[0] = 60, check larger, smaller, equal
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.0, None, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 60.1, None, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 59.9, False),
+        ([1], [LEVEL_SCENARIOS[0]], 0, None, 60.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 50.0, 70.0, True),
+        ([1], [LEVEL_SCENARIOS[0]], 0, 40.0, 45.0, False),
+        # last reading in LEVEL_SCENARIOS[1] = 0
+        ([2], [LEVEL_SCENARIOS[1]], 1, -40.0, 45.0, True),
+        # last reading in LEVEL_SCENARIOS[2] = 600, but give it a pow10 of -1 = 60
+        ([3], [LEVEL_SCENARIOS[2]], -1, 60.0, 60.0, True),
+        # Two reading types with 59.0 <= value <= 62.0
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, True),
+        # one site reading type passes, one fails
+        ([1, 2], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 60.5, 62.0, False),
+        # No readings for the chosen SiteReadingType
+        ([3], [LEVEL_SCENARIOS[0], LEVEL_SCENARIOS[3]], 0, 59.0, 62.0, False),
+        # Only the latest reading matters - an early low outlier doesn't fail the check
+        ([1], [LEVEL_SCENARIOS[4]], 0, 60.0, 60.0, True),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_latest_reading_level(
+    pg_base_config,
+    srt_ids: list[int],
+    readings: list[ReadingTestScenario],
+    mult: int,
+    min_level: float | None,
+    max_level: float | None,
+    expected: bool,
+):
+    """Tests that do_check_latest_reading_level only considers the single most recent reading per type"""
+    async with generate_async_session(pg_base_config) as session:
+        # Load 3 SiteReadingTypes
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt1 = generate_class_instance(
+            SiteReadingType, seed=101, power_of_ten_multiplier=mult, site_reading_type_id=1, aggregator_id=1, site=site
+        )
+        srt2 = generate_class_instance(
+            SiteReadingType, seed=202, power_of_ten_multiplier=mult, site_reading_type_id=2, aggregator_id=1, site=site
+        )
+        srt3 = generate_class_instance(
+            SiteReadingType, seed=303, power_of_ten_multiplier=mult, site_reading_type_id=3, aggregator_id=1, site=site
+        )
+
+        session.add_all([site, srt1, srt2, srt3])
+        srt_d = {1: srt1, 2: srt2, 3: srt3}
+
+        # Load scenario readings
+        time_now = datetime.now()
+        for i, reading_scenario in enumerate(readings, 1):
+            for j, reading_value in enumerate(reading_scenario.readings, 1):
+                session.add(
+                    generate_class_instance(
+                        SiteReading,
+                        seed=i * len(reading_scenario.readings) + j,
+                        site_reading_type=srt_d[reading_scenario.srt_id],
+                        value=reading_value,
+                        time_period_start=time_now + timedelta(minutes=j),
+                        time_period_seconds=60,
+                        # Purposefully going back in time to show time_period being used to calculate
+                        created_time=time_now - timedelta(hours=j),
+                    )
+                )
+
+        await session.commit()
+
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+
+    async with generate_async_session(pg_base_config) as session:
+        result = await do_check_latest_reading_level(session, faked_srts, min_level, max_level)
+        assert_check_result(result, expected)
+
+
+@pytest.mark.parametrize(
     "resolved_params, expected_window_period, called",
     [
         ({"minimum_level": 1, "maximum_level": 2, "window_seconds": 3}, timedelta(seconds=3), True),
@@ -1477,6 +1557,35 @@ async def test_do_check_reading_levels_for_types(
     else:
         mock_levels.assert_not_called()
         assert_check_result(result, True)
+
+
+@pytest.mark.parametrize(
+    "resolved_params",
+    [
+        {"minimum_level": 1, "maximum_level": 2, "latest_reading_only": True},
+        {"minimum_level": 1, "latest_reading_only": True},
+        {"latest_reading_only": True},  # No levels at all - still routes to the latest-reading check
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_reading_levels_for_types_latest_reading_only(
+    mocker: pytest_mock.MockerFixture,
+    resolved_params: dict[str, Any],
+) -> None:
+    """latest_reading_only=True should route to do_check_latest_reading_level instead of the windowed/whole-test
+    check, and should never call do_check_levels_for_readings"""
+    mock_levels = mocker.patch("cactus_runner.app.check.do_check_levels_for_readings")
+    mock_latest = mocker.patch("cactus_runner.app.check.do_check_latest_reading_level")
+    mock_latest.return_value = CheckResult(True, None)
+    session = mocker.AsyncMock()
+
+    result = await do_check_reading_levels_for_types(session, [], resolved_params)
+
+    mock_levels.assert_not_called()
+    mock_latest.assert_called_once_with(
+        session, [], resolved_params.get("minimum_level"), resolved_params.get("maximum_level")
+    )
+    assert_check_result(result, True)
 
 
 @pytest.mark.parametrize(
