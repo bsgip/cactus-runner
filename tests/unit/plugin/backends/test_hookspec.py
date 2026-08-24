@@ -26,9 +26,7 @@ async def test_default_envoy_plugin_startup_initialises_database(monkeypatch):
 
     plugin = DefaultEnvoyPlugin(admin_client=Mock())
 
-    with patch(
-        "cactus_runner.plugin.backends.hookspec.initialise_database_connection"
-    ) as mock_initialise:
+    with patch("cactus_runner.plugin.backends.hookspec.initialise_database_connection") as mock_initialise:
         await plugin.startup()
 
     mock_initialise.assert_called_once_with("postgresql://test")
