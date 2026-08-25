@@ -8,13 +8,15 @@ from cactus_schema.runner import WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
 from envoy.server.model.site import Site, SiteDERSetting
-from envoy.server.model.site_reading import SiteReadingType
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.server.schema.sep2.types import UomType
 from sqlalchemy import inspect
 
 from cactus_runner.app.warning import (
     POST_TEST_ANALYSERS,
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
+    _analyse_voltage_out_of_range,
     run_post_test_analysers,
     warn,
 )
@@ -261,3 +263,94 @@ async def test_analyse_reading_type_varied_warns_when_uom_changed(pg_base_config
 
 def test_analyse_reading_type_varied_is_registered():
     assert _analyse_reading_type_varied in POST_TEST_ANALYSERS
+
+
+@pytest.mark.anyio
+async def test_analyse_voltage_out_of_range_no_warning_when_all_within_range(pg_base_config):
+    active_test_procedure = _make_active_test_procedure()
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        session.add(site)
+        await session.flush()
+
+        srt = generate_class_instance(
+            SiteReadingType, seed=202, site=site, aggregator_id=1, uom=UomType.VOLTAGE, power_of_ten_multiplier=0
+        )
+        session.add(srt)
+        await session.flush()
+
+        # 207V and 253V are the inclusive boundaries of the compliant range
+        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt, value=207))
+        session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt, value=230))
+        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt, value=253))
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+
+    assert active_test_procedure.warnings == {}
+
+
+@pytest.mark.anyio
+async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_types(pg_base_config):
+    """Two SiteReadingTypes (e.g. two phases) with out-of-range readings between them - the warning should
+    aggregate a single count across both, with values scaled by power_of_ten_multiplier."""
+    active_test_procedure = _make_active_test_procedure()
+
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        session.add(site)
+        await session.flush()
+
+        srt_a = generate_class_instance(
+            SiteReadingType,
+            seed=202,
+            site=site,
+            aggregator_id=1,
+            uom=UomType.VOLTAGE,
+            power_of_ten_multiplier=0,
+        )
+        # Values in tenths of a volt - power_of_ten_multiplier scales 2300 -> 230V
+        srt_b = generate_class_instance(
+            SiteReadingType,
+            seed=303,
+            site=site,
+            aggregator_id=1,
+            uom=UomType.VOLTAGE,
+            power_of_ten_multiplier=-1,
+        )
+        session.add(srt_a)
+        session.add(srt_b)
+        await session.flush()
+
+        # srt_a: one under range (206V), one in range (230V), one over range (254V)
+        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt_a, value=206))
+        session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt_a, value=230))
+        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt_a, value=254))
+
+        # srt_b: one under range (2050 -> 205V), rest in range
+        session.add(generate_class_instance(SiteReading, seed=2001, site_reading_type=srt_b, value=2050))
+        session.add(generate_class_instance(SiteReading, seed=2002, site_reading_type=srt_b, value=2300))
+
+        # A non-voltage reading type must be ignored entirely
+        srt_other = generate_class_instance(
+            SiteReadingType, seed=404, site=site, aggregator_id=1, uom=UomType.FREQUENCY_HZ
+        )
+        session.add(srt_other)
+        await session.flush()
+        session.add(generate_class_instance(SiteReading, seed=5001, site_reading_type=srt_other, value=1000000))
+
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+
+    assert list(active_test_procedure.warnings.keys()) == ["readings.voltage-out-of-range"]
+    message = active_test_procedure.warnings["readings.voltage-out-of-range"].message
+    assert "3 voltage readings" in message
+    assert "207V to 253V" in message
+
+
+def test_analyse_voltage_out_of_range_is_registered():
+    assert _analyse_voltage_out_of_range in POST_TEST_ANALYSERS

@@ -7,9 +7,11 @@ from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
 from envoy.server.model.site import SiteDERSetting
 from envoy.server.model.site_reading import SiteReadingType
+from envoy_schema.server.schema.sep2.types import UomType
 from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.app.envoy_common import get_site_readings
 from cactus_runner.models import ActiveTestProcedure
 
 logger = logging.getLogger(__name__)
@@ -108,7 +110,39 @@ async def _analyse_reading_type_varied(
         )
 
 
-POST_TEST_ANALYSERS: list[PostTestAnalyser] = [_analyse_der_settings_varied, _analyse_reading_type_varied]
+async def _analyse_voltage_out_of_range(
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
+) -> None:
+    """Flags if any voltage readings received during the test fall outside the compliant range of
+    207V to 253V (230V nominal +/- 10%). Applies per SiteReadingType, so multi-phase sites have each
+    phase's readings checked independently against this same band."""
+    response = await session.execute(select(SiteReadingType).where(SiteReadingType.uom == UomType.VOLTAGE))
+    site_reading_types = response.scalars().all()
+
+    out_of_range_count = 0
+    for srt in site_reading_types:
+        readings = await get_site_readings(session, srt)
+        for reading in readings:
+            voltage = reading.value * 10**srt.power_of_ten_multiplier
+            if voltage < 207 or voltage > 253:
+                out_of_range_count += 1
+
+    if out_of_range_count > 0:
+        warn(
+            active_test_procedure,
+            "readings.voltage-out-of-range",
+            "Voltage readings received fall outside the compliant range",
+            f"{out_of_range_count} voltage readings received fall outside the compliant 207V to 253V range. "
+            "Please ensure that your client is accurately reporting voltage and that there is a good reason "
+            "for this.",
+        )
+
+
+POST_TEST_ANALYSERS: list[PostTestAnalyser] = [
+    _analyse_der_settings_varied,
+    _analyse_reading_type_varied,
+    _analyse_voltage_out_of_range,
+]
 
 
 async def run_post_test_analysers(
