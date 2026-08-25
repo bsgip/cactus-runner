@@ -9,11 +9,14 @@ from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
 from cactus_schema.runner import RequestEntry
 from cactus_test_definitions.client import Event
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app import evaluator, event
+from cactus_runner.app.evaluator import ResolvedParam
 from cactus_runner.app.uri import MountedProxyPathParts
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
 
@@ -140,423 +143,415 @@ def test_generate_client_request_trigger_query_start(query: dict, expected_query
     assert trigger.client_request.query_start == expected_query_start
 
 
-@pytest.mark.parametrize(
-    "trigger, listener, expected",
-    [
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Wrong type of event
+IS_LISTENER_TRIGGERABLE_SCENARIOS = [
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="unsupported-event-type", parameters={}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Unrecognized event type
+        False,  # Wrong type of event
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="unsupported-event-type", parameters={}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # This was enabled after the event trigger (negative time)
+        False,  # Unrecognized event type
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2022, 11, 10, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 5, 5, tzinfo=UTC),
-            ),
-            False,  # This was enabled shortly after the event trigger (negative time)
+        False,  # This was enabled after the event trigger (negative time)
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 5, 4, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 5, 5, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
-            ),
-            True,
+        False,  # This was enabled shortly after the event trigger (negative time)
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=None,
-            ),
-            False,  # This listener is NOT enabled
+        True,
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=None,
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
-            ),
-            False,  # Not enough time elapsed
+        False,  # This listener is NOT enabled
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="wait", parameters={"duration_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        False,  # Not enough time elapsed
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="POST-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.PUT, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="PUT-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(
-                    type="GET-request-received",
-                    parameters={
-                        "endpoint": evaluator.ResolvedParam("/foo/bar"),
-                        "serve_request_first": evaluator.ResolvedParam(False),
-                    },
-                ),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        Listener(
+            step="step",
+            event=Event(type="POST-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_AFTER,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(
-                    type="GET-request-received",
-                    parameters={
-                        "endpoint": evaluator.ResolvedParam("/foo/bar"),
-                        "serve_request_first": evaluator.ResolvedParam(True),
-                    },
-                ),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.PUT, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/my/endppoint/1"),
-            ),
-            Listener(
-                step="step",
-                event=Event(
-                    type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/my/endppoint/1")}
-                ),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+        Listener(
+            step="step",
+            event=Event(type="PUT-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_AFTER,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Without serve_request_first: True - Only BEFORE events will fire
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo"),
+        Listener(
+            step="step",
+            event=Event(
+                type="GET-request-received",
+                parameters={
+                    "endpoint": evaluator.ResolvedParam("/foo/bar"),
+                    "serve_request_first": evaluator.ResolvedParam(False),
+                },
             ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Wrong endpoint
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Wrong endpoint
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_AFTER,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
+        Listener(
+            step="step",
+            event=Event(
+                type="GET-request-received",
+                parameters={
+                    "endpoint": evaluator.ResolvedParam("/foo/bar"),
+                    "serve_request_first": evaluator.ResolvedParam(True),
+                },
             ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Wrong method
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
-                actions=[],
-                enabled_time=None,
-            ),
-            False,  # Not enabled
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/my/endppoint/1"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/foo/123/bar/456"),
+        Listener(
+            step="step",
+            event=Event(
+                type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/my/endppoint/1")}
             ),
-            Listener(
-                step="step",
-                event=Event(
-                    type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/*/bar/*")}
-                ),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Wrong type of event
+        True,
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_AFTER,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="unsupported-event-type", parameters={}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # Unrecognized event type
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
-            ),
-            True,
+        False,  # Without serve_request_first: True - Only BEFORE events will fire
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={}),
-                actions=[],
-                enabled_time=None,
-            ),
-            False,  # This listener is NOT enabled
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
-            ),
-            True,  # proceed with timeout_seconds fires via TIME trigger once elapsed
+        False,  # Wrong endpoint
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
-            ),
-            False,  # Not enough time elapsed
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
-            ),
-            False,  # proceed without timeout_seconds does NOT fire via TIME trigger
+        False,  # Wrong endpoint
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.POST, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None
-            ),
-            Listener(
-                step="step",
-                event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
-            ),
-            True,  # Manual PROCEED still fires even when timeout_seconds is set but not yet elapsed
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=0),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,  # s=0 (first page) should trigger
+        False,  # Wrong method
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/bar"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=1),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # s=1 (second page) should NOT trigger
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/bar")}),
+            actions=[],
+            enabled_time=None,
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=5),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            False,  # s=5 (paginated) should NOT trigger
+        False,  # Not enabled
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/foo/123/bar/456"),
         ),
-        (
-            event.EventTrigger(
-                event.EventTriggerType.CLIENT_REQUEST_BEFORE,
-                datetime(2022, 11, 10, tzinfo=UTC),
-                False,
-                event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=None),
-            ),
-            Listener(
-                step="step",
-                event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
-                actions=[],
-                enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
-            ),
-            True,  # No s param should trigger (same as first page)
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/foo/*/bar/*")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
         ),
-    ],
-)
+        True,
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/dcap")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        False,  # Wrong type of event
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2022, 11, 10, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="unsupported-event-type", parameters={}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        False,  # Unrecognized event type
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
+        ),
+        True,
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={}),
+            actions=[],
+            enabled_time=None,
+        ),
+        False,  # This listener is NOT enabled
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
+        ),
+        True,  # proceed with timeout_seconds fires via TIME trigger once elapsed
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
+        ),
+        False,  # Not enough time elapsed
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.TIME, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 24, 0, tzinfo=UTC),
+        ),
+        False,  # proceed without timeout_seconds does NOT fire via TIME trigger
+    ),
+    (
+        event.EventTrigger(event.EventTriggerType.PROCEED, datetime(2024, 11, 10, 5, 30, 0, tzinfo=UTC), False, None),
+        Listener(
+            step="step",
+            event=Event(type="proceed", parameters={"timeout_seconds": evaluator.ResolvedParam(300)}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, 5, 26, 0, tzinfo=UTC),
+        ),
+        True,  # Manual PROCEED still fires even when timeout_seconds is set but not yet elapsed
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=0),
+        ),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        True,  # s=0 (first page) should trigger
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=1),
+        ),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        False,  # s=1 (second page) should NOT trigger
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=5),
+        ),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        False,  # s=5 (paginated) should NOT trigger
+    ),
+    (
+        event.EventTrigger(
+            event.EventTriggerType.CLIENT_REQUEST_BEFORE,
+            datetime(2022, 11, 10, tzinfo=UTC),
+            False,
+            event.ClientRequestDetails(HTTPMethod.GET, "/edev", query_start=None),
+        ),
+        Listener(
+            step="step",
+            event=Event(type="GET-request-received", parameters={"endpoint": evaluator.ResolvedParam("/edev")}),
+            actions=[],
+            enabled_time=datetime(2024, 11, 10, tzinfo=UTC),
+        ),
+        True,  # No s param should trigger (same as first page)
+    ),
+]
+
+
+@pytest.mark.parametrize("trigger, listener, expected", IS_LISTENER_TRIGGERABLE_SCENARIOS)
 @patch("cactus_runner.app.event.evaluator.resolve_variable_expressions_from_parameters")
 @pytest.mark.anyio
 async def test_is_listener_triggerable(
@@ -575,14 +570,47 @@ async def test_is_listener_triggerable(
     mock_resolve_variable_expressions_from_parameters.side_effect = (
         lambda _resolver, _active_test_procedures, parameters: parameters
     )
+    resolved_uri: ResolvedParam | None = listener.event.parameters.get("endpoint")
+    # This simulates the current EnvoyResolver behaviour.
+    mock_resolver.resolve_uri.return_value = resolved_uri.value if resolved_uri is not None else None
 
     result = await event.is_listener_triggerable(listener, trigger, mock_backend, atp)
 
     # Assert
     assert isinstance(result, bool)
     assert result == expected
-    assert not mock_resolver.mock_calls
+    assert len(mock_resolver.mock_calls) <= 1
     assert all([ca.args[0] is mock_resolver for ca in mock_resolve_variable_expressions_from_parameters.call_args_list])
+
+
+@pytest.mark.parametrize("trigger, listener, expected", IS_LISTENER_TRIGGERABLE_SCENARIOS)
+@patch("cactus_runner.app.event.evaluator.resolve_variable_expressions_from_parameters")
+@pytest.mark.anyio
+async def test_is_listener_triggerable_envoy_resolver(
+    mock_resolve_variable_expressions_from_parameters: MagicMock,
+    trigger: event.EventTrigger,
+    listener: Listener,
+    expected: bool,
+):
+    """Tests various combinations of listeners and events to see if they could potentially trigger"""
+
+    # Arrange
+    atp = generate_class_instance(ActiveTestProcedure, optional_is_none=True)
+    mock_backend = Mock(spec=RunnerBackend)
+    envoy_resolver = EnvoyResolver(session_factory=Mock(spec=AsyncSession))
+    mock_backend.get_expression_resolver.return_value = envoy_resolver
+    mock_resolve_variable_expressions_from_parameters.side_effect = (
+        lambda _resolver, _active_test_procedures, parameters: parameters
+    )
+
+    result = await event.is_listener_triggerable(listener, trigger, mock_backend, atp)
+
+    # Assert
+    assert isinstance(result, bool)
+    assert result == expected
+    assert all(
+        [ca.args[0] is envoy_resolver for ca in mock_resolve_variable_expressions_from_parameters.call_args_list]
+    )
 
 
 @pytest.mark.parametrize(

@@ -11,9 +11,9 @@ from cactus_test_definitions.variable_expressions import (
     OperationType,
 )
 
+from cactus_runner.app.resolvers import resolve_random_uri
 from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin.backends.resolver import ExpressionResolver, resolve_named_variable_now
-from cactus_runner.plugin.backends.uri import resolve_random_uri
 
 
 @dataclasses.dataclass

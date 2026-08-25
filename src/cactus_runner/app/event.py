@@ -10,6 +10,7 @@ from cactus_runner.app.check import all_checks_passing
 from cactus_runner.app.uri import MountedProxyPathParts, does_endpoint_match
 from cactus_runner.models import ActiveTestProcedure, Listener, RunnerState
 from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.uri import parse_uri
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,9 @@ async def is_listener_triggerable(  # noqa: C901
         )
         endpoint = resolved_params.get("endpoint", evaluator.ResolvedParam(""))
         serve_request_first = resolved_params.get("serve_request_first", evaluator.ResolvedParam(False))
+        resolved_endpoint = await resolver.resolve_uri(parse_uri(endpoint.value))
 
-        if not does_endpoint_match(trigger.client_request.path, endpoint.value):
+        if not does_endpoint_match(trigger.client_request.path, resolved_endpoint):
             return False
 
         # Only match on first page (s=0) or un-paginated (s absent) requests

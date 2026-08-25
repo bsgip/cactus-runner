@@ -2,6 +2,8 @@ import datetime as dt
 import logging
 from typing import Protocol, runtime_checkable
 
+from cactus_runner.plugin.backends.uri import ParsedUri
+
 logger = logging.getLogger(__name__)
 
 
@@ -184,5 +186,46 @@ class ExpressionResolver(Protocol):
 
         Raises:
             raise UnresolvableVariableError when unable to resolve
+        """
+        ...
+
+    # ---------------------------------------------------------------
+    # URI Resolution
+    # ---------------------------------------------------------------
+
+    async def resolve_uri(self, uri: ParsedUri) -> str:
+        """Resolve a CACTUS test-definition URI into a backend-specific URI.
+
+        Test procedures are currently written against Envoy-style SEP2
+        endpoints. Alternate backend implementations may expose equivalent
+        resources using different URI structures.
+
+        Implementations should use the structured ParsedUri representation
+        rather than reparsing the original URI string.
+
+        Examples:
+            CACTUS URI:
+
+                /edev/1/der/1/ders
+
+            may resolve to:
+
+                /devices/site-123/status
+
+            or:
+
+                /api/v1/devices/f7ae/status
+
+        Args:
+            uri: Parsed representation of the endpoint from the test
+                definition.
+
+        Returns:
+            The backend-specific URI that should be used when performing
+            endpoint comparisons.
+
+        Raises:
+            UnresolvableVariableError:
+                If the URI cannot be mapped by this backend.
         """
         ...

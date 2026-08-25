@@ -196,34 +196,288 @@ Status methods are polled continuously by the UI and test orchestrator:
 
 ---
 
-## 5. Expression Resolvers (`ExpressionResolver` Protocol)
+## 5. Expression & URI Resolvers (`ExpressionResolver` Protocol)
 
-Test definitions frequently use named variable expressions (e.g., `$setMaxW`, `$rtgMaxW`, `$setMaxChargeRateW`). The backend must expose an [ExpressionResolver](src/cactus_runner/plugin/backends/resolver.py) via `backend.get_expression_resolver()`.
+Test definitions frequently reference dynamic values and endpoint URIs that must be resolved against the currently active backend implementation.
 
-### Implementing the Resolver Protocol
-
-All methods return a `float` and must raise `UnresolvableVariableError` if the variable cannot be resolved:
+Every backend must expose an `ExpressionResolver` implementation via:
 
 ```python
-from cactus_runner.app.evaluator import UnresolvableVariableError
+backend.get_expression_resolver()
+```
+
+The resolver has two responsibilities:
+
+1. Resolving named variable expressions (e.g. `$setMaxW`, `$rtgMaxW`).
+2. Resolving Envoy-style CACTUS endpoint URIs into backend-specific equivalents.
+
+This separation allows test definitions to remain backend-agnostic whilst still supporting alternate implementations that do not use Envoy's URI structure or persistence model.
+
+### 5.1. Named Variable Resolution
+
+Test definitions may reference values using named variables.
+
+Examples:
+
+```yaml
+expected: $setMaxW
+```
+
+```yaml
+expected: $rtgMaxW
+```
+
+```yaml
+expected: $setMaxChargeRateW
+```
+
+The resolver is responsible for obtaining the current value from the backend and returning it in a primitive form suitable for evaluation.
+
+All resolver methods return a `float` and should raise `UnresolvableVariableError` if the value cannot be resolved.
+
+Example:
+
+```python
+from cactus_test_definitions.errors import UnresolvableVariableError
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
 
+
 class MyExpressionResolver(ExpressionResolver):
-    def __init__(self, server_interface: MyCustomServerInterface) -> None:
-        self._admin_session = server_interface
+    def __init__(self, client: MyBackendClient) -> None:
+        self._client = client
 
     async def resolve_named_variable_der_setting_max_w(self) -> float:
-        site = await self._admin_session.get_active_site()
-        if site is None:
-            raise UnresolvableVariableError("No active site found")
-        der_setting = await self._admin_session.get_der_settings(site.site_id)
-        if der_setting is None or der_setting.max_w_value is None:
-            raise UnresolvableVariableError("setMaxW is not set")
-        return float(der_setting.max_w_value)
+        site = await self._client.get_active_site()
 
-    # Implement all other resolve_named_variable_der_setting_* 
-    # and resolve_named_variable_der_rating_* methods...
+        if site is None:
+            raise UnresolvableVariableError(
+                "No active site found"
+            )
+
+        der_setting = await self._client.get_der_settings(site.site_id)
+
+        if der_setting is None or der_setting.max_w_value is None:
+            raise UnresolvableVariableError(
+                "Unable to resolve setMaxW"
+            )
+
+        return float(der_setting.max_w_value)
 ```
+
+### 5.2. URI Resolution
+
+Test definitions currently use Envoy-style SEP2 endpoint URIs.
+
+Examples:
+
+```yaml
+endpoint: /edev/1/der/1/ders
+```
+
+```yaml
+endpoint: /edev/1/fsa/1/derp
+```
+
+```yaml
+endpoint: /mup/*
+```
+
+Alternate backend implementations may expose equivalent resources using different URI structures, identifiers, or resource hierarchies.
+
+To support this, the resolver must implement:
+
+```python
+async def resolve_uri(self, uri: ParsedUri) -> str:
+    ...
+```
+
+The runner automatically parses endpoint definitions before passing them to the resolver. Plugin implementations should never need to manually parse SEP2 URIs.
+
+#### 5.2.1. ParsedUri
+
+The runner provides a structured representation of the endpoint:
+
+```python
+from cactus_runner.plugin.backends.uri import ParsedUri
+```
+
+Example:
+
+```python
+parsed_uri = parse_uri("/edev/1/der/1/ders")
+```
+
+Produces:
+
+```python
+ParsedUri(
+    original_uri="/edev/1/der/1/ders",
+    matched_uri_name="DERStatusUri",
+    matched_uri_template="/edev/{site_id}/der/{der_id}/ders",
+    end_device=ResourceIndex(value=1),
+    der=ResourceIndex(value=1),
+)
+```
+
+The resolver therefore receives:
+
+- The original URI.
+- Parsed resource indices.
+- Wildcard metadata.
+- The matching `envoy-schema` URI definition.
+
+without requiring any backend-specific string parsing logic.
+
+#### 5.2.2. Implementing URI Resolution
+
+The built-in Envoy backend requires no URI translation and simply returns the original URI:
+
+```python
+from cactus_runner.plugin.backends.uri import ParsedUri
+
+
+class EnvoyResolver(ExpressionResolver):
+
+    async def resolve_uri(self, uri: ParsedUri) -> str:
+        return uri.original_uri
+```
+
+Alternate backends can map Envoy resources to equivalent backend-specific resources:
+
+```python
+from cactus_test_definitions.errors import UnresolvableVariableError
+
+
+class MyResolver(ExpressionResolver):
+
+    async def resolve_uri(self, uri: ParsedUri) -> str:
+
+        match uri.matched_uri_name:
+
+            case "DERStatusUri":
+                return "/api/device/status"
+
+            case "DERSettingsUri":
+                return "/api/device/settings"
+
+            case "MirrorUsagePointUri":
+                return "/api/metering"
+
+            case _:
+                raise UnresolvableVariableError(
+                    f"Unsupported URI type: {uri.matched_uri_name}"
+                )
+```
+
+Implementations are free to query databases, external APIs, cached resources, or in-memory state when determining the appropriate URI mapping.
+
+#### 5.2.3. Working With Indexed Resources
+
+`ParsedUri` exposes commonly-used indexed resources directly.
+
+Examples:
+
+```python
+if uri.end_device:
+    site_index = uri.end_device.value
+```
+
+```python
+if uri.der:
+    der_index = uri.der.value
+```
+
+```python
+if uri.fsa:
+    fsa_index = uri.fsa.value
+```
+
+Using these parsed fields is preferred over manually inspecting URI strings or path components.
+
+#### 5.2.4. Wildcards
+
+Listener endpoints may contain wildcard path components.
+
+Example:
+
+```yaml
+endpoint: /mup/*
+```
+
+This is exposed through `ResourceIndex`:
+
+```python
+ParsedUri(
+    mirror_usage_point=ResourceIndex(
+        value=None,
+        is_wildcard=True,
+    )
+)
+```
+
+Backend implementations should preserve wildcard semantics when translating URIs.
+
+Example:
+
+```python
+if (
+    uri.mirror_usage_point is not None
+    and uri.mirror_usage_point.is_wildcard
+):
+    ...
+```
+
+#### 5.2.5. Error Handling
+
+Resolvers should fail clearly when required resources cannot be resolved.
+
+Example:
+
+```python
+raise UnresolvableVariableError(
+    "Backend does not support DERStatusUri"
+)
+```
+
+Plugin implementations are only expected to support the URI types required by the test procedures they are intended to execute.
+
+Clear error messages significantly improve diagnosability during backend integration and test onboarding.
+
+#### 5.2.6. Recommended Implementation Strategy
+
+For most backends, URI resolution should primarily switch on:
+
+```python
+uri.matched_uri_name
+```
+
+which corresponds directly to URI definitions published by `envoy-schema`.
+
+Example:
+
+```python
+match uri.matched_uri_name:
+
+    case "DERStatusUri":
+        ...
+
+    case "DERSettingsUri":
+        ...
+
+    case "DERCapabilityUri":
+        ...
+
+    case "DERProgramFSAListUri":
+        ...
+
+    case _:
+        raise UnresolvableVariableError(
+            f"Unsupported URI type: {uri.matched_uri_name}"
+        )
+```
+
+This approach is generally more maintainable than matching raw URI strings and allows implementations to benefit from the URI parsing already performed by the runner.
+
 
 ---
 

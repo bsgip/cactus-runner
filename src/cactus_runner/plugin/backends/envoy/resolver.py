@@ -7,6 +7,7 @@ from envoy.server.mapper import common
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.plugin.backends.resolver import ExpressionResolver
+from cactus_runner.plugin.backends.uri import ParsedUri
 
 
 async def _select_single_site_der_setting(session: AsyncSession, variable_name: str) -> model.SiteDERSetting:
@@ -272,3 +273,6 @@ class EnvoyResolver(ExpressionResolver):
             raise errors.UnresolvableVariableError("Unable to extract rtgMaxWh from DERCapability")
 
         return float(rtg_max_wh)
+
+    async def resolve_uri(self, uri: ParsedUri) -> str:
+        return uri.original_uri
