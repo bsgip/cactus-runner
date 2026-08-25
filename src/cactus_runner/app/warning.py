@@ -105,9 +105,7 @@ async def _analyse_reading_type_varied(session: AsyncSession) -> WarningEntry | 
         )
 
 
-async def _analyse_active_power_exceeds_max_w(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
-) -> None:
+async def _analyse_active_power_exceeds_max_w(session: AsyncSession) -> WarningEntry | None:
     """Flags if any active power (Watts) readings received during the test exceed the DER's setMaxW limit."""
     der_settings_response = await session.execute(select(SiteDERSetting))
     max_w_by_site_id = {
@@ -131,18 +129,18 @@ async def _analyse_active_power_exceeds_max_w(
                 out_of_range_count += 1
 
     if out_of_range_count > 0:
-        warn(
-            active_test_procedure,
-            "readings.active-power-exceeds-set-max-w",
-            "Active power readings received exceed setMaxW",
-            f"{out_of_range_count} active power readings received exceed the DER's setMaxW limit (in the "
-            "positive/export or negative/import direction). Active power should never exceed setMaxW.",
+        return WarningEntry(
+            type="readings.active-power-exceeds-set-max-w",
+            description="Active power readings received exceed setMaxW",
+            message=(
+                f"{out_of_range_count} active power readings received exceed the DER's setMaxW limit (in the "
+                "positive/export or negative/import direction). Active power should never exceed setMaxW."
+            ),
+            timestamp=datetime.now(UTC),
         )
 
 
-async def _analyse_voltage_out_of_range(
-    session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
-) -> None:
+async def _analyse_voltage_out_of_range(session: AsyncSession) -> WarningEntry | None:
     """Flags if any voltage readings received during the test fall outside the compliant range of
     207V to 253V (230V nominal +/- 10%). Applies per SiteReadingType, so multi-phase sites have each
     phase's readings checked independently against this same band."""
@@ -158,13 +156,15 @@ async def _analyse_voltage_out_of_range(
                 out_of_range_count += 1
 
     if out_of_range_count > 0:
-        warn(
-            active_test_procedure,
-            "readings.voltage-out-of-range",
-            "Voltage readings received fall outside the compliant range",
-            f"{out_of_range_count} voltage readings received fall outside the compliant 207V to 253V range. "
-            "Please ensure that your client is accurately reporting voltage and that there is a good reason "
-            "for this.",
+        return WarningEntry(
+            type="readings.voltage-out-of-range",
+            description="Voltage readings received fall outside the compliant range",
+            message=(
+                f"{out_of_range_count} voltage readings received fall outside the compliant 207V to 253V range. "
+                "Please ensure that your client is accurately reporting voltage and that there is a good reason "
+                "for this."
+            ),
+            timestamp=datetime.now(UTC),
         )
 
 

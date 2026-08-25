@@ -17,8 +17,8 @@ from cactus_runner.app.warning import (
     _analyse_active_power_exceeds_max_w,
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
-    append_warnings,
     _analyse_voltage_out_of_range,
+    append_warnings,
     run_post_test_analysers,
 )
 from cactus_runner.models import ActiveTestProcedure
@@ -321,8 +321,9 @@ async def test_analyse_active_power_exceeds_max_w_no_warning_when_within_range(p
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_active_power_exceeds_max_w(session, active_test_procedure, [])
+        warning = await _analyse_active_power_exceeds_max_w(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -382,8 +383,10 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_active_power_exceeds_max_w(session, active_test_procedure, [])
+        warning = await _analyse_active_power_exceeds_max_w(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["readings.active-power-exceeds-set-max-w"]
     message = active_test_procedure.warnings["readings.active-power-exceeds-set-max-w"].message
     assert "3 active power readings" in message
@@ -415,8 +418,9 @@ async def test_analyse_voltage_out_of_range_no_warning_when_all_within_range(pg_
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+        warning = await _analyse_voltage_out_of_range(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -472,8 +476,10 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+        warning = await _analyse_voltage_out_of_range(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["readings.voltage-out-of-range"]
     message = active_test_procedure.warnings["readings.voltage-out-of-range"].message
     assert "3 voltage readings" in message
