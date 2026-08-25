@@ -110,6 +110,41 @@ async def _analyse_reading_type_varied(
         )
 
 
+async def _analyse_active_power_exceeds_max_w(
+    session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
+) -> None:
+    """Flags if any active power (Watts) readings received during the test exceed the DER's setMaxW limit."""
+    der_settings_response = await session.execute(select(SiteDERSetting))
+    max_w_by_site_id = {
+        site_der_setting.site_id: site_der_setting.max_w_value * 10**site_der_setting.max_w_multiplier
+        for site_der_setting in der_settings_response.scalars().all()
+    }
+
+    response = await session.execute(select(SiteReadingType).where(SiteReadingType.uom == UomType.REAL_POWER_WATT))
+    site_reading_types = response.scalars().all()
+
+    out_of_range_count = 0
+    for srt in site_reading_types:
+        max_w = max_w_by_site_id.get(srt.site_id)
+        if max_w is None:
+            continue
+
+        readings = await get_site_readings(session, srt)
+        for reading in readings:
+            active_power = reading.value * 10**srt.power_of_ten_multiplier
+            if active_power < -max_w or active_power > max_w:
+                out_of_range_count += 1
+
+    if out_of_range_count > 0:
+        warn(
+            active_test_procedure,
+            "readings.active-power-exceeds-set-max-w",
+            "Active power readings received exceed setMaxW",
+            f"{out_of_range_count} active power readings received exceed the DER's setMaxW limit (in the "
+            "positive/export or negative/import direction). Active power should never exceed setMaxW.",
+        )
+
+
 async def _analyse_voltage_out_of_range(
     session: AsyncSession, active_test_procedure: ActiveTestProcedure, request_history: list[RequestEntry]
 ) -> None:
@@ -141,6 +176,7 @@ async def _analyse_voltage_out_of_range(
 POST_TEST_ANALYSERS: list[PostTestAnalyser] = [
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
+    _analyse_active_power_exceeds_max_w,
     _analyse_voltage_out_of_range,
 ]
 
