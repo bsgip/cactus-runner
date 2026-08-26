@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from assertical.asserts.time import assert_nowish
@@ -18,8 +18,8 @@ from cactus_runner.app.warning import (
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
     _analyse_voltage_out_of_range,
+    append_warnings,
     run_post_test_analysers,
-    warn,
 )
 from cactus_runner.models import ActiveTestProcedure
 
@@ -28,10 +28,14 @@ def _make_active_test_procedure() -> ActiveTestProcedure:
     return generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None, warnings={})
 
 
-def test_warn_adds_new_entry():
+def test_append_warnings_adds_new_entry():
     active_test_procedure = _make_active_test_procedure()
 
-    warn(active_test_procedure, "der-settings.set-max-w-varied", "short description", "full message")
+    warning_entry = WarningEntry(
+        "der-settings.set-max-w-varied", "short description", "full message", datetime.now(UTC)
+    )
+
+    append_warnings([warning_entry], active_test_procedure)
 
     assert list(active_test_procedure.warnings.keys()) == ["der-settings.set-max-w-varied"]
     entry = active_test_procedure.warnings["der-settings.set-max-w-varied"]
@@ -42,14 +46,24 @@ def test_warn_adds_new_entry():
     assert_nowish(entry.timestamp)
 
 
-def test_warn_is_first_write_wins():
-    """A second warn() call with the same type should be a silent no-op - the first message/timestamp is kept"""
+def test_append_warnings_is_first_write_wins():
+    """A second warning with the same type should be ignored - the first message/timestamp is kept"""
     active_test_procedure = _make_active_test_procedure()
 
-    warn(active_test_procedure, "polling.too-frequent./dcap", "first description", "first message")
+    warnings = [WarningEntry("polling.too-frequent./dcap", "first description", "first message", datetime.now(UTC))]
+    append_warnings(warnings, active_test_procedure)
     first_entry = active_test_procedure.warnings["polling.too-frequent./dcap"]
 
-    warn(active_test_procedure, "polling.too-frequent./dcap", "second description", "second message")
+    warnings.append(
+        WarningEntry(
+            "polling.too-frequent./dcap",
+            "second description",
+            "second message",
+            datetime.now(UTC) + timedelta(seconds=1),
+        )
+    )
+
+    append_warnings(warnings, active_test_procedure)
 
     assert len(active_test_procedure.warnings) == 1
     entry = active_test_procedure.warnings["polling.too-frequent./dcap"]
@@ -58,11 +72,15 @@ def test_warn_is_first_write_wins():
     assert entry.message == "first message"
 
 
-def test_warn_distinct_types_both_kept():
+def test_append_warnings_distinct_types_both_kept():
     active_test_procedure = _make_active_test_procedure()
 
-    warn(active_test_procedure, "der-settings.set-max-w-varied", "d1", "m1")
-    warn(active_test_procedure, "polling.too-frequent./dcap", "d2", "m2")
+    warnings = [
+        WarningEntry("der-settings.set-max-w-varied", "d1", "m1", datetime.now(UTC)),
+        WarningEntry("polling.too-frequent./dcap", "d2", "m2", datetime.now(UTC)),
+    ]
+
+    append_warnings(warnings, active_test_procedure)
 
     assert set(active_test_procedure.warnings.keys()) == {
         "der-settings.set-max-w-varied",
@@ -75,18 +93,17 @@ async def test_run_post_test_analysers_catches_analyser_exceptions(mocker):
     """A failing analyser must not prevent the others from running"""
     active_test_procedure = _make_active_test_procedure()
 
-    async def _boom(session, active_test_procedure, request_history):
+    async def _boom(session):
         raise ValueError("analyser blew up")
 
-    async def _good(session, active_test_procedure, request_history):
-        warn(active_test_procedure, "some.type", "d", "m")
+    async def _good(session):
+        return WarningEntry("some.type", "d", "m", datetime.now(UTC))
 
     mocker.patch("cactus_runner.app.warning.POST_TEST_ANALYSERS", [_boom, _good])
 
-    await run_post_test_analysers(
-        session=mocker.Mock(), active_test_procedure=active_test_procedure, request_history=[]
-    )
-
+    warnings = await run_post_test_analysers(session=mocker.Mock())
+    assert warnings
+    append_warnings(warnings, active_test_procedure)
     assert "some.type" in active_test_procedure.warnings
 
 
@@ -126,8 +143,9 @@ async def test_analyse_der_settings_varied_no_warning_when_unchanged(pg_base_con
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_der_settings_varied(session, active_test_procedure, [])
+        warning = await _analyse_der_settings_varied(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -184,8 +202,10 @@ async def test_analyse_der_settings_varied_warns_when_any_value_changed(
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_der_settings_varied(session, active_test_procedure, [])
+        warning = await _analyse_der_settings_varied(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["der-settings.set-max-w-varied"]
     assert expected_field in active_test_procedure.warnings["der-settings.set-max-w-varied"].message
 
@@ -222,8 +242,9 @@ async def test_analyse_reading_type_varied_no_warning_when_unchanged(pg_base_con
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_reading_type_varied(session, active_test_procedure, [])
+        warning = await _analyse_reading_type_varied(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -256,8 +277,10 @@ async def test_analyse_reading_type_varied_warns_when_uom_changed(pg_base_config
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_reading_type_varied(session, active_test_procedure, [])
+        warning = await _analyse_reading_type_varied(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["reading-type.varied"]
     assert "uom" in active_test_procedure.warnings["reading-type.varied"].message
 
@@ -298,8 +321,9 @@ async def test_analyse_active_power_exceeds_max_w_no_warning_when_within_range(p
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_active_power_exceeds_max_w(session, active_test_procedure, [])
+        warning = await _analyse_active_power_exceeds_max_w(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -359,8 +383,10 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_active_power_exceeds_max_w(session, active_test_procedure, [])
+        warning = await _analyse_active_power_exceeds_max_w(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["readings.active-power-exceeds-set-max-w"]
     message = active_test_procedure.warnings["readings.active-power-exceeds-set-max-w"].message
     assert "3 active power readings" in message
@@ -392,8 +418,9 @@ async def test_analyse_voltage_out_of_range_no_warning_when_all_within_range(pg_
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+        warning = await _analyse_voltage_out_of_range(session)
 
+    assert warning is None
     assert active_test_procedure.warnings == {}
 
 
@@ -449,8 +476,10 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        await _analyse_voltage_out_of_range(session, active_test_procedure, [])
+        warning = await _analyse_voltage_out_of_range(session)
 
+    assert warning is not None
+    append_warnings([warning], active_test_procedure)
     assert list(active_test_procedure.warnings.keys()) == ["readings.voltage-out-of-range"]
     message = active_test_procedure.warnings["readings.voltage-out-of-range"].message
     assert "3 voltage readings" in message

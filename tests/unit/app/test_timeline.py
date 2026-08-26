@@ -1,12 +1,13 @@
 import unittest.mock as mock
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
 import pytest
 from assertical.asserts.type import assert_list_type
 from assertical.fake.generator import generate_class_instance
-from assertical.fake.sqlalchemy import assert_mock_session, create_mock_session
 from assertical.fixtures.postgres import generate_async_session
+from envoy.server.model.archive import ArchiveSiteReading
 from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
@@ -29,6 +30,14 @@ from cactus_runner.app.timeline import (
     highest_priority_entity,
     pow10_to_watts,
     reading_to_watts,
+)
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
+from cactus_runner.plugin.backends.envoy.mappers import (
+    map_envoy_site_control_group_default_to_dto,
+    map_envoy_site_control_to_dto,
+    map_envoy_site_reading_to_dto,
 )
 
 BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=UTC)  # Used as an arbitrary - non aligned datetime
@@ -188,8 +197,25 @@ def test_reading_to_watts(srts, reading, expected):
         ),  # Archive time is tiebreaker on archive records
     ],
 )
-def test_highest_priority_entity(entities, expected_index):
-    intervals = [Interval(idx, idx + 1, e) for idx, e in enumerate(entities)]
+def test_highest_priority_entity_envoy(
+    entities: list[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope | SiteReading | ArchiveSiteReading],
+    expected_index: int,
+):
+    """Ensures that the original usage of Envoy sql model objects is honoured by any modifications made."""
+    if entities and (isinstance(entities[0], SiteReading) or isinstance(entities[0], ArchiveSiteReading)):
+        mapped = [
+            map_envoy_site_reading_to_dto(e)
+            for e in entities
+            if isinstance(e, SiteReading) or isinstance(e, ArchiveSiteReading)
+        ]
+    else:
+        mapped = [
+            map_envoy_site_control_to_dto(e)
+            for e in entities
+            if isinstance(e, DynamicOperatingEnvelope) or isinstance(e, ArchiveDynamicOperatingEnvelope)
+        ]
+
+    intervals = [Interval(idx, idx + 1, e) for idx, e in enumerate(mapped)]
 
     if isinstance(expected_index, type):
         with pytest.raises(expected_index):
@@ -197,9 +223,10 @@ def test_highest_priority_entity(entities, expected_index):
     else:
         # Test intervals in forward and reverse
         result = highest_priority_entity(set(intervals))
-        assert result is entities[expected_index]
+        expected = mapped[expected_index]
+        assert result == expected
         result = highest_priority_entity(set(reversed(intervals)))
-        assert result is entities[expected_index]
+        assert result == expected
 
 
 @pytest.mark.parametrize(
@@ -217,67 +244,79 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
         Interval(
             BASIS - timedelta(days=9999),
             BASIS + timedelta(days=9999),
-            generate_class_instance(
-                ArchiveDynamicOperatingEnvelope,
-                seed=101,
-                changed_time=datetime(2021, 1, 1, tzinfo=UTC),
-                import_limit_active_watts=Decimal("1"),
-                export_limit_watts=Decimal("11"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=101,
+                    changed_time=datetime(2021, 1, 1, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("1"),
+                    export_limit_watts=Decimal("11"),
+                ),
             ),
         ),
         Interval(
             BASIS,
             BASIS + timedelta(seconds=20),
-            generate_class_instance(
-                DynamicOperatingEnvelope,
-                seed=202,
-                changed_time=datetime(2021, 1, 1, tzinfo=UTC),
-                import_limit_active_watts=Decimal("2"),
-                export_limit_watts=Decimal("22"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    DynamicOperatingEnvelope,
+                    seed=202,
+                    changed_time=datetime(2021, 1, 1, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("2"),
+                    export_limit_watts=Decimal("22"),
+                ),
             ),
         ),
         Interval(
             BASIS,
             BASIS + timedelta(seconds=40),
-            generate_class_instance(
-                DynamicOperatingEnvelope,
-                seed=303,
-                changed_time=datetime(2020, 1, 1, tzinfo=UTC),
-                import_limit_active_watts=Decimal("3"),
-                export_limit_watts=Decimal("33"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    DynamicOperatingEnvelope,
+                    seed=303,
+                    changed_time=datetime(2020, 1, 1, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("3"),
+                    export_limit_watts=Decimal("33"),
+                ),
             ),
         ),
         Interval(
             BASIS + timedelta(seconds=20),
             BASIS + timedelta(seconds=40),
-            generate_class_instance(
-                DynamicOperatingEnvelope,
-                seed=404,
-                changed_time=datetime(2021, 1, 1, 9, tzinfo=UTC),
-                import_limit_active_watts=Decimal("4"),
-                export_limit_watts=Decimal("44"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    DynamicOperatingEnvelope,
+                    seed=404,
+                    changed_time=datetime(2021, 1, 1, 9, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("4"),
+                    export_limit_watts=Decimal("44"),
+                ),
             ),
         ),
         Interval(
             BASIS + timedelta(seconds=20),
             BASIS + timedelta(seconds=40),
-            generate_class_instance(
-                ArchiveDynamicOperatingEnvelope,
-                seed=505,
-                changed_time=datetime(2025, 1, 1, tzinfo=UTC),
-                import_limit_active_watts=Decimal("5"),
-                export_limit_watts=Decimal("55"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=505,
+                    changed_time=datetime(2025, 1, 1, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("5"),
+                    export_limit_watts=Decimal("55"),
+                ),
             ),
         ),
         Interval(
             BASIS + timedelta(seconds=20),
             BASIS + timedelta(seconds=60),
-            generate_class_instance(
-                ArchiveDynamicOperatingEnvelope,
-                seed=606,
-                changed_time=datetime(2020, 1, 1, tzinfo=UTC),
-                import_limit_active_watts=Decimal("6"),
-                export_limit_watts=Decimal("66"),
+            map_envoy_site_control_to_dto(
+                generate_class_instance(
+                    ArchiveDynamicOperatingEnvelope,
+                    seed=606,
+                    changed_time=datetime(2020, 1, 1, tzinfo=UTC),
+                    import_limit_active_watts=Decimal("6"),
+                    export_limit_watts=Decimal("66"),
+                ),
             ),
         ),
     ]
@@ -289,8 +328,8 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
         end,
         interval_length_seconds,
         [
-            lambda x: decimal_to_watts(x.import_limit_active_watts, False),
-            lambda x: decimal_to_watts(x.export_limit_watts, False),
+            lambda x: decimal_to_watts(cast(dtos.SiteControl, x).import_limit_active_watts, False),
+            lambda x: decimal_to_watts(cast(dtos.SiteControl, x).export_limit_active_watts, False),
         ],
     )
     assert isinstance(result, list)
@@ -300,9 +339,11 @@ def test_generate_offset_watt_values(interval_length_seconds, start, end, expect
 
 @pytest.mark.asyncio
 async def test_generate_readings_data_stream_empty_db(pg_empty_config):
+    mock_envoy_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_empty_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_envoy_client)
         result = await generate_readings_data_stream(
-            session, "foo", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), 1
+            backend, "foo", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), 1
         )
 
     assert isinstance(result, TimelineDataStream)
@@ -310,53 +351,55 @@ async def test_generate_readings_data_stream_empty_db(pg_empty_config):
     assert isinstance(result.offset_watt_values, list)
     assert len(result.offset_watt_values) == 10, "10 seconds of 1 second intervals"
     assert all(v is None for v in result.offset_watt_values)
+    assert not mock_envoy_client.mock_calls
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
-@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
-async def test_generate_readings_data_stream(
-    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
-):
+async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     # Arrange
     interval_seconds = 5
-    mock_session = create_mock_session()
-    srt1 = generate_class_instance(SiteReadingType, seed=101, power_of_ten_multiplier=-1, site_reading_type_id=1)
-    srt2 = generate_class_instance(SiteReadingType, seed=202, power_of_ten_multiplier=1, site_reading_type_id=2)
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    srt1 = generate_class_instance(dtos.SiteReadingType, seed=101, power_of_ten_multiplier=-1, site_reading_type_id="1")
+    srt2 = generate_class_instance(dtos.SiteReadingType, seed=202, power_of_ten_multiplier=1, site_reading_type_id="2")
     mock_get_csip_aus_site_reading_types.return_value = [srt1, srt2]
     srt1_readings = [
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=101,
-            site_reading_type_id=1,
+            site_reading_type_id="1",
             value=111,
             time_period_start=BASIS - timedelta(seconds=2),
-            time_period_seconds=5,
+            time_period_duration=timedelta(seconds=5),
         ),
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=202,
-            site_reading_type_id=1,
+            site_reading_type_id="1",
             value=222,
             time_period_start=BASIS + timedelta(seconds=5),
-            time_period_seconds=5,
+            time_period_duration=timedelta(seconds=5),
         ),
     ]
     srt2_readings = [
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=303,
-            site_reading_type_id=2,
+            site_reading_type_id="2",
             value=333,
             time_period_start=BASIS,
-            time_period_seconds=5,
+            time_period_duration=timedelta(seconds=5),
         ),
     ]
-    mock_get_site_readings.side_effect = lambda _, srt: srt1_readings if srt is srt1 else srt2_readings
+
+    def _get_site_reading_types_side_effect(*, site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
+        return srt1_readings if site_reading_type_ids == [srt1.site_reading_type_id] else srt2_readings
+
+    mock_backend.get_site_readings.side_effect = _get_site_reading_types_side_effect
 
     # Act
     result = await generate_readings_data_stream(
-        mock_session, "bar", ReadingLocation.DEVICE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+        mock_backend, "bar", ReadingLocation.DEVICE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
     )
 
     # Assert
@@ -366,63 +409,62 @@ async def test_generate_readings_data_stream(
     assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
     assert result.offset_watt_values == [3341, 22], "Values summed across both SRTs, adjusted for pow10"
 
-    assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
-    mock_get_site_readings.assert_has_calls(
-        [mock.call(mock_session, srt1), mock.call(mock_session, srt2)], any_order=True
+    assert len(mock_backend.mock_calls) == 2
+    mock_backend.get_site_readings.assert_has_calls(
+        [
+            mock.call(site_reading_type_ids=[srt1.site_reading_type_id]),
+            mock.call(site_reading_type_ids=[srt2.site_reading_type_id]),
+        ],
+        any_order=True,
     )
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
-@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
-async def test_generate_readings_data_stream_filters_null_and_zero_durations(
-    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
+async def test_generate_readings_data_stream_filters_zero_durations(
+    mock_get_csip_aus_site_reading_types: mock.MagicMock,
 ):
     # Arrange
     interval_seconds = 5
-    mock_session = create_mock_session()
-    srt = generate_class_instance(SiteReadingType, seed=101, power_of_ten_multiplier=0, site_reading_type_id=1)
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    srt = generate_class_instance(dtos.SiteReadingType, seed=101, power_of_ten_multiplier=0, site_reading_type_id="1")
     mock_get_csip_aus_site_reading_types.return_value = [srt]
 
     readings = [
         # Valid
         generate_class_instance(
-            SiteReading, seed=101, site_reading_type_id=1, value=100, time_period_start=BASIS, time_period_seconds=5
+            dtos.SiteReading,
+            seed=101,
+            site_reading_type_id="1",
+            value=100,
+            time_period_start=BASIS,
+            time_period_duration=timedelta(seconds=5),
         ),
         # Zero duration - should be filtered out
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=202,
-            site_reading_type_id=1,
+            site_reading_type_id="1",
             value=200,
             time_period_start=BASIS + timedelta(seconds=5),
-            time_period_seconds=0,
-        ),
-        # Null duration - should be filtered out
-        generate_class_instance(
-            SiteReading,
-            seed=303,
-            site_reading_type_id=1,
-            value=300,
-            time_period_start=BASIS + timedelta(seconds=10),
-            time_period_seconds=None,
+            time_period_duration=timedelta(0),
         ),
         # Another valid reading
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=404,
-            site_reading_type_id=1,
+            site_reading_type_id="1",
             value=400,
             time_period_start=BASIS + timedelta(seconds=10),
-            time_period_seconds=5,
+            time_period_duration=timedelta(seconds=5),
         ),
     ]
-    mock_get_site_readings.return_value = readings
+    mock_backend.get_site_readings.return_value = readings
 
     # Act
     result = await generate_readings_data_stream(
-        mock_session, "test", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=15), interval_seconds
+        mock_backend, "test", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=15), interval_seconds
     )
 
     # Assert
@@ -432,43 +474,40 @@ async def test_generate_readings_data_stream_filters_null_and_zero_durations(
     # Only the two valid readings (100W and 400W) should be included, middle is filtered out leaving none
     assert result.offset_watt_values == [100, None, 400], "Only valid duration readings included"
 
-    assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
-    mock_get_site_readings.assert_called_once_with(mock_session, srt)
+    assert len(mock_backend.mock_calls) == 1
+    mock_backend.get_site_readings.assert_called_once_with(site_reading_type_ids=[srt.site_reading_type_id])
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
-@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
-async def test_generate_readings_data_stream_three_phase(
-    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
-):
+async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     """Three concurrent single-phase SRTs covering the same interval should be summed, not winner-takes-all."""
     interval_seconds = 5
-    mock_session = create_mock_session()
-    srt_a = generate_class_instance(SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id=1)
-    srt_b = generate_class_instance(SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id=2)
-    srt_c = generate_class_instance(SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id=3)
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    srt_a = generate_class_instance(dtos.SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id="1")
+    srt_b = generate_class_instance(dtos.SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id="2")
+    srt_c = generate_class_instance(dtos.SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id="3")
     mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
 
-    phase_values = {srt_a: 100, srt_b: 200, srt_c: 300}
+    phase_values = {srt_a.site_reading_type_id: 100, srt_b.site_reading_type_id: 200, srt_c.site_reading_type_id: 300}
 
-    def readings_for(_, srt):
+    def readings_for(site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
         return [
             generate_class_instance(
-                SiteReading,
-                seed=phase_values[srt],
-                site_reading_type_id=srt.site_reading_type_id,
-                value=phase_values[srt],
+                dtos.SiteReading,
+                seed=phase_values[site_reading_type_ids[0]],
+                site_reading_type_id=site_reading_type_ids[0],
+                value=phase_values[site_reading_type_ids[0]],
                 time_period_start=BASIS,
-                time_period_seconds=5,
+                time_period_duration=timedelta(seconds=5),
             )
         ]
 
-    mock_get_site_readings.side_effect = readings_for
+    mock_backend.get_site_readings.side_effect = readings_for
 
     result = await generate_readings_data_stream(
-        mock_session,
+        mock_backend,
         "Three Phase",
         ReadingLocation.SITE_READING,
         BASIS,
@@ -480,54 +519,63 @@ async def test_generate_readings_data_stream_three_phase(
     assert len(result.offset_watt_values) == 2, "10 seconds of 5 second intervals"
     assert result.offset_watt_values == [600, None], "Phase A+B+C summed at interval 1; no readings at interval 2"
 
-    assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
-    mock_get_site_readings.assert_has_calls(
-        [mock.call(mock_session, srt_a), mock.call(mock_session, srt_b), mock.call(mock_session, srt_c)],
+    assert len(mock_backend.mock_calls) == 3
+    mock_backend.get_site_readings.assert_has_calls(
+        [
+            mock.call(site_reading_type_ids=[srt_a.site_reading_type_id]),
+            mock.call(site_reading_type_ids=[srt_b.site_reading_type_id]),
+            mock.call(site_reading_type_ids=[srt_c.site_reading_type_id]),
+        ],
         any_order=True,
     )
 
 
-@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types")
-@mock.patch("cactus_runner.app.timeline.get_site_readings")
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
 @pytest.mark.asyncio
-async def test_generate_readings_data_stream_partial_phase(
-    mock_get_site_readings: mock.MagicMock, mock_get_csip_aus_site_reading_types: mock.MagicMock
-):
+async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_site_reading_types: mock.MagicMock):
     """When only one phase has a reading in an interval the result equals that phase's value.
     None appears only when NO phase has a reading — not when just some are absent."""
     interval_seconds = 5
-    mock_session = create_mock_session()
-    srt_a = generate_class_instance(SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id=1)
-    srt_b = generate_class_instance(SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id=2)
-    srt_c = generate_class_instance(SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id=3)
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    srt_a = generate_class_instance(dtos.SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id="1")
+    srt_b = generate_class_instance(dtos.SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id="2")
+    srt_c = generate_class_instance(dtos.SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id="3")
     mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
 
     # Only srt_b reports in interval 1; no phase reports in interval 2
     readings_b = [
         generate_class_instance(
-            SiteReading,
+            dtos.SiteReading,
             seed=10,
             site_reading_type_id=srt_b.site_reading_type_id,
             value=750,
             time_period_start=BASIS,
-            time_period_seconds=5,
+            time_period_duration=timedelta(seconds=5),
         )
     ]
-    mock_get_site_readings.side_effect = lambda _, srt: readings_b if srt is srt_b else []
+
+    def _get_site_readings_side_effect(site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
+        return readings_b if site_reading_type_ids == [srt_b.site_reading_type_id] else []
+
+    mock_backend.get_site_readings.side_effect = _get_site_readings_side_effect
 
     result = await generate_readings_data_stream(
-        mock_session, "Partial", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+        mock_backend, "Partial", ReadingLocation.SITE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
     )
 
     assert isinstance(result, TimelineDataStream)
     assert len(result.offset_watt_values) == 2
     assert result.offset_watt_values == [750, None], "Interval 1: only phase B reported; interval 2: no phases"
 
-    assert_mock_session(mock_session)
     mock_get_csip_aus_site_reading_types.assert_called_once()
-    mock_get_site_readings.assert_has_calls(
-        [mock.call(mock_session, srt_a), mock.call(mock_session, srt_b), mock.call(mock_session, srt_c)],
+    assert len(mock_backend.mock_calls) == 3
+    mock_backend.get_site_readings.assert_has_calls(
+        [
+            mock.call(site_reading_type_ids=[srt_a.site_reading_type_id]),
+            mock.call(site_reading_type_ids=[srt_b.site_reading_type_id]),
+            mock.call(site_reading_type_ids=[srt_c.site_reading_type_id]),
+        ],
         any_order=True,
     )
 
@@ -544,7 +592,7 @@ def doe(
     load_watts: int | None = None,
     gen_watts: int | None = None,
     superseded: bool = False,
-) -> DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope:
+) -> dtos.SiteControl:
     """Utility function for reducing boilerplate"""
 
     t = DynamicOperatingEnvelope
@@ -559,7 +607,7 @@ def doe(
         if archive_time is None:
             extra_kwargs = {"deleted_time": deleted_time, "archive_time": deleted_time}
 
-    return generate_class_instance(
+    control = generate_class_instance(
         t,
         seed=seed,
         site_control_group_id=scg,
@@ -573,6 +621,7 @@ def doe(
         superseded=superseded,
         **extra_kwargs,
     )
+    return map_envoy_site_control_to_dto(control)
 
 
 @pytest.mark.parametrize(
@@ -720,10 +769,9 @@ def doe(
         ),  # Long control that gets superseded by a short control that is cancelled partway through.
     ],
 )
-@mock.patch("cactus_runner.app.timeline.get_site_controls_active_archived")
 @pytest.mark.asyncio
 async def test_generate_control_data_streams(
-    mock_get_site_controls_active_deleted: mock.MagicMock, controls, start, interval, end, expected
+    controls: list[dtos.SiteControl], start: datetime, interval: int, end: datetime, expected: list[list[int | None]]
 ):
     """Checks that generate_control_data_streams breaks down DOE data into seperate "DERProgram" streams.
 
@@ -738,12 +786,11 @@ async def test_generate_control_data_streams(
     ]
     """
     # Arrange
-    mock_session = create_mock_session()
-
-    mock_get_site_controls_active_deleted.return_value = controls
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    mock_backend.get_site_controls.return_value = controls
 
     # Act
-    result = await generate_control_data_streams(mock_session, start, end, interval)
+    result = await generate_control_data_streams(mock_backend, start, end, interval)
 
     # Assert
     assert_list_type(TimelineDataStream, result, len(expected))
@@ -751,8 +798,8 @@ async def test_generate_control_data_streams(
     actual = [ds.offset_watt_values for ds in result]
     assert expected == actual
 
-    assert_mock_session(mock_session)
-    mock_get_site_controls_active_deleted.assert_called_once_with(mock_session)
+    assert len(mock_backend.mock_calls) == 1
+    mock_backend.get_site_controls.assert_called_once_with()
 
 
 def def_ctrl(
@@ -825,18 +872,19 @@ def def_ctrl(
         ),
     ],
 )
-@mock.patch("cactus_runner.app.timeline.get_site_control_group_defaults_with_archive")
 @pytest.mark.asyncio
 async def test_generate_default_control_data_streams(
-    mock_get_site_control_group_defaults_with_archive: mock.MagicMock, defaults, start, interval, end, expected
+    defaults: list[SiteControlGroupDefault | ArchiveSiteControlGroupDefault], start, interval, end, expected
 ):
+    """Confirms original envoy sql model objects are appropriately backwards compatible with plugin architecture."""
 
-    mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    dto_defaults = [map_envoy_site_control_group_default_to_dto(d) for d in defaults]
 
-    mock_get_site_control_group_defaults_with_archive.return_value = defaults
+    mock_backend.get_site_control_group_defaults.return_value = dto_defaults
 
     # Act
-    result = await generate_default_control_data_streams(mock_session, start, end, interval)
+    result = await generate_default_control_data_streams(mock_backend, start, end, interval)
 
     # Assert
     assert_list_type(TimelineDataStream, result, len(expected))
@@ -844,8 +892,8 @@ async def test_generate_default_control_data_streams(
     actual = [ds.offset_watt_values for ds in result]
     assert expected == actual
 
-    assert_mock_session(mock_session)
-    mock_get_site_control_group_defaults_with_archive.assert_called_once_with(mock_session)
+    assert len(mock_backend.mock_calls) == 1
+    mock_backend.get_site_control_group_defaults.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -891,10 +939,10 @@ async def test_generate_timeline(
 ):
     """Checks the top level behaviour of generate_timeline - Focusing on the culling of "superfluous" streams"""
     # Arrange
+    mock_backend = mock.Mock(spec=RunnerBackend)
     start = BASIS
     end = BASIS + timedelta(seconds=5)
     interval = 5
-    mock_session = create_mock_session()
 
     site_ds = generate_class_instance(TimelineDataStream, seed=101, offset_watt_values=site_vals)
     device_ds = generate_class_instance(TimelineDataStream, seed=202, offset_watt_values=device_vals)
@@ -914,10 +962,9 @@ async def test_generate_timeline(
     mock_generate_default_control_data_streams.return_value = default_ds
 
     # Act
-    result = await generate_timeline(mock_session, start, interval, end)
+    result = await generate_timeline(mock_backend, start, interval, end)
 
     # Assert
-    assert_mock_session(mock_session)
     assert isinstance(result, Timeline)
     assert_list_type(TimelineDataStream, result.data_streams, len(expected))
     assert result.interval_seconds == interval

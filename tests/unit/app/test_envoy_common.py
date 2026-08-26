@@ -19,7 +19,6 @@ from envoy.server.model.doe import (
 )
 from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
@@ -28,7 +27,6 @@ from envoy_schema.server.schema.sep2.types import (
 )
 from sqlalchemy import func, select
 
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
     count_all_site_controls_with_cancelled,
@@ -36,13 +34,15 @@ from cactus_runner.app.envoy_common import (
     get_all_site_control_groups,
     get_all_sites,
     get_csip_aus_site_reading_types,
-    get_exclusive_site_group,
     get_reading_counts_grouped_by_reading_type,
     get_site_control_group_defaults_with_archive,
     get_site_controls_active_archived,
     get_site_readings,
 )
 from cactus_runner.app.precondition import register_aggregator, reset_db
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.envoy import EnvoyBackend
+from cactus_runner.plugin.backends.envoy.admin_client import EnvoyAdminClient
 
 
 @pytest.mark.anyio
@@ -53,8 +53,8 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
 
     # Create the basics - two sites and take stock of the existing SiteGroups
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, seed=101, aggregator_id=agg_id, site_id=11))
-        session.add(generate_class_instance(Site, seed=202, aggregator_id=agg_id, site_id=22))
+        session.add(generate_class_instance(Site, seed=101, aggregator_id=int(agg_id), site_id=11))
+        session.add(generate_class_instance(Site, seed=202, aggregator_id=int(agg_id), site_id=22))
         await session.commit()
         site_group_count_before = (await session.execute(select(func.count()).select_from(SiteGroup))).scalar_one()
         site_group_assignment_count_before = (
@@ -62,9 +62,10 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
         ).scalar_one()
 
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         site_11 = (await session.execute(select(Site).where(Site.site_id == 11))).scalar_one()
-        site_group_11 = await get_exclusive_site_group(envoy_admin_client, site_11)
-        assert isinstance(site_group_11, SiteGroupResponse)
+        site_group_11 = await backend.get_exclusive_site_group(f"{site_11.site_id}")
+        assert isinstance(site_group_11, dtos.SiteGroup)
         assert site_group_11.total_sites == 1
 
     # Check the site group count increased and assigned as expected
@@ -84,13 +85,15 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
         ).scalar_one()
         assert new_site_group.default_group is False
         assert "11" in new_site_group.name and "22" not in new_site_group.name
-        assert site_group_11.site_group_id == new_site_group.site_group_id
+        assert site_group_11.site_group_id == f"{new_site_group.site_group_id}"
 
         # There should be a single assignment to the new group for site 11
         site_group_11_assignments = (
             (
                 await session.execute(
-                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                    select(SiteGroupAssignment).where(
+                        SiteGroupAssignment.site_group_id == int(site_group_11.site_group_id)
+                    )
                 )
             )
             .scalars()
@@ -101,9 +104,10 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
 
     # Now we redo the call - nothing should've changed
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         site_11 = (await session.execute(select(Site).where(Site.site_id == 11))).scalar_one()
         assert (
-            await get_exclusive_site_group(envoy_admin_client, site_11)
+            await backend.get_exclusive_site_group(f"{site_11.site_id}")
         ).site_group_id == site_group_11.site_group_id
     async with generate_async_session(pg_base_config) as session:
         assert (
@@ -116,7 +120,9 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
         site_group_11_assignments = (
             (
                 await session.execute(
-                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                    select(SiteGroupAssignment).where(
+                        SiteGroupAssignment.site_group_id == int(site_group_11.site_group_id)
+                    )
                 )
             )
             .scalars()
@@ -127,8 +133,9 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
 
     # Finally do it for site 22
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
         site_22 = (await session.execute(select(Site).where(Site.site_id == 22))).scalar_one()
-        site_group_22 = await get_exclusive_site_group(envoy_admin_client, site_22)
+        site_group_22 = await backend.get_exclusive_site_group(f"{site_22.site_id}")
         assert site_group_22.site_group_id != site_group_11.site_group_id
         assert site_group_22.total_sites == 1
     async with generate_async_session(pg_base_config) as session:
@@ -141,7 +148,9 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
         site_group_11_assignments = (
             (
                 await session.execute(
-                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_11.site_group_id)
+                    select(SiteGroupAssignment).where(
+                        SiteGroupAssignment.site_group_id == int(site_group_11.site_group_id)
+                    )
                 )
             )
             .scalars()
@@ -152,7 +161,9 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
         site_group_22_assignments = (
             (
                 await session.execute(
-                    select(SiteGroupAssignment).where(SiteGroupAssignment.site_group_id == site_group_22.site_group_id)
+                    select(SiteGroupAssignment).where(
+                        SiteGroupAssignment.site_group_id == int(site_group_22.site_group_id)
+                    )
                 )
             )
             .scalars()

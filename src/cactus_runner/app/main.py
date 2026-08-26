@@ -5,7 +5,6 @@ import json
 import logging
 import logging.config
 import logging.handlers
-import os
 import traceback
 from collections.abc import AsyncGenerator
 from http import HTTPStatus
@@ -17,24 +16,15 @@ from cactus_schema.runner import uri
 
 from cactus_runner import __version__
 from cactus_runner.app import event, handler
-from cactus_runner.app.database import begin_session, initialise_database_connection
 from cactus_runner.app.env import (
     APP_HOST,
     APP_PORT,
-    ENVOY_ADMIN_BASICAUTH_PASSWORD,
-    ENVOY_ADMIN_BASICAUTH_USERNAME,
-    ENVOY_ADMIN_URL,
     ENVOY_PROXY_PREFIX,
     MOUNT_POINT,
     SERVER_URL,
 )
-from cactus_runner.app.envoy_admin_client import (
-    EnvoyAdminClient,
-    EnvoyAdminClientAuthParams,
-)
 from cactus_runner.app.shared import (
-    APPKEY_ENVOY_ADMIN_CLIENT,
-    APPKEY_ENVOY_ADMIN_INIT_KWARGS,
+    APPKEY_BACKEND_PROVIDER,
     APPKEY_INITIALISED_CERTS,
     APPKEY_PERIOD_SEC,
     APPKEY_PERIODIC_TASK,
@@ -43,6 +33,8 @@ from cactus_runner.app.shared import (
 )
 from cactus_runner.app.uri import uri_path_join
 from cactus_runner.models import InitialisedCertificates, RunnerState
+from cactus_runner.plugin.backends.context import generate_plugin_context
+from cactus_runner.plugin.backends.hookspec import BackendProvider, create_plugin_manager
 
 logger = logging.getLogger(__name__)
 
@@ -82,14 +74,15 @@ async def periodic_task(app: web.Application) -> None:
         try:
             runner_state = app[APPKEY_RUNNER_STATE]
             if runner_state.active_test_procedure is not None and not runner_state.active_test_procedure.is_finished():
-                async with begin_session() as session:
-                    await event.handle_event_trigger(
-                        trigger=event.generate_time_trigger(),
-                        runner_state=runner_state,
-                        session=session,
-                        envoy_client=app[APPKEY_ENVOY_ADMIN_CLIENT],
-                    )
-                    await session.commit()
+                provider = app[APPKEY_BACKEND_PROVIDER]
+                backend = await provider.create_backend(
+                    context=generate_plugin_context(runner_state.active_test_procedure)
+                )
+                await event.handle_event_trigger(
+                    trigger=event.generate_time_trigger(),
+                    runner_state=runner_state,
+                    backend=backend,
+                )
 
         except Exception as e:
             # Catch and log uncaught exceptions to prevent periodic task from hanging
@@ -114,28 +107,18 @@ async def setup_periodic_task(app: web.Application) -> AsyncGenerator[None, None
         await app[APPKEY_PERIODIC_TASK]
 
 
-def generate_admin_client(app: web.Application) -> EnvoyAdminClient:
-    init_kwargs = app[APPKEY_ENVOY_ADMIN_INIT_KWARGS]
-    return EnvoyAdminClient(**init_kwargs)
-
-
 async def app_on_startup_handler(app: web.Application) -> None:
     """Handler for on_startup event"""
-    app[APPKEY_ENVOY_ADMIN_CLIENT] = generate_admin_client(app)
+    app[APPKEY_BACKEND_PROVIDER] = BackendProvider(create_plugin_manager())
+    await app[APPKEY_BACKEND_PROVIDER].startup()
 
 
 async def app_on_cleanup_handler(app: web.Application) -> None:
     """Handler for on_cleanup (i.e. after app shutdown) event"""
-    await app[APPKEY_ENVOY_ADMIN_CLIENT].close_session()
+    await app[APPKEY_BACKEND_PROVIDER].shutdown()
 
 
 def create_app() -> web.Application:
-
-    # Ensure the DB connection is up and running before starting the app.
-    postgres_dsn = os.getenv("DATABASE_URL")
-    if postgres_dsn is None:
-        raise Exception("DATABASE_URL environment variable is not specified")
-    initialise_database_connection(postgres_dsn)
 
     app = web.Application(middlewares=[log_error_middleware])
 
@@ -165,12 +148,6 @@ def create_app() -> web.Application:
     # Set up shared state
     app[APPKEY_INITIALISED_CERTS] = InitialisedCertificates()
     app[APPKEY_RUNNER_STATE] = RunnerState()
-    app[APPKEY_ENVOY_ADMIN_INIT_KWARGS] = {
-        "base_url": ENVOY_ADMIN_URL,
-        "auth_params": EnvoyAdminClientAuthParams(
-            username=ENVOY_ADMIN_BASICAUTH_USERNAME, password=ENVOY_ADMIN_BASICAUTH_PASSWORD
-        ),
-    }
 
     # App events
     app.on_startup.append(app_on_startup_handler)

@@ -30,6 +30,7 @@ dependencies = [
   "pydantic_xml[lxml]>=2.11.7,<3",
   "pydantic!=2.7.0",
   "intervaltree>=3.1.0",
+  "apluggy>=1.1.2",
 ]
 
 [project.urls]

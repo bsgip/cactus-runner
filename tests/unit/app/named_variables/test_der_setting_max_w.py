@@ -3,8 +3,8 @@ from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDERSetting
 
-from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 @pytest.mark.asyncio
@@ -12,7 +12,8 @@ async def test_resolve_named_variable_der_setting_max_w_empty(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERSetting"):
-            await resolvers.resolve_named_variable_der_setting_max_w(session)
+            resolver = EnvoyResolver(lambda: session)
+            await resolver.resolve_named_variable_der_setting_max_w()
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,8 @@ async def test_resolve_named_variable_der_setting_max_w_no_setting(pg_base_confi
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="setMaxW"):
-            await resolvers.resolve_named_variable_der_setting_max_w(session)
+            resolver = EnvoyResolver(lambda: session)
+            await resolver.resolve_named_variable_der_setting_max_w()
 
 
 @pytest.mark.asyncio
@@ -50,7 +52,8 @@ async def test_resolve_named_variable_der_setting_max_w_single_setting(pg_base_c
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_setting_max_w(session)
+        resolver = EnvoyResolver(lambda: session)
+        result = await resolver.resolve_named_variable_der_setting_max_w()
         assert isinstance(result, float)
         assert result == 123.45
 
@@ -105,6 +108,7 @@ async def test_resolve_named_variable_der_setting_max_w_many_settings(pg_base_co
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_setting_max_w(session)
+        resolver = EnvoyResolver(lambda: session)
+        result = await resolver.resolve_named_variable_der_setting_max_w()
         assert isinstance(result, float)
         assert result == 12300

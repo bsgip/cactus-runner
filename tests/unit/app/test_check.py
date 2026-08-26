@@ -87,6 +87,10 @@ from cactus_runner.models import (
     Listener,
     ResourceAnnotations,
 )
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import RunnerBackend
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
+from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_reading_type_to_dto
 
 # This is a list of every check type paired with the handler function. This must be kept in sync with
 # the checks defined in cactus test definitions (via CHECK_PARAMETER_SCHEMA). This sync will be enforced
@@ -203,21 +207,20 @@ def test_check_all_steps_complete(
         (None, True, False),
         (None, False, False),
         (None, None, False),
-        (generate_class_instance(Site, nmi=None), True, False),
-        (generate_class_instance(Site, nmi=None), False, True),
-        (generate_class_instance(Site, nmi=None), None, True),  # Should default has_connection_point_id to False
-        (generate_class_instance(Site, nmi=""), True, False),
-        (generate_class_instance(Site, nmi=""), False, True),
-        (generate_class_instance(Site, nmi=""), None, True),  # Should default has_connection_point_id to False
-        (generate_class_instance(Site, nmi="abc123"), True, True),
-        (generate_class_instance(Site, nmi="abc123"), False, True),
-        (generate_class_instance(Site, nmi="abc123"), None, True),
+        (generate_class_instance(dtos.Site, nmi=None), True, False),
+        (generate_class_instance(dtos.Site, nmi=None), False, True),
+        (generate_class_instance(dtos.Site, nmi=None), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(dtos.Site, nmi=""), True, False),
+        (generate_class_instance(dtos.Site, nmi=""), False, True),
+        (generate_class_instance(dtos.Site, nmi=""), None, True),  # Should default has_connection_point_id to False
+        (generate_class_instance(dtos.Site, nmi="abc123"), True, True),
+        (generate_class_instance(dtos.Site, nmi="abc123"), False, True),
+        (generate_class_instance(dtos.Site, nmi="abc123"), None, True),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_contents_connection_point(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, has_connection_point_id: bool | None, expected: bool
+    active_site: dtos.Site | None, has_connection_point_id: bool | None, expected: bool
 ):
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -227,16 +230,17 @@ async def test_check_end_device_contents_connection_point(
         step_status={},
         finished_zip_path=None,
     )
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if has_connection_point_id is not None:
         resolved_params["has_connection_point_id"] = has_connection_point_id
 
-    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_active_site.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -245,21 +249,20 @@ async def test_check_end_device_contents_connection_point(
         (None, "0", False),
         (None, "123", False),
         (None, None, False),
-        (generate_class_instance(Site), "0", True),
-        (generate_class_instance(Site), None, True),
-        (generate_class_instance(Site, device_category=DeviceCategory(0)), "0", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(0)), "1", False),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
-        (generate_class_instance(Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
+        (generate_class_instance(dtos.Site), "0", True),
+        (generate_class_instance(dtos.Site), None, True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(0)), "0", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(0)), "1", False),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "0f", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "05", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("0f", 16))), "10", False),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("22A8B", 16))), "20098", True),
+        (generate_class_instance(dtos.Site, device_category=DeviceCategory(int("42A03", 16))), "20098", False),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_contents_device_category(
-    mock_get_active_site: mock.MagicMock, active_site: Site | None, deviceCategory_anyset: str | None, expected: bool
+    active_site: dtos.Site | None, deviceCategory_anyset: str | None, expected: bool
 ):
     mock_active_test_procedure = generate_class_instance(
         ActiveTestProcedure,
@@ -269,17 +272,17 @@ async def test_check_end_device_contents_device_category(
         step_status={},
         finished_zip_path=None,
     )
+    backend = mock.AsyncMock(spec=RunnerBackend)
 
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if deviceCategory_anyset is not None:
         resolved_params["deviceCategory_anyset"] = deviceCategory_anyset
 
-    result = await check_end_device_contents(mock_active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(mock_active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_active_site.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -393,10 +396,8 @@ async def test_check_end_device_contents_device_category(
         ),  # sfdi doesn't match lfdi
     ],
 )
-@mock.patch("cactus_runner.app.check.get_active_site")
 @pytest.mark.anyio
 async def test_check_end_device_lfdi(
-    mock_get_active_site: mock.MagicMock,
     active_test_procedure: ActiveTestProcedure,
     site_lfdi: str,
     site_sfdi: int,
@@ -404,16 +405,18 @@ async def test_check_end_device_lfdi(
     expected: bool,
 ):
     active_site = generate_class_instance(
-        Site, device_category=DeviceCategory(int("22A8B", 16)), lfdi=site_lfdi, sfdi=site_sfdi
+        dtos.Site, device_category=DeviceCategory(int("22A8B", 16)), lfdi=site_lfdi, sfdi=site_sfdi
     )
-    mock_get_active_site.return_value = active_site
-    mock_session = create_mock_session()
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_active_site.return_value = active_site
     resolved_params = {}
     if check_lfdi is not None:
         resolved_params["check_lfdi"] = check_lfdi
 
-    result = await check_end_device_contents(active_test_procedure, mock_session, resolved_params)
+    result = await check_end_device_contents(active_test_procedure, backend, resolved_params)
     assert_check_result(result, expected)
+
+    backend.get_active_site.assert_called_once()
 
 
 DERKey = Literal["site_der_setting", "site_der_rating"]
@@ -482,30 +485,28 @@ def der_bool_param_scenario(
         ([1, 2, 3], 4, 2, False),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_all_sites")
 @pytest.mark.anyio
 async def test_check_end_device_count(
-    mock_get_all_sites: mock.MagicMock,
     site_ids: list[int],
     min_count: int | None,
     max_count: int | None,
     expected: bool,
 ):
 
-    mock_get_all_sites.return_value = [
-        generate_class_instance(Site, seed=site_id, site_id=site_id) for site_id in site_ids
+    backend = mock.AsyncMock(spec=RunnerBackend)
+    backend.get_all_sites.return_value = [
+        generate_class_instance(dtos.Site, seed=site_id, site_id=site_id) for site_id in site_ids
     ]
-    mock_session = create_mock_session()
     resolved_params = {}
     if min_count is not None:
         resolved_params["minimum_count"] = min_count
     if max_count is not None:
         resolved_params["maximum_count"] = max_count
 
-    result = await check_end_device_count(mock_session, resolved_params)
+    result = await check_end_device_count(backend, resolved_params)
     assert_check_result(result, expected)
 
-    assert_mock_session(mock_session)
+    backend.get_all_sites.assert_called_once()
 
 
 DERSETTING_BOOL_PARAM_SCENARIOS = [
@@ -751,13 +752,18 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
 async def test_check_der_settings_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_settings_contents(session, resolved_params)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 DERRATING_BOOL_PARAM_SCENARIOS = [
@@ -979,13 +985,18 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
 async def test_check_der_capability_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_capability_contents(session, resolved_params)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1254,13 +1265,18 @@ async def test_check_der_capability_contents(
 async def test_check_der_status_contents(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_status_contents(session, resolved_params)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await check_der_status_contents(backend, resolved_params)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1309,9 +1325,15 @@ async def test_do_check_readings_for_types(
         generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_for_types(session, faked_srts, minimum_count)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in faked_srts]
+        result = await do_check_readings_for_types(backend, srt_dtos, minimum_count)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @dataclasses.dataclass
@@ -1402,13 +1424,16 @@ async def test_do_check_single_level(
 
         await session.commit()
 
-    faked_srts = [
-        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
-    ]
-
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_single_level(session, faked_srts, min_level, max_level)
+        srts = await session.execute(select(SiteReadingType).where(SiteReadingType.site_reading_type_id.in_(srt_ids)))
+        srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in srts.scalars().all()]
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_single_level(backend, srt_dtos, min_level, max_level)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1473,7 +1498,7 @@ async def test_do_check_levels_for_period(
         session.add_all([site, srt1, srt2, srt3])
         srt_d = {1: srt1, 2: srt2, 3: srt3}
 
-        time_now = datetime.now()
+        time_now = datetime.now(UTC)
         # Load scenario readings
         for i, reading_scenario in enumerate(readings, 1):
             for j, reading_value in enumerate(reading_scenario.readings, 1):
@@ -1491,14 +1516,21 @@ async def test_do_check_levels_for_period(
 
         await session.commit()
 
-    faked_srts = [
-        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
-    ]
-
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
+        srts = await session.execute(select(SiteReadingType))
+        srt_dtos = [
+            map_envoy_site_reading_type_to_dto(srt)
+            for srt in srts.scalars().all()
+            if int(srt.site_reading_type_id) in srt_ids
+        ]
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         window_period = timedelta(seconds=window_s)
-        result = await do_check_levels_for_period(session, faked_srts, min_level, max_level, window_period)
+        result = await do_check_levels_for_period(backend, srt_dtos, min_level, max_level, window_period)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1643,12 +1675,17 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
         await session.commit()
 
     faked_srts = [
-        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+        generate_class_instance(dtos.SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_on_minute_boundary(session, faked_srts)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_readings_on_minute_boundary(backend, faked_srts)
         assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1712,16 +1749,16 @@ async def test_do_check_reading_type_mrids_match_pen(
             group_mrid=group_mrid,
         )
         srts.append(srt2)
-
+    srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in srts]
     # Act
-    result = await do_check_reading_type_mrids_match_pen(site_reading_types=srts, pen=pen)
+    result = await do_check_reading_type_mrids_match_pen(site_reading_types=srt_dtos, pen=pen)
 
     # Assert
     assert_check_result(result, expected_result)
 
 
 @pytest.mark.parametrize(
-    "resolved_parameters, uom, reading_location, qualifier, kind, site_reading_types, pen, expected_min_count",
+    "resolved_parameters, uom, reading_location, qualifier, kind, site_reading_type_count, pen, expected_min_count",
     [
         (
             {},
@@ -1729,7 +1766,7 @@ async def test_do_check_reading_type_mrids_match_pen(
             ReadingLocation.SITE_READING,
             DataQualifierType.AVERAGE,
             KindType.POWER,
-            [],
+            0,
             0,
             None,
         ),
@@ -1739,9 +1776,7 @@ async def test_do_check_reading_type_mrids_match_pen(
             ReadingLocation.DEVICE_READING,
             DataQualifierType.MINIMUM,
             KindType.POWER,
-            [
-                generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1),
-            ],
+            1,
             64,
             None,
         ),
@@ -1751,10 +1786,7 @@ async def test_do_check_reading_type_mrids_match_pen(
             ReadingLocation.DEVICE_READING,
             DataQualifierType.STANDARD,
             KindType.POWER,
-            [
-                generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=4),
-                generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2),
-            ],
+            2,
             888,
             123,
         ),
@@ -1764,15 +1796,12 @@ async def test_do_check_reading_type_mrids_match_pen(
             ReadingLocation.SITE_READING,
             DataQualifierType.MAXIMUM,
             KindType.ENERGY,
-            [
-                generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=2),
-            ],
+            2,
             0,
             0,
         ),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types_partitioned")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
@@ -1783,22 +1812,35 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
-    mock_get_csip_aus_site_reading_types_partitioned: mock.MagicMock,
     resolved_parameters: dict[str, Any],
     uom: UomType,
     reading_location: ReadingLocation,
     qualifier: DataQualifierType,
     kind: KindType,
-    site_reading_types: list[SiteReadingType],
+    site_reading_type_count: int,
     pen: int,
     expected_min_count: int | None,
 ):
     """Tests that do_check_site_readings_and_params does the basic logic it needs before offloading to
     do_check_readings_for_types"""
     # Arrange
-    mock_session = create_mock_session()
-    expected_result = generate_class_instance(CheckResult)
-    mock_get_csip_aus_site_reading_types_partitioned.return_value = (site_reading_types, [])
+    active_site = generate_class_instance(dtos.Site)
+    site_reading_types = [
+        generate_class_instance(
+            dtos.SiteReadingType,
+            seed=i,
+            site_id=active_site.site_id,
+            uom=uom,
+            data_qualifier=qualifier,
+            kind=kind,
+            role_flags=reading_location,
+        )
+        for i in range(site_reading_type_count)
+    ]
+    mock_backend = mock.AsyncMock(spec=RunnerBackend)
+    mock_backend.get_active_site.return_value = active_site
+    mock_backend.get_site_reading_types.return_value = site_reading_types
+    expected_result = generate_class_instance(CheckResult, seed=1)
     mock_do_check_readings_for_types.return_value = expected_result
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
@@ -1806,54 +1848,98 @@ async def test_do_check_site_readings_and_params(
 
     # Act
     result = await do_check_site_readings_and_params(
-        mock_session, resolved_parameters, pen, uom, reading_location, qualifier, kind
+        mock_backend, resolved_parameters, pen, uom, reading_location, qualifier, kind
     )
 
     # Assert
-    assert_mock_session(mock_session)
-    mock_get_csip_aus_site_reading_types_partitioned.assert_called_once_with(
-        mock_session, uom, reading_location, kind, qualifier
-    )
+    mock_backend.get_active_site.assert_called_once()
+    mock_backend.get_site_reading_types.assert_called_once_with(site_ids=[active_site.site_id])
 
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:
         assert result == expected_result
-        mock_do_check_readings_for_types.assert_called_once_with(mock_session, site_reading_types, expected_min_count)
-        mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_session, site_reading_types)
+        mock_do_check_readings_for_types.assert_called_once_with(mock_backend, site_reading_types, expected_min_count)
+        mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_backend, site_reading_types)
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
-        mock_do_check_readings_for_duration.assert_called_once_with(mock_session, site_reading_types)
+        mock_do_check_readings_for_duration.assert_called_once_with(mock_backend, site_reading_types)
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "incorrect_roleflags, site_reading_types, expected_passed",
+    "site_reading_types, expected_passed",
     [
         # only incorrect roleflags, no correct readings: fail
         (
-            [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01)],
-            [],
+            [
+                generate_class_instance(
+                    dtos.SiteReadingType,
+                    seed=1,
+                    site_reading_type_id="1",
+                    role_flags=0x01,
+                    site_id="1",
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    kind=KindType.POWER,
+                )
+            ],
             False,
         ),
         # multiple incorrect roleflags, no correct readings: fail
         (
             [
-                generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01),
-                generate_class_instance(SiteReadingType, seed=2, site_reading_type_id=2, role_flags=0x02),
+                generate_class_instance(
+                    dtos.SiteReadingType,
+                    seed=1,
+                    site_reading_type_id="1",
+                    role_flags=0x01,
+                    site_id="1",
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    kind=KindType.POWER,
+                ),
+                generate_class_instance(
+                    dtos.SiteReadingType,
+                    seed=2,
+                    site_reading_type_id="2",
+                    role_flags=0x02,
+                    site_id="1",
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    kind=KindType.POWER,
+                ),
             ],
-            [],
             False,
         ),
         # incorrect roleflags alongside correct readings: roleflag check skipped, passes
         (
-            [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1, role_flags=0x01)],
-            [generate_class_instance(SiteReadingType, seed=2, site_reading_type_id=2)],
+            [
+                generate_class_instance(
+                    dtos.SiteReadingType,
+                    seed=1,
+                    site_reading_type_id="1",
+                    role_flags=ReadingLocation.SITE_READING,
+                    site_id="1",
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    kind=KindType.POWER,
+                ),
+                generate_class_instance(
+                    dtos.SiteReadingType,
+                    seed=2,
+                    site_reading_type_id="2",
+                    role_flags=0x02,
+                    site_id="1",
+                    uom=UomType.REAL_POWER_WATT,
+                    data_qualifier=DataQualifierType.AVERAGE,
+                    kind=KindType.POWER,
+                ),
+            ],
             True,
         ),
     ],
 )
-@mock.patch("cactus_runner.app.check.get_csip_aus_site_reading_types_partitioned")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
@@ -1864,16 +1950,15 @@ async def test_do_check_site_readings_and_params_roleflags(
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
-    mock_get_csip_aus_site_reading_types_partitioned: mock.MagicMock,
-    incorrect_roleflags: list[SiteReadingType],
-    site_reading_types: list[SiteReadingType],
+    site_reading_types: list[dtos.SiteReadingType],
     expected_passed: bool,
 ):
     """Tests roleflag handling: fails when only incorrect roleflags are returned, passes when correct
     site_reading_types are also present."""
     # Arrange
-    mock_session = create_mock_session()
-    mock_get_csip_aus_site_reading_types_partitioned.return_value = (site_reading_types, incorrect_roleflags)
+    mock_backend = mock.AsyncMock(spec=RunnerBackend)
+    mock_backend.get_active_site.return_value = generate_class_instance(dtos.Site, seed=1, site_id="1")
+    mock_backend.get_site_reading_types.return_value = site_reading_types
     mock_do_check_readings_for_types.return_value = CheckResult(True, description=None)
     mock_do_check_readings_on_minute_boundary.return_value = CheckResult(True, description=None)
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
@@ -1881,22 +1966,23 @@ async def test_do_check_site_readings_and_params_roleflags(
 
     # Act
     result = await do_check_site_readings_and_params(
-        mock_session,
+        mock_backend,
         {},
         pen=12345,
         uom=UomType.REAL_POWER_WATT,
         reading_location=ReadingLocation.SITE_READING,
         data_qualifier=DataQualifierType.AVERAGE,
+        kind=KindType.POWER,
     )
 
     # Assert
     assert_check_result(result, expected_passed)
-    if site_reading_types:
+    if [sr for sr in site_reading_types if sr.role_flags == ReadingLocation.SITE_READING]:
         mock_do_check_readings_for_types.assert_called_once()
     else:
         mock_do_check_readings_for_types.assert_not_called()
         assert result.description is not None
-        if incorrect_roleflags:
+        if [sr for sr in site_reading_types if sr.role_flags != ReadingLocation.SITE_READING]:
             assert "roleFlags" in result.description
 
 
@@ -1918,15 +2004,16 @@ async def test_run_check(mocker, check: Check, apply_function_name: str):
     mock_run_check_function = mocker.patch(f"cactus_runner.app.check.{apply_function_name}")
     mock_run_check_function.return_value = check_result
 
-    mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
-    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+    actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
 
     # Assert
     assert actual is check_result
     mock_run_check_function.assert_called_once()
-    assert_mock_session(mock_session)
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @mock.patch("cactus_runner.app.check.do_check_site_readings_and_params")
@@ -1945,11 +2032,11 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
     # Arrange
     check_result = generate_class_instance(CheckResult)
     mock_do_check_site_readings_and_params.return_value = check_result
-    mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     for check in reading_checks:
-        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+        actual = await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
         assert actual is check_result
 
     # Assert
@@ -1958,7 +2045,8 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
         "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
     )
 
-    assert_mock_session(mock_session)
+    mock_backend.get_expression_resolver.assert_called()
+    assert len(mock_backend.mock_calls) == len(reading_checks)
 
 
 @pytest.mark.parametrize(
@@ -2014,9 +2102,14 @@ async def test_check_readings_voltage(
 @pytest.mark.anyio
 async def test_check_all_notifications_transmitted_no_logs(pg_base_config):
     """check_all_notifications_transmitted should fail if there are no logs"""
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_all_notifications_transmitted(session)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2033,9 +2126,14 @@ async def test_check_all_notifications_transmitted_success_logs(pg_base_config):
             )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_all_notifications_transmitted(session)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2061,9 +2159,14 @@ async def test_check_subscription_contents_no_site_edev_list(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2138,9 +2241,14 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2227,9 +2335,14 @@ async def test_check_subscription_contents_success(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2266,9 +2379,14 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
 
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_subscription_contents(resolved_params, session, active_test_procedure)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_subscription_contents(resolved_params, backend, active_test_procedure)
         assert_check_result(actual, True)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize("failure_code", [-1, 0, 199, 301, 404, 401, 500])
@@ -2291,9 +2409,14 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        actual = await check_all_notifications_transmitted(session)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize("input_val", [-1, {"a": 2}, 99999998, [1, 2, 3], "abc123"])
@@ -2379,14 +2502,16 @@ async def test_check_response_contents_latest(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is a latest
-        assert_check_result(await check_response_contents({"latest": True}, session, active_test_procedure), True)
+        assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), True)
 
         # This will check that there is a latest and that the status matches the filter
         assert_check_result(
             await check_response_contents(
-                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, backend, active_test_procedure
             ),
             True,
         )
@@ -2394,10 +2519,13 @@ async def test_check_response_contents_latest(pg_base_config):
         # This will check that the filter on latest will fail if there is mismatch on the latest record
         assert_check_result(
             await check_response_contents(
-                {"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"latest": True, "status": ResponseType.EVENT_CANCELLED.value}, backend, active_test_procedure
             ),
             False,
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2478,11 +2606,16 @@ async def test_check_response_contents_all(
             )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         params: dict = {"all": True}
         if status is not None:
             params["status"] = status
-        assert_check_result(await check_response_contents(params, session, active_test_procedure), expected)
+        assert_check_result(await check_response_contents(params, backend, active_test_procedure), expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2546,27 +2679,29 @@ async def test_check_response_contents_any(pg_base_config):
         )
         await session.commit()
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is any response
-        assert_check_result(await check_response_contents({"latest": False}, session, active_test_procedure), True)
-        assert_check_result(await check_response_contents({}, session, active_test_procedure), True)
+        assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), True)
+        assert_check_result(await check_response_contents({}, backend, active_test_procedure), True)
 
         # Checks on existing values
         assert_check_result(
             await check_response_contents(
-                {"status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+                {"status": ResponseType.EVENT_COMPLETED.value}, backend, active_test_procedure
             ),
             True,
         )
         assert_check_result(
             await check_response_contents(
-                {"status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
+                {"status": ResponseType.EVENT_RECEIVED.value}, backend, active_test_procedure
             ),
             True,
         )
         assert_check_result(
             await check_response_contents(
-                {"status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"status": ResponseType.EVENT_CANCELLED.value}, backend, active_test_procedure
             ),
             True,
         )
@@ -2574,33 +2709,41 @@ async def test_check_response_contents_any(pg_base_config):
         # This will check that the filter will fail if a matching record cant be found
         assert_check_result(
             await check_response_contents(
-                {"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, session, active_test_procedure
+                {"latest": False, "status": ResponseType.CANNOT_BE_DISPLAYED.value}, backend, active_test_procedure
             ),
             False,
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
 async def test_check_response_contents_empty(pg_base_config):
     """check_response_contents should behave correctly when the DB is empty of responses"""
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # This will check that there is any response
-        assert_check_result(await check_response_contents({"latest": False}, session, active_test_procedure), False)
-        assert_check_result(await check_response_contents({"latest": True}, session, active_test_procedure), False)
-        assert_check_result(await check_response_contents({}, session, active_test_procedure), False)
+        assert_check_result(await check_response_contents({"latest": False}, backend, active_test_procedure), False)
+        assert_check_result(await check_response_contents({"latest": True}, backend, active_test_procedure), False)
+        assert_check_result(await check_response_contents({}, backend, active_test_procedure), False)
         assert_check_result(
             await check_response_contents(
-                {"status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+                {"status": ResponseType.EVENT_COMPLETED.value}, backend, active_test_procedure
             ),
             False,
         )
         assert_check_result(
             await check_response_contents(
-                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, session, active_test_procedure
+                {"latest": True, "status": ResponseType.EVENT_COMPLETED.value}, backend, active_test_procedure
             ),
             False,
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2611,7 +2754,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
     )
 
     # Set up resource annotations with tagged control IDs
-    active_test_procedure.resource_annotations.der_control_ids_by_alias = {"DERC1": 100, "DERC2": 200}
+    active_test_procedure.resource_annotations.der_control_ids_by_alias = {"DERC1": "100", "DERC2": "200"}
 
     # Fill up the DB with responses
     async with generate_async_session(pg_base_config) as session:
@@ -2686,14 +2829,16 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
+        mock_admin_client = mock.Mock(spec=EnvoyBackend)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         # Check responses for DERC1 tag can be found
         assert_check_result(
-            await check_response_contents({"subject_tag": "DERC1"}, session, active_test_procedure), True
+            await check_response_contents({"subject_tag": "DERC1"}, backend, active_test_procedure), True
         )
 
         # Check latest response for DERC1 is EVENT_COMPLETED
         assert_check_result(
-            await check_response_contents({"subject_tag": "DERC1", "latest": True}, session, active_test_procedure),
+            await check_response_contents({"subject_tag": "DERC1", "latest": True}, backend, active_test_procedure),
             True,
         )
 
@@ -2701,7 +2846,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         assert_check_result(
             await check_response_contents(
                 {"subject_tag": "DERC1", "latest": True, "status": ResponseType.EVENT_COMPLETED.value},
-                session,
+                backend,
                 active_test_procedure,
             ),
             True,
@@ -2711,7 +2856,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         assert_check_result(
             await check_response_contents(
                 {"subject_tag": "DERC1", "latest": True, "status": ResponseType.EVENT_CANCELLED.value},
-                session,
+                backend,
                 active_test_procedure,
             ),
             False,
@@ -2720,7 +2865,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC1 has a response of type EVENT_RECEIVED
         assert_check_result(
             await check_response_contents(
-                {"subject_tag": "DERC1", "status": ResponseType.EVENT_RECEIVED.value}, session, active_test_procedure
+                {"subject_tag": "DERC1", "status": ResponseType.EVENT_RECEIVED.value}, backend, active_test_procedure
             ),
             True,
         )
@@ -2728,7 +2873,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC1 does not have a response of type EVENT_CANCELLED
         assert_check_result(
             await check_response_contents(
-                {"subject_tag": "DERC1", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"subject_tag": "DERC1", "status": ResponseType.EVENT_CANCELLED.value}, backend, active_test_procedure
             ),
             False,
         )
@@ -2736,16 +2881,19 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         # Check DERC2 has EVENT_CANCELLED (different control)
         assert_check_result(
             await check_response_contents(
-                {"subject_tag": "DERC2", "status": ResponseType.EVENT_CANCELLED.value}, session, active_test_procedure
+                {"subject_tag": "DERC2", "status": ResponseType.EVENT_CANCELLED.value}, backend, active_test_procedure
             ),
             True,
         )
 
         # Check non-existent tag returns failure
         assert_check_result(
-            await check_response_contents({"subject_tag": "NONEXISTENT"}, session, active_test_procedure),
+            await check_response_contents({"subject_tag": "NONEXISTENT"}, backend, active_test_procedure),
             False,
         )
+
+        # Currently not relying on admin api for checks. This may change.
+        mock_admin_client.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -2754,14 +2902,15 @@ async def test_run_check_check_dne():
 
     # Arrange
     check = Check(type="this-check-does-not-exist", parameters={})
-    mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
 
     # Act
     with pytest.raises(UnknownCheckError):
-        await run_check(check, generate_active_test_procedure_steps([], []), mock_session)
+        await run_check(check, generate_active_test_procedure_steps([], []), mock_backend)
 
     # Assert
-    assert_mock_session(mock_session)
+    mock_backend.get_expression_resolver.assert_called_once()
+    assert len(mock_backend.mock_calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -2786,7 +2935,7 @@ async def test_first_failing_check(
     """Tries to trip up first_failing_check under various combinations of pass/fail/exception"""
 
     # Arrange
-    mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
     side_effects = []
     for r in run_check_results:
         if isinstance(r, type):
@@ -2798,10 +2947,10 @@ async def test_first_failing_check(
     # Act
     if isinstance(expected, type):
         with pytest.raises(expected):
-            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_session)
+            await first_failing_check(checks, generate_active_test_procedure_steps([], []), mock_backend)
     else:
         first_failing_result = await first_failing_check(
-            checks, generate_active_test_procedure_steps([], []), mock_session
+            checks, generate_active_test_procedure_steps([], []), mock_backend
         )
 
         if expected is True:
@@ -2811,7 +2960,7 @@ async def test_first_failing_check(
             assert expected is first_failing_result.passed
 
     # Assert
-    assert_mock_session(mock_session)
+    assert not mock_backend.mock_calls
 
 
 @pytest.mark.parametrize(
@@ -2837,6 +2986,7 @@ async def test_all_checks_passing(
 
     # Arrange
     mock_session = create_mock_session()
+    mock_backend = mock.Mock(spec=RunnerBackend)
     side_effects = []
     for r in run_check_results:
         if isinstance(r, type):
@@ -2848,9 +2998,11 @@ async def test_all_checks_passing(
     # Act
     if isinstance(expected, type):
         with pytest.raises(expected):
-            await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+            await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend)
     else:
-        all_checks_result = await all_checks_passing(checks, generate_active_test_procedure_steps([], []), mock_session)
+        all_checks_result = await all_checks_passing(
+            checks, generate_active_test_procedure_steps([], []), mock_session, mock_backend
+        )
         assert isinstance(all_checks_result, bool)
         assert all_checks_result == expected
 
@@ -3062,17 +3214,22 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
 async def test_check_der_settings_contents_error_messages_meaningful(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_settings_contents(session, resolved_params)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await check_der_settings_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
         assert re.search(msg_regex, result.description) is not None, (
             f"'{msg_regex}' not found in '{result.description}'"
         )
+
+    # At the moment the envoy admin api isn't expected to be used, this may change
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -3216,17 +3373,22 @@ async def test_check_der_settings_contents_error_messages_meaningful(
 async def test_check_der_capability_contents_error_messages_meaningful(
     pg_base_config, existing_sites: list[Site], resolved_params: dict[str, Any], expected: bool, msg_regex: str
 ):
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         session.add_all(existing_sites)
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
-        result = await check_der_capability_contents(session, resolved_params)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await check_der_capability_contents(backend, resolved_params)
         assert_check_result(result, expected)
         assert result.description is not None
         assert re.search(msg_regex, result.description) is not None, (
             f"'{msg_regex}' not found in '{result.description}'"
         )
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -3243,8 +3405,8 @@ async def test_check_der_capability_contents_error_messages_meaningful(
     ],
 )
 @pytest.mark.anyio
-async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int], expected_result: bool):
-    """Tests that do_check_readings_for_duration validates time_period_seconds"""
+async def test_do_check_readings_for_duration_envoy(pg_base_config, srt_ids: list[int], expected_result: bool):
+    """Tests that do_check_readings_for_duration validates time_period_seconds for envoy backend."""
     async with generate_async_session(pg_base_config) as session:
         site = generate_class_instance(Site, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
@@ -3275,12 +3437,17 @@ async def test_do_check_readings_for_duration(pg_base_config, srt_ids: list[int]
         await session.commit()
 
     faked_srts = [
-        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+        generate_class_instance(dtos.SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
 
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_for_duration(session=session, site_reading_types=faked_srts)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_readings_for_duration(backend=backend, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
+
+    # Currently not relying on admin api for checks. This may change
+    mock_admin_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
