@@ -6,7 +6,7 @@ This guide provides developers with the technical specification and architectura
 
 ## 1. Overview & Architecture
 
-Cactus Runner decouples test orchestration (test steps, actions, checks, evaluation, and reporting) from the underlying server technology (e.g., Envoy server with direct DB access, mock testbeds, REST/gRPC gateways). 
+Cactus Runner decouples test orchestration (test steps, actions, checks, evaluation, and reporting) from the underlying server technology (e.g., [Envoy](https://github.com/bsgip/envoy) server with direct DB access, mock testbeds, REST/gRPC gateways). 
 
 A backend plugin must provide an implementation of the [RunnerBackend](src/cactus_runner/plugin/backends/common.py) protocol along with an [ExpressionResolver](src/cactus_runner/plugin/backends/resolver.py) for evaluating dynamic named variables.
 
@@ -91,6 +91,7 @@ When `create_backend(context)` is called, the [RunnerBackendTestContext](src/cac
 ## 3. Data Transfer Objects (DTOs) & Mapping Strategy
 
 The plugin layer uses immutable Data Transfer Objects located in [src/cactus_runner/plugin/dtos/](src/cactus_runner/plugin/dtos/) as the boundary contract. Backends translate internal database records, network schemas, or mock models into these DTOs.
+DTOs are heavily based on the internal models of [Envoy](https://github.com/bsgip/envoy), so plugin developers are expected to have working knowledge of the default server.
 
 ### 3.1. DTO Design Principles
 1. **Immutability (`frozen=True`)**: All DTOs are defined with `model_config = ConfigDict(frozen=True)` to prevent unintended mutations during check evaluations and test runs.
@@ -111,9 +112,9 @@ The plugin layer uses immutable Data Transfer Objects located in [src/cactus_run
 | [subscriptions.py](src/cactus_runner/plugin/dtos/subscriptions.py) | `Subscription`, `SubscriptionHref`, `TransmitNotificationLog` | Pub/Sub subscription definitions, parsed resource links, and outbound push notification logs. |
 | [configs.py](src/cactus_runner/plugin/dtos/configs.py) | `RuntimeConfig`, `RuntimeConfigWrite` | Server runtime parameters and feature flags. |
 
-### 3.3. Implementing Mappers ([mappers.py](src/cactus_runner/plugin/backends/envoy/mappers.py))
+### 3.3. Implementing Mappers (Recommended, Envoy Default: [mappers.py](src/cactus_runner/plugin/backends/envoy/mappers.py))
 
-Keep all conversion logic isolated in a standalone `mappers.py` file.
+It is recommended to keep all conversion logic isolated in a standalone `mappers` module.
 
 #### Inbound Mapping Example (Native Model ➔ DTO):
 ```python
@@ -292,6 +293,8 @@ async def resolve_uri(self, uri: ParsedUri) -> str:
 ```
 
 The runner automatically parses endpoint definitions before passing them to the resolver. Plugin implementations should never need to manually parse SEP2 URIs.
+
+The returned string from `resolve_uri` must match the path that the incoming client request (with defined environment prefixes and mount points stripped) will be expected to be for an equivalent resource from the underlying server.
 
 #### 5.2.1. ParsedUri
 
