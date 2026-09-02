@@ -997,7 +997,11 @@ async def do_check_readings_match_post_rate(
     Post rate changes are rare, so rather than precisely reasoning about a client's polling/aggregation lag in
     each direction, a reading taken close to a rate change (within the larger of the old/new rate either side of
     the change) is allowed to match either rate. This covers both a client lagging on adopting a new rate, and a
-    client re-aggregating older fine-grained samples into one coarser, retroactively-dated reading."""
+    client re-aggregating older fine-grained samples into one coarser, retroactively-dated reading.
+
+    SWG consensus on ALL-10 is that a client may either finish its in-progress collection window at the old rate
+    before switching, or discard it and re-baseline on the new rate immediately. This check only ever inspects readings
+    that are actually present, so a gap left by a discarded window is not penalised here."""
 
     default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
     config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
