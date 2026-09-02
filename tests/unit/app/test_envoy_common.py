@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -12,11 +12,13 @@ from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
 )
+from envoy.server.model.archive.server import ArchiveRuntimeServerConfig
 from envoy.server.model.doe import (
     DynamicOperatingEnvelope,
     SiteControlGroup,
     SiteControlGroupDefault,
 )
+from envoy.server.model.server import RuntimeServerConfig
 from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.admin.schema.site_group import SiteGroupResponse
@@ -38,6 +40,7 @@ from cactus_runner.app.envoy_common import (
     get_csip_aus_site_reading_types,
     get_exclusive_site_group,
     get_reading_counts_grouped_by_reading_type,
+    get_runtime_server_config_history,
     get_site_control_group_defaults_with_archive,
     get_site_controls_active_archived,
     get_site_readings,
@@ -970,3 +973,26 @@ async def test_count_all_site_controls_with_cancelled(pg_base_config):
         result = await count_all_site_controls_with_cancelled(session, site_id=99)
         assert isinstance(result, int)
         assert result == 0
+
+
+@pytest.mark.anyio
+async def test_get_runtime_server_config_history(pg_base_config):
+    """Live + archived rows should be merged and returned oldest -> newest by changed_time"""
+    t0 = datetime(2024, 1, 1, tzinfo=UTC)
+    t1 = datetime(2024, 1, 2, tzinfo=UTC)
+
+    async with generate_async_session(pg_base_config) as session:
+        session.add(
+            ArchiveRuntimeServerConfig(
+                runtime_server_config_id=1, mup_postrate_seconds=60, created_time=t0, changed_time=t0
+            )
+        )
+        session.add(
+            RuntimeServerConfig(runtime_server_config_id=1, mup_postrate_seconds=300, created_time=t0, changed_time=t1)
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        history = await get_runtime_server_config_history(session)
+        assert [h.mup_postrate_seconds for h in history] == [60, 300]
+        assert [h.changed_time for h in history] == [t0, t1]
