@@ -2,19 +2,18 @@ import logging
 
 from envoy.server.model.aggregator import Aggregator
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from cactus_runner.app.database import begin_session
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 
 
-async def is_db_healthy() -> bool:
+async def is_db_healthy(session: AsyncSession) -> bool:
     """Returns True if the server can access the DB and is otherwise in a "healthy" state"""
     try:
-        async with begin_session() as session:
-            count = (await session.execute(select(func.count()).select_from(Aggregator))).scalar_one()
-            return isinstance(count, int)  # We don't care what the count is - just that DB can serve on
+        count = (await session.execute(select(func.count()).select_from(Aggregator))).scalar_one()
+        return isinstance(count, int)  # We don't care what the count is - just that DB can serve on
     except Exception as exc:
         logger.error("Exception checking db health", exc_info=exc)
         return False
