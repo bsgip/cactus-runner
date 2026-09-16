@@ -75,7 +75,11 @@ async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
     "start_time, end_time, expected_values",
     [
         (None, None, [1, 2, 3]),  # No filtering - everything is returned
-        (datetime(2024, 1, 1, 0, 5, 30, tzinfo=UTC), None, [2, 3]),  # start_time only - drops readings that end before it  # noqa: E501
+        (
+            datetime(2024, 1, 1, 0, 5, 30, tzinfo=UTC),
+            None,
+            [2, 3],
+        ),  # start_time only - drops readings that end before it  # noqa: E501
         (None, datetime(2024, 1, 1, 0, 7, tzinfo=UTC), [1, 2]),  # end_time only - drops readings that start on/after it
         (
             datetime(2024, 1, 1, 0, 3, tzinfo=UTC),
@@ -169,12 +173,8 @@ async def test_get_site_readings_start_end_time_combines_with_type_filter(pg_bas
         site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
         session.add(site)
 
-        srt1 = generate_class_instance(
-            SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site
-        )
-        srt2 = generate_class_instance(
-            SiteReadingType, seed=2, aggregator_id=1, site_reading_type_id=2, site=site
-        )
+        srt1 = generate_class_instance(SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site)
+        srt2 = generate_class_instance(SiteReadingType, seed=2, aggregator_id=1, site_reading_type_id=2, site=site)
         session.add_all([srt1, srt2])
 
         # Both readings fall inside the same time window, but belong to different reading types
