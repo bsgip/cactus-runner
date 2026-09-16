@@ -71,10 +71,14 @@ def map_envoy_site_der_settings_to_dto(site_der_settings: SiteDERSetting) -> dto
         max_var_value=site_der_settings.max_var_value,
         max_var_neg_value=site_der_settings.max_var_neg_value,
         max_charge_rate_w_value=site_der_settings.max_charge_rate_w_value,
+        max_charge_rate_w_multiplier=site_der_settings.max_charge_rate_w_multiplier,
         max_discharge_rate_w_value=site_der_settings.max_discharge_rate_w_value,
+        max_discharge_rate_w_multiplier=site_der_settings.max_discharge_rate_w_multiplier,
         max_wh_value=site_der_settings.max_wh_value,
         min_pf_over_excited_displacement=site_der_settings.min_pf_over_excited_displacement,
         min_pf_under_excited_displacement=site_der_settings.min_pf_under_excited_displacement,
+        min_wh_value=None,
+        vpp_modes_enabled=None,
     )
 
 
@@ -92,6 +96,7 @@ def map_envoy_site_der_ratings_to_dto(site_der_ratings: SiteDERRating) -> dtos.S
         max_wh_value=site_der_ratings.max_wh_value,
         min_pf_over_excited_displacement=site_der_ratings.min_pf_over_excited_displacement,
         min_pf_under_excited_displacement=site_der_ratings.min_pf_under_excited_displacement,
+        vpp_modes_supported=None,
     )
 
 
