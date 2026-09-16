@@ -17,28 +17,12 @@ from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
-from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
-from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
-from envoy.server.model.doe import DynamicOperatingEnvelope
-from envoy.server.model.response import DynamicOperatingEnvelopeResponse
-from envoy.server.model.site import (
-    SiteDERRating,
-    SiteDERSetting,
-    SiteDERStatus,
-)
-from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy.server.model.subscription import Subscription, TransmitNotificationLog
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
-    get_active_site,
-    get_all_sites,
-    get_csip_aus_site_reading_types_partitioned,
-    get_runtime_server_config_history,
-    get_site_readings,
 )
 from cactus_runner.app.evaluator import (
     ResolvedParam,
@@ -977,7 +961,7 @@ async def do_check_readings_for_duration(
 
 
 async def do_check_readings_match_post_rate(
-    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType]
 ) -> CheckResult:
     """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
     at the time the reading was taken.
@@ -992,7 +976,7 @@ async def do_check_readings_match_post_rate(
     that are actually present, so a gap left by a discarded window is not penalised here."""
 
     default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
-    config_history = await get_runtime_server_config_history(session)  # oldest -> newest by changed_time
+    config_history = await backend.get_runtime_config_history()  # oldest -> newest by changed_time
 
     # Collapse config_history down to the points where the post rate actually changed
     transitions: list[tuple[datetime, int, int]] = []  # (changed_time, old_rate, new_rate)
@@ -1005,7 +989,7 @@ async def do_check_readings_match_post_rate(
 
     mismatched_count = 0
     for reading_type in site_reading_types:
-        reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+        reading_data = await get_site_readings_ordered(backend, [reading_type.site_reading_type_id])
         for reading in reading_data:
             expected_post_rate_seconds = default_post_rate_seconds
             for changed_time, _, new_rate in transitions:
@@ -1013,12 +997,13 @@ async def do_check_readings_match_post_rate(
                     break
                 expected_post_rate_seconds = new_rate
 
-            if reading.time_period_seconds == expected_post_rate_seconds:
+            time_period_seconds = int(reading.time_period_duration.total_seconds())
+            if time_period_seconds == expected_post_rate_seconds:
                 continue
 
             near_a_transition = any(
                 abs((reading.time_period_start - changed_time).total_seconds()) <= max(old_rate, new_rate)
-                and reading.time_period_seconds in (old_rate, new_rate)
+                and time_period_seconds in (old_rate, new_rate)
                 for changed_time, old_rate, new_rate in transitions
             )
             if not near_a_transition:

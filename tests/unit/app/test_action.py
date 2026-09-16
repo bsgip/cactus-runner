@@ -76,6 +76,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "remove-function-set-assignment": "action_remove_function_set_assignment",
     "create-wellknown-route": None,  # Not supported in v1.2
     "add-proxy-route": "action_add_proxy_route",  # Not supported in v1.2
+    "force-response-status": None,  # To be added in a seperate PR
 }
 
 

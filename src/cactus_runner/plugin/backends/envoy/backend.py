@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 
 from cactus_runner.app.envoy_common import (
     get_reading_counts_grouped_by_reading_type,
+    get_runtime_server_config_history,
     get_sites,
 )
 from cactus_runner.app.health import is_admin_api_healthy, is_db_healthy
@@ -41,7 +42,10 @@ from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, mappers
 from cactus_runner.plugin.backends.envoy.admin_client import get_exclusive_site_group
-from cactus_runner.plugin.backends.envoy.mappers import map_envoy_site_control_group_default_to_dto
+from cactus_runner.plugin.backends.envoy.mappers import (
+    map_envoy_db_runtime_config_to_dto,
+    map_envoy_site_control_group_default_to_dto,
+)
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 from cactus_runner.plugin.backends.models import FinalSerializableReportingData, RunnerBackendTestContext
 
@@ -373,6 +377,15 @@ class EnvoyBackend(RunnerBackend):
 
         all_controls = itertools.chain(active_control_groups, deleted_control_groups)
         return [map_envoy_site_control_group_default_to_dto(ctrl) for ctrl in all_controls]
+
+    async def get_runtime_config_history(self) -> Sequence[dtos.RuntimeConfig]:
+        """Fetches the current and all historical values for RuntimeConfig
+
+        Returns:
+            All RuntimeConfig values that have existed, ordered by their changed_time (ASC)"""
+        async with self._session_factory() as session:
+            config_history = await get_runtime_server_config_history(session)
+            return [map_envoy_db_runtime_config_to_dto(cfg) for cfg in config_history]
 
     async def update_runtime_config(self, config: dtos.RuntimeConfigWrite) -> None:
         """Applies runtime configuration changes to the envoy server via the admin API.

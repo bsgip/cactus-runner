@@ -6,6 +6,7 @@ from cactus_schema.runner import DERCapabilityInfo, DERSettingsInfo, DERStatusIn
 from envoy.server.model import (
     DynamicOperatingEnvelope,
     DynamicOperatingEnvelopeResponse,
+    RuntimeServerConfig,
     Site,
     SiteControlGroup,
     SiteControlGroupDefault,
@@ -20,6 +21,7 @@ from envoy.server.model import (
 )
 from envoy.server.model.archive import (
     ArchiveDynamicOperatingEnvelope,
+    ArchiveRuntimeServerConfig,
     ArchiveSiteControlGroupDefault,
     ArchiveSiteReading,
 )
@@ -220,6 +222,24 @@ def map_envoy_site_control_group_default_to_dto(
         deleted_time=site_control_group_default.deleted_time
         if isinstance(site_control_group_default, ArchiveSiteControlGroupDefault)
         else None,
+    )
+
+
+def map_envoy_db_runtime_config_to_dto(config: RuntimeServerConfig | ArchiveRuntimeServerConfig) -> dtos.RuntimeConfig:
+    """Maps a RuntimeConfig DTO to an admin API request."""
+    return dtos.RuntimeConfig(
+        dcap_pollrate_seconds=config.dcap_pollrate_seconds,
+        edevl_pollrate_seconds=config.edevl_pollrate_seconds,
+        derl_pollrate_seconds=config.derl_pollrate_seconds,
+        derpl_pollrate_seconds=config.derpl_pollrate_seconds,
+        fsal_pollrate_seconds=config.fsal_pollrate_seconds,
+        mup_postrate_seconds=config.mup_postrate_seconds,
+        disable_edev_registration=config.disable_edev_registration,
+        site_control_pow10_encoding=config.site_control_pow10_encoding,
+        changed_time=config.changed_time,
+        created_time=config.created_time,
+        deleted_time=config.deleted_time if isinstance(config, ArchiveRuntimeServerConfig) else None,
+        archive_time=config.archive_time if isinstance(config, ArchiveRuntimeServerConfig) else None,
     )
 
 

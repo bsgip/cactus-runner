@@ -3507,10 +3507,12 @@ async def test_do_check_readings_match_post_rate(
 
         await session.commit()
 
-    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
 
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
+        mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_readings_match_post_rate(backend, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
 
 
@@ -3575,10 +3577,12 @@ async def test_do_check_readings_match_post_rate_mid_run_change(pg_base_config):
 
         await session.commit()
 
-    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
 
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
+        mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_readings_match_post_rate(backend, site_reading_types=faked_srts)
         assert_check_result(result, True)
 
 
@@ -3630,10 +3634,12 @@ async def test_do_check_readings_match_post_rate_near_transition(
 
         await session.commit()
 
-    faked_srts = [generate_class_instance(SiteReadingType, seed=1, site_reading_type_id=1)]
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
 
     async with generate_async_session(pg_base_config) as session:
-        result = await do_check_readings_match_post_rate(session=session, site_reading_types=faked_srts)
+        mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        result = await do_check_readings_match_post_rate(backend, site_reading_types=faked_srts)
         assert_check_result(result, expected_result)
 
 

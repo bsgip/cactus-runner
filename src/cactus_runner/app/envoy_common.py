@@ -156,9 +156,16 @@ async def get_runtime_server_config_history(
 ) -> list[RuntimeServerConfig | ArchiveRuntimeServerConfig]:
     """Returns all known RuntimeServerConfig states (current + archived), ordered oldest -> newest by changed_time."""
 
-    live_config = (await session.execute(select(RuntimeServerConfig))).scalars().all()
-    archived_config = (await session.execute(select(ArchiveRuntimeServerConfig))).scalars().all()
+    live_config = (
+        (await session.execute(select(RuntimeServerConfig).order_by(RuntimeServerConfig.changed_time))).scalars().all()
+    )
+    archived_config = (
+        (await session.execute(select(ArchiveRuntimeServerConfig).order_by(ArchiveRuntimeServerConfig.changed_time)))
+        .scalars()
+        .all()
+    )
 
+    # It's a fair assumption that the live_config will have changed_time > archived_config
     history = list(chain(archived_config, live_config))
     history.sort(key=lambda c: c.changed_time)
     return history

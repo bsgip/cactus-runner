@@ -456,14 +456,11 @@ class RunnerBackend(Protocol):
     # Runtime Configuration
     # ------------------------------------------------------------------
 
-    async def get_runtime_config(
-        self,
-    ) -> dtos.RuntimeConfig:
-        """Returns the current runtime configuration from the backend.
+    async def get_runtime_config_history(self) -> Sequence[dtos.RuntimeConfig]:
+        """Fetches the current and all historical values for RuntimeConfig
 
         Returns:
-            A RuntimeConfig reflecting the backend's current server configuration state.
-        """
+            All RuntimeConfig values that have existed, ordered by their changed_time (ASC)"""
         ...
 
     async def update_runtime_config(
