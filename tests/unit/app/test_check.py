@@ -1342,6 +1342,108 @@ async def test_do_check_readings_for_types(
     mock_admin_client.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "srt_ids, minimum_count, expected",
+    [
+        ([], None, True),
+        ([], 0, True),
+        ([], 3, False),
+        # srt1 has 3 readings total but only 2 occur at/after started_at
+        ([1], 2, True),
+        ([1], 3, False),
+        ([1], 1, True),
+        # srt2 has 2 readings, both of which occur strictly before started_at
+        ([2], 0, True),
+        ([2], 1, False),
+        ([1, 2], 2, True),  # Only srt1's post-start readings count towards the max
+        ([1, 2], 3, False),
+        ([99], 0, True),
+        ([99], 1, False),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_for_types_started_at(
+    pg_base_config, srt_ids: list[int], minimum_count: int | None, expected: bool
+):
+    """Tests that do_check_readings_for_types ignores readings that occurred before
+    ActiveTestProcedure.started_at when evaluating minimum_count"""
+    started_at = datetime(2024, 1, 1, tzinfo=UTC)
+
+    async with generate_async_session(pg_base_config) as session:
+        # srt1 has 3 readings: one strictly before started_at, one ending exactly at started_at (inclusive
+        # boundary - should count) and one strictly after started_at.
+        # srt2 has 2 readings, both of which end strictly before started_at.
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        srt2 = generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2, aggregator_id=1, site=site)
+
+        session.add_all([site, srt1, srt2])
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=11,
+                site_reading_type=srt1,
+                time_period_start=started_at - timedelta(hours=2),
+                time_period_seconds=60,
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=22,
+                site_reading_type=srt1,
+                time_period_start=started_at - timedelta(seconds=60),
+                time_period_seconds=60,
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=33,
+                site_reading_type=srt1,
+                time_period_start=started_at + timedelta(hours=1),
+                time_period_seconds=60,
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=44,
+                site_reading_type=srt2,
+                time_period_start=started_at - timedelta(hours=2),
+                time_period_seconds=60,
+            )
+        )
+        session.add(
+            generate_class_instance(
+                SiteReading,
+                seed=55,
+                site_reading_type=srt2,
+                time_period_start=started_at - timedelta(hours=1),
+                time_period_seconds=60,
+            )
+        )
+
+        await session.commit()
+
+    faked_srts = [
+        generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
+    ]
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, started_at=started_at
+    )
+
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in faked_srts]
+        result = await do_check_readings_for_types(active_test_procedure, backend, srt_dtos, minimum_count)
+        assert_check_result(result, expected)
+
+    # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
+
+
 @dataclasses.dataclass
 class ReadingTestScenario:
     srt_id: int
@@ -1923,7 +2025,9 @@ async def test_do_check_site_readings_and_params(
     # If we have 0 SiteReadingTypes - instant failure, no need to run the reading checks
     if len(site_reading_types) != 0:
         assert result == expected_result
-        mock_do_check_readings_for_types.assert_called_once_with(mock_backend, site_reading_types, expected_min_count)
+        mock_do_check_readings_for_types.assert_called_once_with(
+            active_test_procedure, mock_backend, site_reading_types, expected_min_count
+        )
         mock_do_check_readings_on_minute_boundary.assert_called_once_with(mock_backend, site_reading_types)
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
         mock_do_check_readings_for_duration.assert_called_once_with(mock_backend, site_reading_types)
@@ -2114,8 +2218,9 @@ async def test_check_readings_unique(mock_do_check_site_readings_and_params: moc
 
     # Assert
     assert mock_do_check_site_readings_and_params.call_count == len(reading_checks)
-    assert len(set(a.args[2:] for a in mock_do_check_site_readings_and_params.call_args_list)) == len(reading_checks), (
-        "Each call to do_check_site_readings_and_params should have unique params (ignoring session/resolved_params)"
+    assert len(set(a.args[3:] for a in mock_do_check_site_readings_and_params.call_args_list)) == len(reading_checks), (
+        "Each call to do_check_site_readings_and_params should have unique params "
+        "(ignoring active_test_procedure/session/resolved_params)"
     )
 
     mock_backend.get_expression_resolver.assert_called()
@@ -2147,8 +2252,10 @@ async def test_check_readings_voltage(
     pen = 123
     site_check_result = generate_class_instance(CheckResult, seed=101, passed=site_passed)
     device_check_result = generate_class_instance(CheckResult, seed=202, passed=device_passed)
-    mock_do_check_site_readings_and_params.side_effect = lambda session, params, pen, uom, location, dq: (
-        site_check_result if location == ReadingLocation.SITE_READING else device_check_result
+    mock_do_check_site_readings_and_params.side_effect = (
+        lambda active_test_procedure, session, params, pen, uom, location, dq: (
+            site_check_result if location == ReadingLocation.SITE_READING else device_check_result
+        )
     )
 
     # Act
@@ -2165,13 +2272,14 @@ async def test_check_readings_voltage(
 
     # Cursory look at passed params
     assert mock_do_check_site_readings_and_params.call_count >= 1
-    assert all([ca.args[0] is mock_session for ca in mock_do_check_site_readings_and_params.call_args_list])
-    assert all([ca.args[1] is resolved_params for ca in mock_do_check_site_readings_and_params.call_args_list])
-    assert all([ca.args[2] is pen for ca in mock_do_check_site_readings_and_params.call_args_list])
-    assert all([ca.args[3] is UomType.VOLTAGE for ca in mock_do_check_site_readings_and_params.call_args_list])
-    assert all([ca.args[4] in ReadingLocation for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[0] is active_test_procedure for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[1] is mock_session for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[2] is resolved_params for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[3] is pen for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[4] is UomType.VOLTAGE for ca in mock_do_check_site_readings_and_params.call_args_list])
+    assert all([ca.args[5] in ReadingLocation for ca in mock_do_check_site_readings_and_params.call_args_list])
     assert all(
-        [ca.args[5] is DataQualifierType.AVERAGE for ca in mock_do_check_site_readings_and_params.call_args_list]
+        [ca.args[6] is DataQualifierType.AVERAGE for ca in mock_do_check_site_readings_and_params.call_args_list]
     )
 
 
