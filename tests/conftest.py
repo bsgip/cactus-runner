@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import aiohttp.web as web
+import apluggy
 import psycopg
 import pytest
 from assertical.fixtures.environment import environment_snapshot
@@ -38,12 +39,17 @@ from cactus_runner.app.database import (
     initialise_database_connection,
     remove_database_connection,
 )
-from cactus_runner.app.envoy_admin_client import (
+from cactus_runner.app.main import create_app
+from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
+from cactus_runner.plugin.backends.envoy.admin_client import (
     EnvoyAdminClient,
     EnvoyAdminClientAuthParams,
 )
-from cactus_runner.app.main import create_app
-from cactus_runner.app.requests_archive import REQUEST_DATA_DIR
+from cactus_runner.plugin.backends.hookspec import (
+    BackendSpec,
+    DefaultEnvoyPlugin,
+    project_name,
+)
 from tests.adapter import HttpxClientSessionAdapter
 
 # Name of the throwaway database used (once per test session) to run the full alembic migration
@@ -274,8 +280,13 @@ async def cactus_runner_client(
         shutil.rmtree(REQUEST_DATA_DIR)
 
     with environment_snapshot():
-        with mock.patch("cactus_runner.app.main.generate_admin_client") as mock_generate_admin_client:
-            mock_generate_admin_client.return_value = envoy_admin_client
+        # TODO: [JCrowley 21/08/2026] This fixture is specifically tailored to an envoy backend. It would be good to
+        # split this out into a separate generic backend kind to enable agnostic testing.
+        with mock.patch("cactus_runner.app.main.create_plugin_manager") as mock_create_plugin_manager:
+            pm = apluggy.PluginManager(project_name)
+            pm.add_hookspecs(BackendSpec)
+            pm.register(DefaultEnvoyPlugin(admin_client=envoy_admin_client))
+            mock_create_plugin_manager.return_value = pm
             async with await aiohttp_client(create_app()) as app:
                 yield app
 
@@ -297,9 +308,14 @@ async def cactus_runner_client_with_mount_point(aiohttp_client, envoy_admin_clie
     mount_point = getattr(request, "param", "")
 
     with environment_snapshot():
+        # TODO: [JCrowley 21/08/2026] This fixture is specifically tailored to an envoy backend. It would be good to
+        # split this out into a separate generic backend kind to enable agnostic testing.
         with mock.patch("cactus_runner.app.main.MOUNT_POINT", mount_point):
-            with mock.patch("cactus_runner.app.main.generate_admin_client") as mock_generate_admin_client:
-                mock_generate_admin_client.return_value = envoy_admin_client
+            with mock.patch("cactus_runner.app.main.create_plugin_manager") as mock_create_plugin_manager:
+                pm = apluggy.PluginManager(project_name)
+                pm.add_hookspecs(BackendSpec)
+                pm.register(DefaultEnvoyPlugin(admin_client=envoy_admin_client))
+                mock_create_plugin_manager.return_value = pm
                 async with await aiohttp_client(create_app()) as app:
                     yield app
 

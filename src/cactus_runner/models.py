@@ -47,6 +47,7 @@ from envoy_schema.server.schema.sep2.types import (
 )
 
 from cactus_runner.app.timeline import Timeline
+from cactus_runner.plugin import dtos
 
 
 class ClientCertificateType(StrEnum):
@@ -62,7 +63,7 @@ class InitialisedCertificates:
     client_certificate_type: ClientCertificateType | None = None
     client_certificate: str | None = None
     client_lfdi: str | None = None
-    client_aggregator_id: int | None = None  # Stored for reuse when advancing to the next playlist test
+    client_aggregator_id: str | None = None  # Stored for reuse when advancing to the next playlist test
 
 
 @dataclass
@@ -89,8 +90,10 @@ class StepInfo:
 
 @dataclass
 class ResourceAnnotations:
-    der_program_ids_by_alias: dict[str, int] = field(default_factory=dict)
-    der_control_ids_by_alias: dict[str, int] = field(default_factory=dict)
+    """`Alias: ID` pairs."""
+
+    der_program_ids_by_alias: dict[str, str] = field(default_factory=dict)
+    der_control_ids_by_alias: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -119,7 +122,7 @@ class ActiveTestProcedure:
     listeners: list[Listener]
     step_status: dict[str, StepInfo]
     client_certificate_type: ClientCertificateType  # Human readable text to identify source of cert.
-    client_aggregator_id: int  # What aggregator ID will be the client operating as? (0 for device certs)
+    client_aggregator_id: str  # What aggregator ID will be the client operating as? (0 for device certs)
     client_lfdi: str  # The LFDI of the client certificate expected for the test (Either aggregator or device client)
     client_sfdi: int  # The SFDI of the client certificate expected for the test (Either aggregator or device client)
     run_id: str | None  # Metadata about what "id" has been assigned to this test (from external) - if any
@@ -266,6 +269,33 @@ class ReadingType(JSONWizard):
             changed_time=srt.changed_time,
         )
 
+    @classmethod
+    def from_final_report_dto(cls, srt: dtos.SiteReadingTypeFinalReport) -> Self:
+        """Converts a SiteReadingTypeFinalReport DTO to a serialisable ReadingType"""
+        return cls(
+            site_reading_type_id=srt.site_reading_type_id,
+            aggregator_id=srt.aggregator_id,
+            site_id=srt.site_id,
+            mrid=srt.mrid,
+            group_id=srt.group_id,
+            group_mrid=srt.group_mrid,
+            uom=srt.uom,
+            data_qualifier=srt.data_qualifier,
+            flow_direction=srt.flow_direction,
+            accumulation_behaviour=srt.accumulation_behaviour,
+            kind=srt.kind,
+            phase=srt.phase,
+            power_of_ten_multiplier=srt.power_of_ten_multiplier,
+            default_interval_seconds=srt.default_interval_seconds,
+            role_flags=srt.role_flags,
+            description=srt.description,
+            group_version=srt.group_version,
+            group_status=srt.group_status,
+            commodity=srt.commodity,
+            created_time=srt.created_time,
+            changed_time=srt.changed_time,
+        )
+
 
 @dataclass
 class PackedReadings(JSONWizard):
@@ -276,8 +306,8 @@ class PackedReadings(JSONWizard):
 
 @dataclass(frozen=True)
 class SiteDERRating(JSONWizard):
-    site_der_rating_id: int
-    site_id: int
+    site_der_rating_id: str
+    site_id: str
     created_time: datetime
     changed_time: datetime
 
@@ -335,8 +365,8 @@ class SiteDERRating(JSONWizard):
         if rating is None:
             return None
         return cls(
-            site_der_rating_id=rating.site_der_rating_id,
-            site_id=rating.site_id,
+            site_der_rating_id=f"{rating.site_der_rating_id}",
+            site_id=f"{rating.site_id}",
             created_time=rating.created_time,
             changed_time=rating.changed_time,
             modes_supported=rating.modes_supported,

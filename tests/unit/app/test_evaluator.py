@@ -28,6 +28,7 @@ from cactus_runner.app.evaluator import (
     resolve_variable_expressions_from_parameters,
 )
 from cactus_runner.models import ActiveTestProcedure, RandomValues
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 class MyTestingClass:
@@ -142,7 +143,8 @@ async def test_resolve_variable_expected_use(
         await session.commit()
 
         async with begin_session() as session:
-            result = await resolve_variable(session, atp, expression)
+            resolver = EnvoyResolver(lambda: session)
+            result = await resolve_variable(resolver, atp, expression)
             assert isinstance(result, type(expected))
             assert result == expected
 

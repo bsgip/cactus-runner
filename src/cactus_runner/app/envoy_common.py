@@ -8,14 +8,15 @@ from envoy.server.model.archive.doe import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
 )
+from envoy.server.model.archive.server import ArchiveRuntimeServerConfig
 from envoy.server.model.doe import (
     DynamicOperatingEnvelope,
     SiteControlGroup,
     SiteControlGroupDefault,
 )
+from envoy.server.model.server import RuntimeServerConfig
 from envoy.server.model.site import Site
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.admin.schema.site_group import SiteGroupResponse
 from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     KindType,
@@ -25,8 +26,6 @@ from envoy_schema.server.schema.sep2.types import (
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +40,6 @@ class ReadingLocation(IntEnum):
 
     SITE_READING = int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_PREMISES_AGGREGATION_POINT)
     DEVICE_READING = int(RoleFlagsType.IS_MIRROR | RoleFlagsType.IS_DER | RoleFlagsType.IS_SUBMETER)
-
-
-async def get_exclusive_site_group(client: EnvoyAdminClient, site: Site) -> SiteGroupResponse:
-    """Gets the SiteGroup which site has exclusive access to - that is, anything added to the returned SiteGroup will
-    ONLY be visible to site (no other sites will have membership).
-
-    This method will create SiteGroup if none exists via the admin client"""
-    exclusive_site_name = f"exclusive_site_{site.site_id}"
-
-    # There is a unique constraint underneath this - we should be safe from a race condition perspective
-    created_site_group_href = await client.try_create_site_group(group_name=exclusive_site_name, default_group=False)
-    if created_site_group_href is not None:
-        # If the creation succeeded - we will need to add assignments from site to it
-        await client.try_create_site_group_assignment(group_name=exclusive_site_name, site_id=site.site_id)
-
-    site_group = await client.get_site_group(group_name=exclusive_site_name)
-    if site_group is None:
-        raise EnvoyConfigurationError(
-            f"Couldn't find SiteGroup with name '{exclusive_site_name}' - this is likely a bug with envoy admin API"
-        )
-    return site_group
 
 
 async def get_active_site(session: AsyncSession, include_der_settings: bool = False) -> Site | None:
@@ -171,6 +149,26 @@ async def get_site_readings(session: AsyncSession, site_reading_type: SiteReadin
     )
 
     return response.scalars().all()
+
+
+async def get_runtime_server_config_history(
+    session: AsyncSession,
+) -> list[RuntimeServerConfig | ArchiveRuntimeServerConfig]:
+    """Returns all known RuntimeServerConfig states (current + archived), ordered oldest -> newest by changed_time."""
+
+    live_config = (
+        (await session.execute(select(RuntimeServerConfig).order_by(RuntimeServerConfig.changed_time))).scalars().all()
+    )
+    archived_config = (
+        (await session.execute(select(ArchiveRuntimeServerConfig).order_by(ArchiveRuntimeServerConfig.changed_time)))
+        .scalars()
+        .all()
+    )
+
+    # It's a fair assumption that the live_config will have changed_time > archived_config
+    history = list(chain(archived_config, live_config))
+    history.sort(key=lambda c: c.changed_time)
+    return history
 
 
 async def get_reading_counts_grouped_by_reading_type(session: AsyncSession) -> dict[SiteReadingType, int]:

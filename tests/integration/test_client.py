@@ -53,7 +53,7 @@ MAX_EXPORT_W = 10000.0
     "test_procedure_id, csip_aus_version, sub_domain, aggregator_cert, device_cert, expect_immediate_start",
     [
         (TestProcedureId.ALL_01, CSIPAusVersion.BETA_1_3_STORAGE, None, RAW_CERT_1, None, True),
-        (TestProcedureId.GEN_01, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2, False),
+        (TestProcedureId.GEN_02, CSIPAusVersion.RELEASE_1_2, "my.example.domain", None, RAW_CERT_2, False),
     ],
 )
 @pytest.mark.slow

@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 WILDCARD = "*"
 
+RANDOM_URI_ATTEMPTS = 20
+RANDOM_URI_LENGTH = 16
+
 
 def does_endpoint_match(path: str, match: str) -> bool:
     """Performs all logic for matching an "endpoint" to an incoming request's path.

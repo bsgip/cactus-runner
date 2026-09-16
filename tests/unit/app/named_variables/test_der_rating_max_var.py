@@ -3,8 +3,8 @@ from assertical.fake.generator import generate_class_instance
 from cactus_test_definitions.errors import UnresolvableVariableError
 from envoy.server.model.site import Site, SiteDERRating
 
-from cactus_runner.app import resolvers
 from cactus_runner.app.database import begin_session
+from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
 
 
 @pytest.mark.asyncio
@@ -12,7 +12,8 @@ async def test_resolve_named_variable_der_rating_max_var_empty(pg_empty_config):
     """If there is nothing in the DB - fail in a predictable way"""
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="DERCapability"):
-            await resolvers.resolve_named_variable_der_rating_max_var(session)
+            resolver = EnvoyResolver(lambda: session)
+            await resolver.resolve_named_variable_der_rating_max_var()
 
 
 @pytest.mark.asyncio
@@ -24,7 +25,8 @@ async def test_resolve_named_variable_der_rating_max_var_no_setting(pg_base_conf
 
     async with begin_session() as session:
         with pytest.raises(UnresolvableVariableError, match="rtgMaxVar"):
-            await resolvers.resolve_named_variable_der_rating_max_var(session)
+            resolver = EnvoyResolver(lambda: session)
+            await resolver.resolve_named_variable_der_rating_max_var()
 
 
 @pytest.mark.asyncio
@@ -50,7 +52,8 @@ async def test_resolve_named_variable_der_rating_max_var_single_setting(pg_base_
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_var(session)
+        resolver = EnvoyResolver(lambda: session)
+        result = await resolver.resolve_named_variable_der_rating_max_var()
         assert isinstance(result, float)
         assert result == 123.45
 
@@ -105,6 +108,7 @@ async def test_resolve_named_variable_der_rating_max_var_many_settings(pg_base_c
         await session.commit()
 
     async with begin_session() as session:
-        result = await resolvers.resolve_named_variable_der_rating_max_var(session)
+        resolver = EnvoyResolver(lambda: session)
+        result = await resolver.resolve_named_variable_der_rating_max_var()
         assert isinstance(result, float)
         assert result == 12300

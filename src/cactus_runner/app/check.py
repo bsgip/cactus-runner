@@ -1,11 +1,12 @@
 import http
+import itertools
 import logging
 import math
 import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
-from itertools import chain
+from operator import attrgetter
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlparse
 
@@ -16,29 +17,12 @@ from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import Check
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
-from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
-from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
-from envoy.server.model.doe import DynamicOperatingEnvelope
-from envoy.server.model.response import DynamicOperatingEnvelopeResponse
-from envoy.server.model.site import (
-    SiteDERRating,
-    SiteDERSetting,
-    SiteDERStatus,
-)
-from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy.server.model.subscription import Subscription, TransmitNotificationLog
+from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
-from sqlalchemy import ColumnElement, func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
-    get_active_site,
-    get_all_sites,
-    get_csip_aus_site_reading_types_partitioned,
-    get_site_readings,
 )
 from cactus_runner.app.evaluator import (
     ResolvedParam,
@@ -50,6 +34,12 @@ from cactus_runner.models import (
     CheckResult,
     ClientCertificateType,
     RequestEntry,
+)
+from cactus_runner.plugin import dtos
+from cactus_runner.plugin.backends.common import (
+    RunnerBackend,
+    get_site_reading_types_ordered,
+    get_site_readings_ordered,
 )
 
 logger = logging.getLogger(__name__)
@@ -182,6 +172,11 @@ class SoftChecker:
         return CheckResult(False, msg)
 
 
+def site_reading_time_end(site_reading: dtos.SiteReading) -> datetime:
+    """Determines the end time for a site reading."""
+    return site_reading.time_period_start + site_reading.time_period_duration
+
+
 def merge_checks(checks: list[CheckResult]) -> CheckResult:
     """Merges many CheckResults into a single overall CheckResult.
 
@@ -229,7 +224,7 @@ def check_all_steps_complete(
 
 
 async def check_end_device_contents(  # noqa: C901
-    active_test_procedure: ActiveTestProcedure, session: AsyncSession, resolved_parameters: dict[str, Any]
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any]
 ) -> CheckResult:
     """Implements the end-device-contents check
 
@@ -242,7 +237,7 @@ async def check_end_device_contents(  # noqa: C901
     - LFDI is only uppercase hexadecimal characters [0-9A-F]
     """
 
-    site = await get_active_site(session)
+    site = await backend.get_active_site()
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
@@ -290,7 +285,7 @@ async def check_end_device_contents(  # noqa: C901
     return CheckResult(True, None)
 
 
-async def check_end_device_count(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:
+async def check_end_device_count(backend: RunnerBackend, resolved_parameters: dict[str, Any]) -> CheckResult:
     """Implements the end-device-count check
 
     Returns pass if there are a specific number of EndDevice's registered for the current client"""
@@ -298,7 +293,7 @@ async def check_end_device_count(session: AsyncSession, resolved_parameters: dic
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     maximum_count: int | None = resolved_parameters.get("maximum_count", None)
 
-    sites = await get_all_sites(session)
+    sites = await backend.get_all_sites()
     total_sites = len(sites)
 
     if minimum_count is not None and total_sites < minimum_count:
@@ -312,18 +307,18 @@ async def check_end_device_count(session: AsyncSession, resolved_parameters: dic
 
 def do_field_boolean_expression_evaluated_check(
     soft_checker: SoftChecker,
-    db_entity: SiteDERSetting | SiteDERRating,
+    dto_entity: dtos.SiteDERSetting | dtos.SiteDERRating,
     field: pydantic.fields.FieldInfo,
     original_expression: variable_expressions.BaseExpression,
 ) -> None:
     """Checks that a boolean expression is appropriately evaluated for a field within a specified database entity.
 
     Depends on the type annotation having a SiteReadingTypeProperty ot allow the mapping of field to a specific property
-    in db_entity.
+    in dto_entity.
 
     Args:
         soft_checker: Object for holding errors from the check
-        db_entity: The object whose properties are interrogated
+        dto_entity: The object whose properties are interrogated
         field: The field info with Annotated metadata containing a SiteReadingTypeProperty. If not metadata - no check
         original_expression: The expression that the evaluation occurred on
     """
@@ -341,7 +336,7 @@ def do_field_boolean_expression_evaluated_check(
         # If we don't have metadata - nothing we can check
         return
 
-    actual_value = getattr(db_entity, property.name, None)
+    actual_value = getattr(dto_entity, property.name, None)
     if actual_value is None:
         soft_checker.add(
             f"{field.alias} must satisfy expression '{original_expression.expression_representation()}' "
@@ -356,7 +351,7 @@ def do_field_boolean_expression_evaluated_check(
 
 def do_field_exists_check(
     soft_checker: SoftChecker,
-    db_entity: SiteDERSetting | SiteDERRating,
+    dto_entity: dtos.SiteDERSetting | dtos.SiteDERRating,
     field: pydantic.fields.FieldInfo,
     expected_to_be_set: bool,
 ) -> None:
@@ -364,7 +359,7 @@ def do_field_exists_check(
     annotation having a SiteReadingTypeProperty to allow the mapping of field to a specific property in db_entity.
 
     soft_checker: Will report any failures into this object
-    db_entity: The object whose properties are interrogated
+    dto_entity: The object whose properties are interrogated
     field: The field info with Annotated metadata containing a SiteReadingTypeProperty. If not metadata - no check
     expected_to_be_set: True will assert that the property in db_entity is not None. False will assert that it's None
     """
@@ -382,7 +377,7 @@ def do_field_exists_check(
         # If we don't have metadata - nothing we can check
         return
 
-    actual_value = getattr(db_entity, property.name, None)
+    actual_value = getattr(dto_entity, property.name, None)
     if expected_to_be_set and actual_value is None:
         soft_checker.add(f"{field.alias} MUST be set but is currently missing")
     elif not expected_to_be_set and actual_value is not None:
@@ -390,18 +385,17 @@ def do_field_exists_check(
 
 
 async def check_der_settings_contents(  # noqa: C901
-    session: AsyncSession, resolved_parameters: dict[str, ResolvedParam]
+    backend: RunnerBackend, resolved_parameters: dict[str, ResolvedParam]
 ) -> CheckResult:
     """Implements the der-settings-contents check
 
     Returns pass if DERSettings has been submitted for the active site"""
 
-    site = await get_active_site(session)
+    site = await backend.get_active_site()
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(select(SiteDERSetting).where(SiteDERSetting.site_id == site.site_id).limit(1))
-    der_settings = response.scalar_one_or_none()
+    der_settings = await backend.get_der_settings(site.site_id)
     if der_settings is None:
         return CheckResult(False, f"No DERSetting found for EndDevice {site.site_id}.")
 
@@ -445,18 +439,17 @@ async def check_der_settings_contents(  # noqa: C901
 
 
 async def check_der_capability_contents(
-    session: AsyncSession, resolved_parameters: dict[str, ResolvedParam]
+    backend: RunnerBackend, resolved_parameters: dict[str, ResolvedParam]
 ) -> CheckResult:
     """Implements the der-capability-contents check
 
     Returns pass if DERCapability has been submitted for the active site"""
 
-    site = await get_active_site(session)
+    site = await backend.get_active_site()
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(select(SiteDERRating).where(SiteDERRating.site_id == site.site_id).limit(1))
-    der_rating = response.scalar_one_or_none()
+    der_rating = await backend.get_der_capability(site.site_id)
     if der_rating is None:
         return CheckResult(False, f"No DERCapability found for EndDevice {site.site_id}.")
 
@@ -502,17 +495,16 @@ def is_nth_bit_set_properly(value: int, nth_bit: int, expected: bool) -> bool:
     return bool(value & (1 << nth_bit)) is expected
 
 
-async def check_der_status_contents(session: AsyncSession, resolved_parameters: dict[str, Any]) -> CheckResult:  # noqa: C901
+async def check_der_status_contents(backend: RunnerBackend, resolved_parameters: dict[str, Any]) -> CheckResult:  # noqa: C901
     """Implements the der-status-contents check
 
     Returns pass if DERStatus has been submitted for the active site and optionally has certain fields set"""
 
-    site = await get_active_site(session)
+    site = await backend.get_active_site()
     if site is None:
         return CheckResult(False, "No EndDevice is currently registered.")
 
-    response = await session.execute(select(SiteDERStatus).where(SiteDERStatus.site_id == site.site_id).limit(1))
-    der_status = response.scalar_one_or_none()
+    der_status = await backend.get_der_status(site.site_id)
     if der_status is None:
         return CheckResult(False, f"No DERStatus found for EndDevice {site.site_id}.")
 
@@ -578,7 +570,7 @@ async def check_der_status_contents(session: AsyncSession, resolved_parameters: 
 
 
 async def do_check_readings_for_types(
-    session: AsyncSession, site_reading_types: Sequence[SiteReadingType], minimum_count: int | None
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType], minimum_count: int | None
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
     are met. "Valid" is that at least ONE of the site_reading_types supplied meets the conditions
@@ -591,12 +583,10 @@ async def do_check_readings_for_types(
     if minimum_count is not None:
         if site_reading_types:
             srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-            results = await session.execute(
-                select(SiteReading.site_reading_type_id, func.count(SiteReading.site_reading_id))
-                .where(SiteReading.site_reading_type_id.in_(srt_ids))
-                .group_by(SiteReading.site_reading_type_id)
-            )
-            count_by_srt_id: dict[int, int] = {srt_id: count for srt_id, count in results.all()}
+            results = await get_site_readings_ordered(backend, srt_ids)
+            count_by_srt_id: dict[str, int] = {
+                srt_id: len([x for x in results if x.site_reading_type_id == srt_id]) for srt_id in srt_ids
+            }
         else:
             count_by_srt_id = {}
 
@@ -642,13 +632,13 @@ async def do_check_readings_for_types(
 
 
 async def do_check_levels_for_readings(
-    session: AsyncSession,
-    site_reading_types: Sequence[SiteReadingType],
+    backend: RunnerBackend,
+    site_reading_types: Sequence[dtos.SiteReadingType],
     min_level: float | None,
     max_level: float | None,
     window_period: timedelta | None = None,
 ) -> CheckResult:
-    """Checks the SiteReading table for a specified set of SiteReadingType ID's.
+    """Checks the SiteReadings presented by the backend for a specified set of SiteReadingType ID's.
 
     Makes sure that all readings meet the specified levels. "Valid" is that ALL of the site_reading_types
     supplied meets the conditions. Min max levels are >= and <= respectively for valid result.
@@ -660,7 +650,7 @@ async def do_check_levels_for_readings(
     time_period_start >= latest created_time - window_period.
 
     Args:
-        session: DB session to query
+        backend: backend responsible for presenting the readings for verification
         site_reading_types: list of SiteReadingType's to check readings
         min_level: If not None - ensure that all readings are above this
         max_level: If not None - ensure that all readings are below this
@@ -733,8 +723,8 @@ async def do_check_levels_for_readings(
 
 
 async def do_check_latest_reading_level(
-    session: AsyncSession,
-    site_reading_types: Sequence[SiteReadingType],
+    backend: RunnerBackend,
+    site_reading_types: Sequence[dtos.SiteReadingType],
     min_level: float | None,
     max_level: float | None,
 ) -> CheckResult:
@@ -746,7 +736,7 @@ async def do_check_latest_reading_level(
     currently operating at roughly the right level" rather than asserting behaviour across a whole test.
 
     Args:
-        session: DB session to query
+        backend: utility server representation responsible for serving up state.
         site_reading_types: list of SiteReadingType's to check readings
         min_level: If not None - ensure the latest reading is above this
         max_level: If not None - ensure the latest reading is below this
@@ -798,8 +788,8 @@ async def do_check_latest_reading_level(
 
 
 async def do_check_reading_levels_for_types(
-    session: AsyncSession,
-    site_reading_types: Sequence[SiteReadingType],
+    backend: RunnerBackend,
+    site_reading_types: Sequence[dtos.SiteReadingType],
     resolved_parameters: dict[str, Any],
 ) -> CheckResult:
     """Performs selected reading value level checks.
@@ -812,7 +802,7 @@ async def do_check_reading_levels_for_types(
       readings within that trailing window (relative to the latest reading) are checked.
 
     Args:
-        session: DB session
+        backend: utility server representation responsible for serving up state.
         site_reading_types: all SiteReadingTypes confirmed to meet the type requirements
         resolved_parameters: parameter list provided with the check.
 
@@ -838,14 +828,12 @@ def timestamp_on_minute_boundary(d: datetime) -> bool:
 
 
 async def do_check_readings_on_minute_boundary(
-    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType]
 ) -> CheckResult:
     if site_reading_types:
         srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-        results = await session.execute(
-            select(SiteReading.time_period_start).where(SiteReading.site_reading_type_id.in_(srt_ids))
-        )
-        on_minute_boundary = [timestamp_on_minute_boundary(time_period_start) for (time_period_start,) in results.all()]
+        site_readings = await get_site_readings_ordered(backend, srt_ids)
+        on_minute_boundary = [timestamp_on_minute_boundary(sr.time_period_start) for sr in site_readings]
         aligned_count = on_minute_boundary.count(True)
         total_count = len(on_minute_boundary)
 
@@ -875,7 +863,9 @@ def mrid_matches_pen(pen: int, mrid: str) -> bool:
     return pen_from_mrid == pen
 
 
-async def do_check_reading_type_mrids_match_pen(site_reading_types: Sequence[SiteReadingType], pen: int) -> CheckResult:
+async def do_check_reading_type_mrids_match_pen(
+    site_reading_types: Sequence[dtos.SiteReadingType], pen: int
+) -> CheckResult:
     if site_reading_types:
         group_mrid_checks = [mrid_matches_pen(pen, srt.group_mrid) for srt in site_reading_types]
         mrid_checks = [mrid_matches_pen(pen, srt.mrid) for srt in site_reading_types]
@@ -914,7 +904,7 @@ READING_LOCATION_DESCRIPTIONS: dict[ReadingLocation, str] = {
 
 
 async def do_check_site_readings_and_params(
-    session: AsyncSession,
+    backend: RunnerBackend,
     resolved_parameters: dict[str, Any],
     pen: int,
     uom: UomType,
@@ -924,9 +914,18 @@ async def do_check_site_readings_and_params(
     check_duration: bool = True,
 ) -> CheckResult:
 
-    site_reading_types, incorrect_roleflags = await get_csip_aus_site_reading_types_partitioned(
-        session, uom, reading_location, kind, data_qualifier
-    )
+    site = await backend.get_active_site()
+    if not site:
+        return CheckResult(False, "No active site found.")
+    site_reading_types_raw = await get_site_reading_types_ordered(backend, site_ids=[site.site_id])
+    site_reading_types_all = [
+        srt
+        for srt in site_reading_types_raw
+        if srt.site_id == site.site_id and srt.uom == uom and srt.kind == kind and srt.data_qualifier == data_qualifier
+    ]
+    site_reading_types = [srt for srt in site_reading_types_all if srt.role_flags == reading_location]
+
+    incorrect_roleflags = [srt for srt in site_reading_types_all if srt.role_flags != reading_location]
 
     location_description = READING_LOCATION_DESCRIPTIONS.get(reading_location, reading_location.name)
     # The not applicable qualifier is confusing, the rest are self explanatory so we can return directly
@@ -958,18 +957,19 @@ async def do_check_site_readings_and_params(
         return merge_checks(check_results)
 
     if check_duration:
-        check_results.append(await do_check_readings_for_duration(session, site_reading_types))
+        check_results.append(await do_check_readings_for_duration(backend, site_reading_types))
+        check_results.append(await do_check_readings_match_post_rate(backend, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    check_results.append(await do_check_readings_for_types(session, site_reading_types, minimum_count))
-    check_results.append(await do_check_reading_levels_for_types(session, site_reading_types, resolved_parameters))
-    check_results.append(await do_check_readings_on_minute_boundary(session, site_reading_types))
+    check_results.append(await do_check_readings_for_types(backend, site_reading_types, minimum_count))
+    check_results.append(await do_check_reading_levels_for_types(backend, site_reading_types, resolved_parameters))
+    check_results.append(await do_check_readings_on_minute_boundary(backend, site_reading_types))
     check_results.append(await do_check_reading_type_mrids_match_pen(site_reading_types, pen))
     return merge_checks(check_results)
 
 
 async def do_check_readings_for_duration(
-    session: AsyncSession, site_reading_types: Sequence[SiteReadingType]
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType]
 ) -> CheckResult:
     """Check that all readings have non-zero time_period_seconds divisible by 60."""
 
@@ -977,11 +977,11 @@ async def do_check_readings_for_duration(
     non_divisible_count = 0
 
     for reading_type in site_reading_types:
-        reading_data = await get_site_readings(session=session, site_reading_type=reading_type)
+        reading_data = await get_site_readings_ordered(backend, [reading_type.site_reading_type_id])
         for reading in reading_data:
-            if reading.time_period_seconds == 0:
+            if reading.time_period_duration.seconds == 0:
                 zero_count += 1
-            elif reading.time_period_seconds % 60 != 0:
+            elif reading.time_period_duration.seconds % 60 != 0:
                 non_divisible_count += 1
 
     if zero_count > 0 or non_divisible_count > 0:
@@ -996,14 +996,73 @@ async def do_check_readings_for_duration(
     return CheckResult(True, "All readings have a valid time_period_seconds set")
 
 
+async def do_check_readings_match_post_rate(
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType]
+) -> CheckResult:
+    """Check that all readings have a time_period_seconds matching the mup_postrate_seconds that was configured
+    at the time the reading was taken.
+
+    Post rate changes are rare, so rather than precisely reasoning about a client's polling/aggregation lag in
+    each direction, a reading taken close to a rate change (within the larger of the old/new rate either side of
+    the change) is allowed to match either rate. This covers both a client lagging on adopting a new rate, and a
+    client re-aggregating older fine-grained samples into one coarser, retroactively-dated reading.
+
+    SWG consensus on ALL-10 is that a client may either finish its in-progress collection window at the old rate
+    before switching, or discard it and re-baseline on the new rate immediately. This check only ever inspects readings
+    that are actually present, so a gap left by a discarded window is not penalised here."""
+
+    default_post_rate_seconds = RuntimeServerConfigDefaults().mup_postrate_seconds
+    config_history = await backend.get_runtime_config_history()  # oldest -> newest by changed_time
+
+    # Collapse config_history down to the points where the post rate actually changed
+    transitions: list[tuple[datetime, int, int]] = []  # (changed_time, old_rate, new_rate)
+    current_rate = default_post_rate_seconds
+    for config in config_history:
+        if config.mup_postrate_seconds is None or config.mup_postrate_seconds == current_rate:
+            continue
+        transitions.append((config.changed_time, current_rate, config.mup_postrate_seconds))
+        current_rate = config.mup_postrate_seconds
+
+    mismatched_count = 0
+    for reading_type in site_reading_types:
+        reading_data = await get_site_readings_ordered(backend, [reading_type.site_reading_type_id])
+        for reading in reading_data:
+            expected_post_rate_seconds = default_post_rate_seconds
+            for changed_time, _, new_rate in transitions:
+                if changed_time > reading.time_period_start:
+                    break
+                expected_post_rate_seconds = new_rate
+
+            time_period_seconds = int(reading.time_period_duration.total_seconds())
+            if time_period_seconds == expected_post_rate_seconds:
+                continue
+
+            near_a_transition = any(
+                abs((reading.time_period_start - changed_time).total_seconds()) <= max(old_rate, new_rate)
+                and time_period_seconds in (old_rate, new_rate)
+                for changed_time, old_rate, new_rate in transitions
+            )
+            if not near_a_transition:
+                mismatched_count += 1
+
+    if mismatched_count > 0:
+        return CheckResult(
+            False,
+            f"{mismatched_count} readings with time_period_seconds not matching "
+            "the MUP post rate configured at the time they were taken",
+        )
+
+    return CheckResult(True, "All readings have a time_period_seconds matching the configured post rate")
+
+
 async def check_readings_site_active_power(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
+    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-site-active-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.REAL_POWER_WATT,
@@ -1013,13 +1072,13 @@ async def check_readings_site_active_power(
 
 
 async def check_readings_site_reactive_power(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
+    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-site-reactive-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.REACTIVE_POWER_VAR,
@@ -1028,7 +1087,7 @@ async def check_readings_site_reactive_power(
     )
 
 
-async def check_readings_voltage(session: AsyncSession, resolved_parameters: dict[str, Any], pen: int) -> CheckResult:
+async def check_readings_voltage(backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int) -> CheckResult:
     """Implements the readings-voltage check.
 
     Does a check for SITE AND DER voltage - as long as one valid, then this check is passed
@@ -1036,7 +1095,7 @@ async def check_readings_voltage(session: AsyncSession, resolved_parameters: dic
     Will only consider the mandatory "Average" readings"""
 
     site_check = await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.VOLTAGE,
@@ -1048,7 +1107,7 @@ async def check_readings_voltage(session: AsyncSession, resolved_parameters: dic
         return site_check
 
     device_check = await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.VOLTAGE,
@@ -1064,13 +1123,13 @@ async def check_readings_voltage(session: AsyncSession, resolved_parameters: dic
 
 
 async def check_readings_der_active_power(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
+    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-active-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.REAL_POWER_WATT,
@@ -1080,13 +1139,13 @@ async def check_readings_der_active_power(
 
 
 async def check_readings_der_reactive_power(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
+    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-reactive-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.REACTIVE_POWER_VAR,
@@ -1096,13 +1155,13 @@ async def check_readings_der_reactive_power(
 
 
 async def check_readings_der_stored_energy(
-    session: AsyncSession, resolved_parameters: dict[str, Any], pen: int
+    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-stored-energy check.
 
     Will only consider the mandatory "Instantaneous" readings"""
     return await do_check_site_readings_and_params(
-        session,
+        backend,
         resolved_parameters,
         pen,
         UomType.REAL_ENERGY_WATT_HOURS,
@@ -1113,54 +1172,61 @@ async def check_readings_der_stored_energy(
     )
 
 
-async def check_all_notifications_transmitted(session: AsyncSession) -> CheckResult:
+async def check_all_notifications_transmitted(backend: RunnerBackend) -> CheckResult:
     """Implements the all-notifications-transmitted check.
 
     Will assume that 0 transmission logs is a failure to avoid long running timeouts from being overlooked"""
 
-    all_logs = (await session.execute(select(TransmitNotificationLog))).scalars().all()
+    all_logs = await backend.get_notification_logs()
     if len(all_logs) == 0:
         return CheckResult(False, "No TransmitNotificationLog entries found. Are there active subscriptions?")
 
     for log in all_logs:
         if log.http_status_code < 200 or log.http_status_code >= 300:
-            sub_id = log.subscription_id_snapshot
+            sub = await backend.get_subscription(log.subscription_id)
+            if sub is None:
+                return CheckResult(
+                    False,
+                    f"Notification for subscription {log.subscription_id}, not presented by the runner backend, "
+                    f"received a HTTP {log.http_status_code} when sending a notification",
+                )
             return CheckResult(
                 False,
-                f"/sub/{sub_id} received a HTTP {log.http_status_code} when sending a notification",
+                f"{sub.notification_uri} received a HTTP {log.http_status_code} when sending a notification",
             )
 
     return CheckResult(True, f"All {len(all_logs)} notifications yielded HTTP success codes")
 
 
 async def check_subscription_contents(
-    resolved_parameters: dict[str, Any], session: AsyncSession, active_test_procedure: ActiveTestProcedure
+    resolved_parameters: dict[str, Any], backend: RunnerBackend, active_test_procedure: ActiveTestProcedure
 ) -> CheckResult:
     """Implements the subscription-contents check"""
 
     subscribed_resource: str = resolved_parameters["subscribed_resource"]  # mandatory param
 
-    # Decode the href so we know what to look for in the DB
+    # Decode the href so we know what to look for in the subscriptions returned from backend
     try:
-        resource_type, scoped_site_id, resource_id = SubscriptionMapper.parse_resource_href(subscribed_resource)
+        sub_dto = await backend.parse_subscription_href(subscribed_resource)
+        resource_type, scoped_site_id, resource_id = sub_dto.resource_type, sub_dto.scoped_site_id, sub_dto.resource_id
     except InvalidMappingError as exc:
         logger.error(f"check_subscription_contents: Caught InvalidMappingError for {subscribed_resource}", exc_info=exc)
         return CheckResult(False, f"Unable to interpret resource {subscribed_resource}: {exc.message}")
 
-    matching_sub = (
-        await session.execute(
-            select(Subscription).where(
-                (Subscription.aggregator_id == active_test_procedure.client_aggregator_id)
-                & (Subscription.scoped_site_id == scoped_site_id)
-                & (Subscription.resource_type == resource_type)
-                & (Subscription.resource_id == resource_id)
-            )
-        )
-    ).scalar_one_or_none()
-    if matching_sub is None:
-        return CheckResult(False, f"Couldn't find a subscription for {subscribed_resource}")
+    subs = await backend.get_subscriptions(f"{active_test_procedure.client_aggregator_id}")
+    matching_subs = (
+        sub
+        for sub in subs
+        if sub.client_aggregator_id == f"{active_test_procedure.client_aggregator_id}"
+        and sub.scoped_site_id == scoped_site_id
+        and sub.resource_id == resource_id
+        and sub.resource_type == resource_type
+    )
 
-    return CheckResult(True, f"Matched {subscribed_resource} to /sub/{matching_sub.subscription_id}")
+    if matching_sub := next(matching_subs, None):
+        return CheckResult(True, f"Matched {subscribed_resource} to subscription id: {matching_sub.subscription_id}")
+
+    return CheckResult(False, f"Couldn't find a subscription for {subscribed_resource}")
 
 
 def response_type_to_string(t: int | ResponseType | None) -> str:
@@ -1179,20 +1245,20 @@ def response_type_to_string(t: int | ResponseType | None) -> str:
 
 def match_all_responses(
     status_str: str,
-    controls: Iterable[DynamicOperatingEnvelope | ArchiveDynamicOperatingEnvelope],
-    responses: Sequence[DynamicOperatingEnvelopeResponse],
+    controls: Iterable[dtos.SiteControl],
+    responses: Sequence[dtos.SiteControlResponse],
 ) -> CheckResult:
-    responses_by_doe_id: dict[int, list[DynamicOperatingEnvelopeResponse]] = {}
+    responses_by_control_id: dict[str, list[dtos.SiteControlResponse]] = {}
     for r in responses:
-        existing = responses_by_doe_id.get(r.dynamic_operating_envelope_id_snapshot, None)
+        existing = responses_by_control_id.get(r.site_control_id, None)
         if existing is None:
-            responses_by_doe_id[r.dynamic_operating_envelope_id_snapshot] = [r]
+            responses_by_control_id[r.site_control_id] = [r]
         else:
             existing.append(r)
 
     unmatched_controls: int = 0
     for c in controls:
-        if c.dynamic_operating_envelope_id not in responses_by_doe_id:
+        if c.site_control_id not in responses_by_control_id:
             unmatched_controls += 1
 
     if unmatched_controls > 0:
@@ -1204,7 +1270,7 @@ def match_all_responses(
 
 
 async def check_response_contents(  # noqa: C901
-    resolved_parameters: dict[str, Any], session: AsyncSession, active_test_procedure: ActiveTestProcedure
+    resolved_parameters: dict[str, Any], backend: RunnerBackend, active_test_procedure: ActiveTestProcedure
 ) -> CheckResult:
     """Implements the response-contents check by inspecting the response table for site controls"""
 
@@ -1216,26 +1282,14 @@ async def check_response_contents(  # noqa: C901
 
     # Handle the "all" case separately
     if is_all:
-        controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
-        deleted_controls = (
-            (
-                await session.execute(
-                    select(ArchiveDynamicOperatingEnvelope).where(
-                        ArchiveDynamicOperatingEnvelope.deleted_time.is_not(None)
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        response_stmt = select(DynamicOperatingEnvelopeResponse)
+        controls = await backend.get_site_controls()
+        responses = await backend.get_site_control_responses()
         if status_filter is not None:
-            response_stmt = response_stmt.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
-        responses = (await session.execute(response_stmt)).scalars().all()
-        return match_all_responses(status_filter_string, chain(controls, deleted_controls), responses)
+            responses = [rs for rs in responses if rs.response_type == status_filter]
+        return match_all_responses(status_filter_string, controls, responses)
 
     # For other cases: Start by building base query
-    query = select(DynamicOperatingEnvelopeResponse)
+    query = await backend.get_site_control_responses()
 
     # Apply tag filter
     context_description = ""
@@ -1244,13 +1298,13 @@ async def check_response_contents(  # noqa: C901
         if control_id is None:
             return CheckResult(False, f"No DERControl found with tag: {subject_tag}")
 
-        query = query.where(DynamicOperatingEnvelopeResponse.dynamic_operating_envelope_id_snapshot == control_id)
+        query = [q for q in query if q.site_control_id == control_id]
         context_description = f" for tag {subject_tag}"
 
     # Handle the "latest" case - get latest first, then check status
     if is_latest:
-        query = query.order_by(DynamicOperatingEnvelopeResponse.created_time.desc()).limit(1)
-        matching_response = (await session.execute(query)).scalar_one_or_none()
+        query = sorted(query, key=attrgetter("created_time"), reverse=True)
+        matching_response = query[0] if query else None
 
         if matching_response is None:
             return CheckResult(False, f"No responses found{context_description}")
@@ -1268,10 +1322,9 @@ async def check_response_contents(  # noqa: C901
 
     # For non-latest case: Apply status filter before executing
     if status_filter is not None:
-        query = query.where(DynamicOperatingEnvelopeResponse.response_type == status_filter)
+        query = [q for q in query if q.response_type == status_filter]
 
-    query = query.limit(1)
-    matching_response = (await session.execute(query)).scalar_one_or_none()
+    matching_response = query[0] if query else None
 
     # Handle no results
     if matching_response is None:
@@ -1457,7 +1510,7 @@ def check_all_polls_at_correct_time(
 async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> CheckResult:
     """Runs the particular check for the active test procedure and returns the CheckResult indicating pass/fail.
@@ -1466,64 +1519,70 @@ async def run_check(  # noqa: C901
 
     Args:
         check: The Check to evaluate against the active test procedure.
-        active_test_procedure (ActiveTestProcedure): The currently active test procedure.
+        active_test_procedure: The currently active test procedure.
+        backend: Contains server implementation specifics to present data for checks
+        request_history: Optional history of HTTP requests for request-based checks.
 
     Raises:
         UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
         FailedCheckError: Raised if this function encounters an exception while running the check.
     """
+    resolver = backend.get_expression_resolver()
     resolved_with_metadata_parameters = await resolve_variable_expressions_from_parameters(
-        session, active_test_procedure, check.parameters
+        resolver, active_test_procedure, check.parameters
     )
     resolved_parameters = {k: v.value for k, v in resolved_with_metadata_parameters.items()}
     check_result: CheckResult | None = None
     pen: int = active_test_procedure.pen
+
     try:
         match check.type:
             case "all-steps-complete":
                 check_result = check_all_steps_complete(active_test_procedure, resolved_parameters)
 
             case "end-device-contents":
-                check_result = await check_end_device_contents(active_test_procedure, session, resolved_parameters)
+                # Temporary assertion, this will be removed in full plugin arch implementation
+                check_result = await check_end_device_contents(active_test_procedure, backend, resolved_parameters)
 
             case "end-device-count":
-                check_result = await check_end_device_count(session, resolved_parameters)
+                # Temporary assertion, this will be removed in full plugin arch implementation
+                check_result = await check_end_device_count(backend, resolved_parameters)
 
             case "der-settings-contents":
-                check_result = await check_der_settings_contents(session, resolved_with_metadata_parameters)
+                check_result = await check_der_settings_contents(backend, resolved_with_metadata_parameters)
 
             case "der-capability-contents":
-                check_result = await check_der_capability_contents(session, resolved_with_metadata_parameters)
+                check_result = await check_der_capability_contents(backend, resolved_with_metadata_parameters)
 
             case "der-status-contents":
-                check_result = await check_der_status_contents(session, resolved_parameters)
+                check_result = await check_der_status_contents(backend, resolved_parameters)
 
             case "readings-site-active-power":
-                check_result = await check_readings_site_active_power(session, resolved_parameters, pen)
+                check_result = await check_readings_site_active_power(backend, resolved_parameters, pen)
 
             case "readings-site-reactive-power":
-                check_result = await check_readings_site_reactive_power(session, resolved_parameters, pen)
+                check_result = await check_readings_site_reactive_power(backend, resolved_parameters, pen)
 
             case "readings-voltage":
-                check_result = await check_readings_voltage(session, resolved_parameters, pen)
+                check_result = await check_readings_voltage(backend, resolved_parameters, pen)
 
             case "readings-der-active-power":
-                check_result = await check_readings_der_active_power(session, resolved_parameters, pen)
+                check_result = await check_readings_der_active_power(backend, resolved_parameters, pen)
 
             case "readings-der-reactive-power":
-                check_result = await check_readings_der_reactive_power(session, resolved_parameters, pen)
+                check_result = await check_readings_der_reactive_power(backend, resolved_parameters, pen)
 
             case "readings-der-stored-energy":
-                check_result = await check_readings_der_stored_energy(session, resolved_parameters, pen)
+                check_result = await check_readings_der_stored_energy(backend, resolved_parameters, pen)
 
             case "all-notifications-transmitted":
-                check_result = await check_all_notifications_transmitted(session)
+                check_result = await check_all_notifications_transmitted(backend)
 
             case "subscription-contents":
-                check_result = await check_subscription_contents(resolved_parameters, session, active_test_procedure)
+                check_result = await check_subscription_contents(resolved_parameters, backend, active_test_procedure)
 
             case "response-contents":
-                check_result = await check_response_contents(resolved_parameters, session, active_test_procedure)
+                check_result = await check_response_contents(resolved_parameters, backend, active_test_procedure)
 
             case "all-polls-at-correct-time":
                 check_result = check_all_polls_at_correct_time(
@@ -1565,7 +1624,7 @@ def _check_result_label(check: Check, is_duplicated_type: bool, check_results: d
 async def determine_check_results(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> dict[str, CheckResult]:
     check_results: dict[str, CheckResult] = {}
@@ -1575,7 +1634,7 @@ async def determine_check_results(
     type_counts = Counter(check.type for check in checks)
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, request_history)
+        result = await run_check(check, active_test_procedure, backend, request_history)
         is_duplicated_type = type_counts[check.type] > 1
         check_results[_check_result_label(check, is_duplicated_type, check_results)] = result
     return check_results
@@ -1584,7 +1643,7 @@ async def determine_check_results(
 async def first_failing_check(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> CheckResult | None:
     """Iterates through checks - looking for the first Check that returns a failing CheckResult. If all checks are
@@ -1598,7 +1657,7 @@ async def first_failing_check(
         return None
 
     for check in checks:
-        result = await run_check(check, active_test_procedure, session, request_history)
+        result = await run_check(check, active_test_procedure, backend, request_history)
         if not result.passed:
             logger.info(f"{check} is not passing: {result}.")
             return result
@@ -1610,7 +1669,7 @@ async def first_failing_check(
 async def all_checks_passing(
     checks: list[Check] | None,
     active_test_procedure: ActiveTestProcedure,
-    session: AsyncSession,
+    backend: RunnerBackend,
     request_history: list[RequestEntry] | None = None,
 ) -> bool:
     """Returns True if every specified check is passing. An empty/unspecified list will return True.
@@ -1619,5 +1678,5 @@ async def all_checks_passing(
       UnknownCheckError: Raised if this function has no implementation for the provided `check.type`.
       FailedCheckError: Raised if this function encounters an exception while running the check."""
 
-    failing_check = await first_failing_check(checks, active_test_procedure, session, request_history)
+    failing_check = await first_failing_check(checks, active_test_procedure, backend, request_history)
     return failing_check is None

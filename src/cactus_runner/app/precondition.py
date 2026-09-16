@@ -15,7 +15,7 @@ from sqlalchemy import func, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from cactus_runner.app.database import begin_session, open_connection
-from cactus_runner.app.envoy_admin_client import EnvoyAdminClient
+from cactus_runner.plugin.backends.envoy import EnvoyAdminClient
 
 PLAYLIST_NOTIFICATION_WAIT_SECONDS = 3
 
@@ -35,7 +35,7 @@ async def execute_sql_file_for_connection(connection: AsyncConnection, path_to_s
         await txn.commit()
 
 
-async def register_aggregator(lfdi: str | None, subscription_domain: str | None) -> int:
+async def register_aggregator(lfdi: str | None, subscription_domain: str | None) -> str:
     """returns the aggregator ID that should be used for registering devices"""
     async with begin_session() as session:
         now = datetime.now(tz=ZoneInfo("UTC"))
@@ -69,7 +69,7 @@ async def register_aggregator(lfdi: str | None, subscription_domain: str | None)
             )
             session.add(certificate_assignment)
         await session.commit()
-    return aggregator_id
+    return f"{aggregator_id}"
 
 
 async def reset_db() -> None:
