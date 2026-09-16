@@ -126,7 +126,7 @@ async def resolve_variable(  # noqa: C901
         except Exception as err:
             raise UnresolvableVariableError(f"Unable to apply {v.operation} to operands: {err}") from err
     elif isinstance(v, Negate):
-        operand_value = await resolve_variable(session, active_test_procedure, v.operand)
+        operand_value = await resolve_variable(resolver, active_test_procedure, v.operand)
         try:
             return -operand_value
         except Exception as err:

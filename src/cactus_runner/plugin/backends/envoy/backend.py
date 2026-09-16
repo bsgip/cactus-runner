@@ -2,6 +2,7 @@ import itertools
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import Literal
 
 from cactus_schema.runner import EndDeviceMetadata, WarningEntry
 from envoy.server.mapper.sep2.pub_sub import SubscriptionMapper
@@ -25,7 +26,7 @@ from envoy.server.model.archive import (
     ArchiveSiteDERSetting,
 )
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -211,14 +212,8 @@ class EnvoyBackend(RunnerBackend):
     ) -> Sequence[dtos.SiteReading]:
         """Returns all SiteReadings for the given SiteReadingType IDs.
 
-        The ``start_time`` and ``end_time`` window parameters are not applied in this implementation.
-        Because the envoy instance is scoped to the test lifetime, all recorded readings are relevant
-        and time filtering is deferred to the calling check logic.
-
         Args:
             site_reading_type_ids: IDs of the SiteReadingTypes whose readings should be returned.
-            start_time: Unused in this implementation.
-            end_time: Unused in this implementation.
 
         Returns:
             All SiteReadings associated with the supplied SiteReadingType IDs.
@@ -228,11 +223,52 @@ class EnvoyBackend(RunnerBackend):
             srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
             stmt = stmt.where(SiteReading.site_reading_type_id.in_(srt_ids))
 
+        if start_time is not None or end_time is not None:
+            if end_time is not None:
+                stmt = stmt.where(SiteReading.time_period_start < end_time)
+
+            if start_time is not None:
+                end_time_expr = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
+                    "interval '1 second'"
+                )
+                stmt = stmt.where(end_time_expr >= start_time)
+
         async with self._session_factory() as session:
             results = await session.execute(stmt)
 
         readings = results.scalars().all()
         return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in readings]
+
+    async def get_latest_site_reading(
+        self,
+        site_reading_type_ids: Sequence[str] | None,
+        *,
+        method: Literal["created_time"] | Literal["end_time"] = "created_time",
+    ) -> dtos.SiteReading | None:
+        stmt = select(SiteReading).limit(1)
+
+        match method:
+            case "end_time":
+                end_time_expr = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
+                    "interval '1 second'"
+                )
+                stmt = stmt.order_by(end_time_expr.desc())
+            case "created_time":
+                stmt = stmt.order_by(SiteReading.created_time.desc())
+            case _:
+                raise ValueError(f"Unsupported method {method}")
+
+        if site_reading_type_ids is not None:
+            srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
+            stmt = stmt.where(SiteReading.site_reading_type_id.in_(srt_ids))
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
+            reading = results.scalar_one_or_none()
+            if reading is None:
+                return None
+            else:
+                return mappers.map_envoy_site_reading_to_dto(reading)
 
     async def get_subscriptions(
         self,

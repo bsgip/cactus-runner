@@ -1459,10 +1459,18 @@ async def test_do_check_levels_for_readings(
 
         await session.commit()
 
-    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+    faked_srts = [
+        generate_class_instance(
+            dtos.SiteReadingType, seed=srt_id, power_of_ten_multiplier=mult, site_reading_type_id=str(srt_id)
+        )
+        for srt_id in srt_ids
+    ]
+
     async with generate_async_session(pg_base_config) as session:
+        mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         window_period = timedelta(seconds=window_s) if window_s is not None else None
-        result = await do_check_levels_for_readings(session, faked_srts, min_level, max_level, window_period)
+        result = await do_check_levels_for_readings(backend, faked_srts, min_level, max_level, window_period)
         assert_check_result(result, expected)
 
     # Currently not relying on admin api for checks. This may change.

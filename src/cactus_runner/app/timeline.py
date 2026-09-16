@@ -192,10 +192,10 @@ async def generate_readings_data_stream(
     # mixing them into one tree causes highest_priority_entity to discard all but one phase per interval.
     per_srt_values: list[list[int | None]] = []
     for srt in srts:
-        # Dump all readings - we will refine in memory
-        # (we could be fancy and try to interrogate records within the start/end range but that introduces a bit more
-        # complexity and we should only be dealing with < 60 records)
-        readings = await backend.get_site_readings(site_reading_type_ids=[srt.site_reading_type_id])
+        # Dump all readings in range - we will refine in memory
+        readings = await backend.get_site_readings(
+            site_reading_type_ids=[srt.site_reading_type_id], start_time=start, end_time=end
+        )
         # Filter out null/zero durations to prevent IntervalTree crashes
         # This is silently dropped here, but is reported as error/warning in the PDF report post-test
         tree = IntervalTree(

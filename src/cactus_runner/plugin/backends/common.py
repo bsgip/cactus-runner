@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import datetime
 from operator import attrgetter
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from cactus_schema.runner import EndDeviceMetadata, WarningEntry
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
@@ -211,19 +211,34 @@ class RunnerBackend(Protocol):
     ) -> Sequence[dtos.SiteReading]:
         """Returns readings belonging to the specified SiteReadingTypes, optionally within a time window.
 
-        When both ``start_time`` and ``end_time`` are provided, implementations should return readings
-        whose active period overlaps the window — specifically, readings where
-        ``time_period_start + time_period_duration`` falls within ``[start_time, end_time]``.
-        Readings that partially overlap the window boundary should be excluded.
+        When either ``start_time`` and ``end_time`` are provided, implementations should return readings
+        whose active period overlaps the window (with end_time being exclusive)``.
 
         Args:
             site_reading_type_ids: IDs of the SiteReadingTypes whose readings should be returned.
                 If `None` is supplied, then all readings for the test should be returned.
-            start_time: Optional start of the time window. If None, no lower bound is applied.
-            end_time: Optional end of the time window. If None, no upper bound is applied.
+            start_time: Inclusive start of the time window. If None, no lower bound is applied.
+            end_time: Exclusive end of the time window. If None, no upper bound is applied.
 
         Returns:
             All SiteReadings matching the supplied type IDs and time window.
+        """
+        ...
+
+    async def get_latest_site_reading(
+        self,
+        site_reading_type_ids: Sequence[str] | None,
+        *,
+        method: Literal["created_time"] | Literal["end_time"] = "created_time",
+    ) -> dtos.SiteReading | None:
+        """Returns the single reading (belonging to the specified SiteReadingTypes) that has the latest "method" value.
+        or None if there are no readings.
+
+        Args:
+            site_reading_type_ids: IDs of the SiteReadingTypes whose readings should be returned. If `None` is supplied,
+                then all readings for the test should be returned.
+        Returns:
+            The single SiteReading with the highest creation_time amongst all matched readings.
         """
         ...
 
