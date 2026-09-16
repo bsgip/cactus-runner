@@ -1327,12 +1327,15 @@ async def test_do_check_readings_for_types(
     faked_srts = [
         generate_class_instance(SiteReadingType, seed=srt_id, site_reading_type_id=srt_id) for srt_id in srt_ids
     ]
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, started_at=None
+    )
 
     mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
     async with generate_async_session(pg_base_config) as session:
         backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         srt_dtos = [map_envoy_site_reading_type_to_dto(srt) for srt in faked_srts]
-        result = await do_check_readings_for_types(backend, srt_dtos, minimum_count)
+        result = await do_check_readings_for_types(active_test_procedure, backend, srt_dtos, minimum_count)
         assert_check_result(result, expected)
 
     # Currently not relying on admin api for checks. This may change.
@@ -1882,6 +1885,9 @@ async def test_do_check_site_readings_and_params(
     """Tests that do_check_site_readings_and_params does the basic logic it needs before offloading to
     do_check_readings_for_types"""
     # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, started_at=None
+    )
     active_site = generate_class_instance(dtos.Site)
     site_reading_types = [
         generate_class_instance(
@@ -1907,7 +1913,7 @@ async def test_do_check_site_readings_and_params(
 
     # Act
     result = await do_check_site_readings_and_params(
-        mock_backend, resolved_parameters, pen, uom, reading_location, qualifier, kind
+        active_test_procedure, mock_backend, resolved_parameters, pen, uom, reading_location, qualifier, kind
     )
 
     # Assert
@@ -2018,6 +2024,9 @@ async def test_do_check_site_readings_and_params_roleflags(
     """Tests roleflag handling: fails when only incorrect roleflags are returned, passes when correct
     site_reading_types are also present."""
     # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, started_at=None
+    )
     mock_backend = mock.AsyncMock(spec=RunnerBackend)
     mock_backend.get_active_site.return_value = generate_class_instance(dtos.Site, seed=1, site_id="1")
     mock_backend.get_site_reading_types.return_value = site_reading_types
@@ -2029,6 +2038,7 @@ async def test_do_check_site_readings_and_params_roleflags(
 
     # Act
     result = await do_check_site_readings_and_params(
+        active_test_procedure,
         mock_backend,
         {},
         pen=12345,
@@ -2129,6 +2139,9 @@ async def test_check_readings_voltage(
     should be under those circumstances"""
 
     # Arrange
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure, step_status={}, finished_zip_path=None, started_at=None
+    )
     mock_session = create_mock_session()
     resolved_params = {}
     pen = 123
@@ -2139,7 +2152,7 @@ async def test_check_readings_voltage(
     )
 
     # Act
-    result = await check_readings_voltage(mock_session, resolved_params, pen)
+    result = await check_readings_voltage(active_test_procedure, mock_session, resolved_params, pen)
 
     # Assert
     assert_mock_session(mock_session)

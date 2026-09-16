@@ -569,7 +569,10 @@ async def check_der_status_contents(backend: RunnerBackend, resolved_parameters:
 
 
 async def do_check_readings_for_types(
-    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType], minimum_count: int | None
+    active_test_procedure: ActiveTestProcedure,
+    backend: RunnerBackend,
+    site_reading_types: Sequence[dtos.SiteReadingType],
+    minimum_count: int | None,
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
     are met. "Valid" is that at least ONE of the site_reading_types supplied meets the conditions
@@ -582,7 +585,9 @@ async def do_check_readings_for_types(
     if minimum_count is not None:
         if site_reading_types:
             srt_ids = [srt.site_reading_type_id for srt in site_reading_types]
-            results = await get_site_readings_ordered(backend, srt_ids)
+            results = await get_site_readings_ordered(
+                backend, srt_ids, start_time=active_test_procedure.started_at
+            )  # Only consider readings from test start (if we've started)
             count_by_srt_id: dict[str, int] = {
                 srt_id: len([x for x in results if x.site_reading_type_id == srt_id]) for srt_id in srt_ids
             }
@@ -864,6 +869,7 @@ READING_LOCATION_DESCRIPTIONS: dict[ReadingLocation, str] = {
 
 
 async def do_check_site_readings_and_params(
+    active_test_procedure: ActiveTestProcedure,
     backend: RunnerBackend,
     resolved_parameters: dict[str, Any],
     pen: int,
@@ -921,7 +927,9 @@ async def do_check_site_readings_and_params(
         check_results.append(await do_check_readings_match_post_rate(backend, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
-    check_results.append(await do_check_readings_for_types(backend, site_reading_types, minimum_count))
+    check_results.append(
+        await do_check_readings_for_types(active_test_procedure, backend, site_reading_types, minimum_count)
+    )
     check_results.append(await do_check_reading_levels_for_types(backend, site_reading_types, resolved_parameters))
     check_results.append(await do_check_readings_on_minute_boundary(backend, site_reading_types))
     check_results.append(await do_check_reading_type_mrids_match_pen(site_reading_types, pen))
@@ -1016,12 +1024,13 @@ async def do_check_readings_match_post_rate(
 
 
 async def check_readings_site_active_power(
-    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-site-active-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1032,12 +1041,13 @@ async def check_readings_site_active_power(
 
 
 async def check_readings_site_reactive_power(
-    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-site-reactive-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1047,7 +1057,9 @@ async def check_readings_site_reactive_power(
     )
 
 
-async def check_readings_voltage(backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int) -> CheckResult:
+async def check_readings_voltage(
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+) -> CheckResult:
     """Implements the readings-voltage check.
 
     Does a check for SITE AND DER voltage - as long as one valid, then this check is passed
@@ -1055,6 +1067,7 @@ async def check_readings_voltage(backend: RunnerBackend, resolved_parameters: di
     Will only consider the mandatory "Average" readings"""
 
     site_check = await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1067,6 +1080,7 @@ async def check_readings_voltage(backend: RunnerBackend, resolved_parameters: di
         return site_check
 
     device_check = await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1083,12 +1097,13 @@ async def check_readings_voltage(backend: RunnerBackend, resolved_parameters: di
 
 
 async def check_readings_der_active_power(
-    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-active-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1099,12 +1114,13 @@ async def check_readings_der_active_power(
 
 
 async def check_readings_der_reactive_power(
-    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-reactive-power check.
 
     Will only consider the mandatory "Average" readings"""
     return await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1115,12 +1131,13 @@ async def check_readings_der_reactive_power(
 
 
 async def check_readings_der_stored_energy(
-    backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
+    active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
     """Implements the readings-der-stored-energy check.
 
     Will only consider the mandatory "Instantaneous" readings"""
     return await do_check_site_readings_and_params(
+        active_test_procedure,
         backend,
         resolved_parameters,
         pen,
@@ -1518,22 +1535,32 @@ async def run_check(  # noqa: C901
                 check_result = await check_der_status_contents(backend, resolved_parameters)
 
             case "readings-site-active-power":
-                check_result = await check_readings_site_active_power(backend, resolved_parameters, pen)
+                check_result = await check_readings_site_active_power(
+                    active_test_procedure, backend, resolved_parameters, pen
+                )
 
             case "readings-site-reactive-power":
-                check_result = await check_readings_site_reactive_power(backend, resolved_parameters, pen)
+                check_result = await check_readings_site_reactive_power(
+                    active_test_procedure, backend, resolved_parameters, pen
+                )
 
             case "readings-voltage":
-                check_result = await check_readings_voltage(backend, resolved_parameters, pen)
+                check_result = await check_readings_voltage(active_test_procedure, backend, resolved_parameters, pen)
 
             case "readings-der-active-power":
-                check_result = await check_readings_der_active_power(backend, resolved_parameters, pen)
+                check_result = await check_readings_der_active_power(
+                    active_test_procedure, backend, resolved_parameters, pen
+                )
 
             case "readings-der-reactive-power":
-                check_result = await check_readings_der_reactive_power(backend, resolved_parameters, pen)
+                check_result = await check_readings_der_reactive_power(
+                    active_test_procedure, backend, resolved_parameters, pen
+                )
 
             case "readings-der-stored-energy":
-                check_result = await check_readings_der_stored_energy(backend, resolved_parameters, pen)
+                check_result = await check_readings_der_stored_energy(
+                    active_test_procedure, backend, resolved_parameters, pen
+                )
 
             case "all-notifications-transmitted":
                 check_result = await check_all_notifications_transmitted(backend)
