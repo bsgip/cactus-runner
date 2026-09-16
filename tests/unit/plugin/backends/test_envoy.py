@@ -12,6 +12,8 @@ from envoy.server.model import (
     SiteDERSetting,
     SiteDERStatus,
     SiteGroup,
+    SiteReading,
+    SiteReadingType,
 )
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +68,150 @@ async def test_get_site_controls(pg_base_config, envoy_admin_client) -> None:
         assert [int(c.site_control_id) for c in controls] == list(range(1, 11))
         assert [int(c.site_control_id) for c in controls if c.deleted_time is not None] == list(range(6, 11))
         assert [int(c.site_control_id) for c in controls if c.deleted_time is None] == list(range(1, 6))
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "start_time, end_time, expected_values",
+    [
+        (None, None, [1, 2, 3]),  # No filtering - everything is returned
+        (datetime(2024, 1, 1, 0, 5, 30, tzinfo=UTC), None, [2, 3]),  # start_time only - drops readings that end before it  # noqa: E501
+        (None, datetime(2024, 1, 1, 0, 7, tzinfo=UTC), [1, 2]),  # end_time only - drops readings that start on/after it
+        (
+            datetime(2024, 1, 1, 0, 3, tzinfo=UTC),
+            datetime(2024, 1, 1, 0, 7, tzinfo=UTC),
+            [2],
+        ),  # window overlapping a single reading
+        (
+            datetime(2024, 1, 1, 0, 2, tzinfo=UTC),
+            datetime(2024, 1, 1, 0, 4, 59, tzinfo=UTC),
+            [],
+        ),  # window falling entirely in the gap between readings
+        (
+            datetime(2024, 1, 1, 0, 1, tzinfo=UTC),
+            datetime(2024, 1, 1, 0, 5, tzinfo=UTC),
+            [1],
+        ),  # boundary check: reading ending exactly at start_time is included (>=), reading starting exactly at
+        # end_time is excluded (<)
+    ],
+)
+async def test_get_site_readings_start_end_time(
+    pg_base_config,
+    envoy_admin_client,
+    start_time: datetime | None,
+    end_time: datetime | None,
+    expected_values: list[int],
+) -> None:
+    """Tests that get_site_readings correctly filters readings by the [start_time, end_time) overlap window.
+
+    Three readings are seeded, each 60 seconds long:
+        r1 (value=1): [00:00:00, 00:01:00)
+        r2 (value=2): [00:05:00, 00:06:00)
+        r3 (value=3): [00:10:00, 00:11:00)
+    """
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        session.add(site)
+
+        srt = generate_class_instance(
+            SiteReadingType,
+            seed=1,
+            aggregator_id=1,
+            site_reading_type_id=1,
+            site=site,
+        )
+        session.add(srt)
+
+        readings = [
+            generate_class_instance(
+                SiteReading,
+                seed=1,
+                site_reading_id=None,
+                site_reading_type=srt,
+                time_period_start=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                time_period_seconds=60,
+                value=1,
+            ),
+            generate_class_instance(
+                SiteReading,
+                seed=2,
+                site_reading_id=None,
+                site_reading_type=srt,
+                time_period_start=datetime(2024, 1, 1, 0, 5, tzinfo=UTC),
+                time_period_seconds=60,
+                value=2,
+            ),
+            generate_class_instance(
+                SiteReading,
+                seed=3,
+                site_reading_id=None,
+                site_reading_type=srt,
+                time_period_start=datetime(2024, 1, 1, 0, 10, tzinfo=UTC),
+                time_period_seconds=60,
+                value=3,
+            ),
+        ]
+        session.add_all(readings)
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
+
+        result = await backend.get_site_readings(["1"], start_time=start_time, end_time=end_time)
+
+    assert sorted(r.value for r in result) == sorted(expected_values)
+
+
+@pytest.mark.anyio
+async def test_get_site_readings_start_end_time_combines_with_type_filter(pg_base_config, envoy_admin_client) -> None:
+    """Tests that the start_time/end_time window is applied in addition to (not instead of) site_reading_type_ids."""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        session.add(site)
+
+        srt1 = generate_class_instance(
+            SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site
+        )
+        srt2 = generate_class_instance(
+            SiteReadingType, seed=2, aggregator_id=1, site_reading_type_id=2, site=site
+        )
+        session.add_all([srt1, srt2])
+
+        # Both readings fall inside the same time window, but belong to different reading types
+        session.add_all(
+            [
+                generate_class_instance(
+                    SiteReading,
+                    seed=1,
+                    site_reading_id=None,
+                    site_reading_type=srt1,
+                    time_period_start=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                    time_period_seconds=60,
+                    value=1,
+                ),
+                generate_class_instance(
+                    SiteReading,
+                    seed=2,
+                    site_reading_id=None,
+                    site_reading_type=srt2,
+                    time_period_start=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+                    time_period_seconds=60,
+                    value=2,
+                ),
+            ]
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
+
+        result = await backend.get_site_readings(
+            ["1"],
+            start_time=datetime(2024, 1, 1, tzinfo=UTC),
+            end_time=datetime(2024, 1, 1, 0, 1, tzinfo=UTC),
+        )
+
+    assert [r.value for r in result] == [1]
 
 
 @pytest.mark.anyio

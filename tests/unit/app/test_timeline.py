@@ -392,7 +392,9 @@ async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_type
         ),
     ]
 
-    def _get_site_reading_types_side_effect(*, site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
+    def _get_site_reading_types_side_effect(
+        *, site_reading_type_ids: list[str], start_time: datetime, end_time: datetime
+    ) -> list[dtos.SiteReading]:
         return srt1_readings if site_reading_type_ids == [srt1.site_reading_type_id] else srt2_readings
 
     mock_backend.get_site_readings.side_effect = _get_site_reading_types_side_effect
@@ -413,8 +415,16 @@ async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_type
     assert len(mock_backend.mock_calls) == 2
     mock_backend.get_site_readings.assert_has_calls(
         [
-            mock.call(site_reading_type_ids=[srt1.site_reading_type_id]),
-            mock.call(site_reading_type_ids=[srt2.site_reading_type_id]),
+            mock.call(
+                site_reading_type_ids=[srt1.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
+            mock.call(
+                site_reading_type_ids=[srt2.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
         ],
         any_order=True,
     )
@@ -476,7 +486,11 @@ async def test_generate_readings_data_stream_filters_zero_durations(
 
     mock_get_csip_aus_site_reading_types.assert_called_once()
     assert len(mock_backend.mock_calls) == 1
-    mock_backend.get_site_readings.assert_called_once_with(site_reading_type_ids=[srt.site_reading_type_id])
+    mock_backend.get_site_readings.assert_called_once_with(
+        site_reading_type_ids=[srt.site_reading_type_id],
+        start_time=BASIS,
+        end_time=BASIS + timedelta(seconds=15),
+    )
 
 
 @mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
@@ -492,7 +506,9 @@ async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_
 
     phase_values = {srt_a.site_reading_type_id: 100, srt_b.site_reading_type_id: 200, srt_c.site_reading_type_id: 300}
 
-    def readings_for(site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
+    def readings_for(
+        site_reading_type_ids: list[str], start_time: datetime, end_time: datetime
+    ) -> list[dtos.SiteReading]:
         return [
             generate_class_instance(
                 dtos.SiteReading,
@@ -523,9 +539,21 @@ async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_
     assert len(mock_backend.mock_calls) == 3
     mock_backend.get_site_readings.assert_has_calls(
         [
-            mock.call(site_reading_type_ids=[srt_a.site_reading_type_id]),
-            mock.call(site_reading_type_ids=[srt_b.site_reading_type_id]),
-            mock.call(site_reading_type_ids=[srt_c.site_reading_type_id]),
+            mock.call(
+                site_reading_type_ids=[srt_a.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
+            mock.call(
+                site_reading_type_ids=[srt_b.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
+            mock.call(
+                site_reading_type_ids=[srt_c.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
         ],
         any_order=True,
     )
@@ -555,7 +583,9 @@ async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_sit
         )
     ]
 
-    def _get_site_readings_side_effect(site_reading_type_ids: list[str]) -> list[dtos.SiteReading]:
+    def _get_site_readings_side_effect(
+        site_reading_type_ids: list[str], start_time: datetime, end_time: datetime
+    ) -> list[dtos.SiteReading]:
         return readings_b if site_reading_type_ids == [srt_b.site_reading_type_id] else []
 
     mock_backend.get_site_readings.side_effect = _get_site_readings_side_effect
@@ -572,9 +602,21 @@ async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_sit
     assert len(mock_backend.mock_calls) == 3
     mock_backend.get_site_readings.assert_has_calls(
         [
-            mock.call(site_reading_type_ids=[srt_a.site_reading_type_id]),
-            mock.call(site_reading_type_ids=[srt_b.site_reading_type_id]),
-            mock.call(site_reading_type_ids=[srt_c.site_reading_type_id]),
+            mock.call(
+                site_reading_type_ids=[srt_a.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
+            mock.call(
+                site_reading_type_ids=[srt_b.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
+            mock.call(
+                site_reading_type_ids=[srt_c.site_reading_type_id],
+                start_time=BASIS,
+                end_time=BASIS + timedelta(seconds=10),
+            ),
         ],
         any_order=True,
     )
