@@ -239,6 +239,7 @@ def map_envoy_db_runtime_config_to_dto(config: RuntimeServerConfig | ArchiveRunt
         derpl_pollrate_seconds=config.derpl_pollrate_seconds,
         fsal_pollrate_seconds=config.fsal_pollrate_seconds,
         mup_postrate_seconds=config.mup_postrate_seconds,
+        mupl_pollrate_seconds=config.mupl_pollrate_seconds,
         disable_edev_registration=config.disable_edev_registration,
         site_control_pow10_encoding=config.site_control_pow10_encoding,
         changed_time=config.changed_time,
@@ -257,6 +258,7 @@ def map_dto_runtime_config_to_request(config: dtos.RuntimeConfigWrite) -> Runtim
         derpl_pollrate_seconds=config.derpl_pollrate_seconds,
         fsal_pollrate_seconds=config.fsal_pollrate_seconds,
         mup_postrate_seconds=config.mup_postrate_seconds,
+        mupl_pollrate_seconds=config.mupl_pollrate_seconds,
         disable_edev_registration=config.disable_edev_registration,
         site_control_pow10_encoding=config.site_control_pow10_encoding,
     )
