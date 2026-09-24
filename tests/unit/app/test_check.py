@@ -4295,7 +4295,16 @@ def test_check_all_polls_at_correct_time_missing_params(params: dict, descriptio
         finished_zip_path=None,
     )
 
-    result = check_all_polls_at_correct_time(active_test_procedure, [], params)
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            path="/mup/2",
+            method=http.HTTPMethod.POST,
+            timestamp=datetime.now(UTC),
+        )
+    ]
+
+    result = check_all_polls_at_correct_time(active_test_procedure, request_history, params)
 
     assert_check_result(result, False)
     assert result.description is not None
@@ -4307,9 +4316,18 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
         ActiveTestProcedure, started_at=None, step_status={}, finished_zip_path=None
     )
 
+    request_history = [
+        generate_class_instance(
+            RequestEntry,
+            path="/mup/2",
+            method=http.HTTPMethod.POST,
+            timestamp=datetime.now(UTC),
+        )
+    ]
+
     result = check_all_polls_at_correct_time(
         active_test_procedure,
-        [],
+        request_history,
         {"endpoints": ["/mup/1"], "poll_interval_seconds": 60, "request_type_str": "GET"},
     )
 
