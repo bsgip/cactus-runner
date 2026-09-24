@@ -153,11 +153,14 @@ def generate_active_test_procedure_steps(active_steps: list[str], all_steps: lis
     )
 
 
-def assert_check_result(cr: CheckResult, expected: bool):
+def assert_check_result(cr: CheckResult, expected: bool | None):
     assert isinstance(cr, CheckResult)
-    assert isinstance(cr.passed, bool)
+    if expected is None:
+        assert cr.passed is None
+    else:
+        assert isinstance(cr.passed, bool)
+        assert cr.passed == expected
     assert cr.description is None or isinstance(cr.description, str)
-    assert cr.passed == expected
 
 
 @pytest.mark.parametrize(
@@ -4313,6 +4316,28 @@ def test_check_all_polls_at_correct_time_test_not_started_fails():
     assert_check_result(result, False)
     assert result.description is not None
     assert "Test has not started" in result.description
+
+
+@pytest.mark.parametrize(
+    "request_history",
+    [None, []],
+)
+def test_check_all_polls_at_correct_time_no_history(request_history: list | None):
+    active_test_procedure = generate_class_instance(
+        ActiveTestProcedure,
+        started_at=datetime(2024, 1, 1, tzinfo=UTC),
+        step_status={},
+        finished_zip_path=None,
+    )
+
+    result = check_all_polls_at_correct_time(
+        active_test_procedure,
+        request_history,
+        {"endpoints": ["/mup/*"], "poll_interval_seconds": 60, "request_type_str": "POST"},
+    )
+
+    assert_check_result(result, None)
+    assert result.description is not None
 
 
 @mock.patch("cactus_runner.app.check.run_check")

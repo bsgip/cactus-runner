@@ -209,7 +209,9 @@ class RunnerState:
 class CheckResult:
     """Represents the results of a running a single check"""
 
-    passed: bool  # True if the check is considered passed or successful. False otherwise
+    passed: (
+        bool | None
+    )  # True if the check is considered passed or successful. False if it failed and None for the check was skipped
     description: str | None  # Human readable description of what the check "considered" or wants to elaborate about
 
 

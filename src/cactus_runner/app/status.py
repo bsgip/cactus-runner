@@ -69,7 +69,7 @@ async def get_precondition_checks_summary(
             check_result = await run_check(check, active_test_procedure, backend)
             checks.append(
                 PreconditionCheckEntry(
-                    check_result.passed,
+                    True if check_result.passed is None else check_result.passed,
                     check.type,
                     "" if check_result.description is None else check_result.description,
                 )

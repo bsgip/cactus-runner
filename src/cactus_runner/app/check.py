@@ -1409,7 +1409,7 @@ def _check_poll_timing_for_path(
 
 def check_all_polls_at_correct_time(
     active_test_procedure: ActiveTestProcedure,
-    request_history: list[RequestEntry],
+    request_history: list[RequestEntry] | None,
     resolved_parameters: dict[str, Any],
 ) -> CheckResult:
     """
@@ -1427,6 +1427,9 @@ def check_all_polls_at_correct_time(
         poll_interval_seconds
         request_type_str: "GET", "POST", or "PUT"
     """
+    if not request_history:
+        return CheckResult(None, "Evaluated at test finalisation.")
+
     endpoints: list[str] = resolved_parameters.get("endpoints", [])
     poll_interval_seconds: int = resolved_parameters.get("poll_interval_seconds", 0)
     request_type_str: str = resolved_parameters.get("request_type_str", "")
@@ -1573,7 +1576,7 @@ async def run_check(  # noqa: C901
 
             case "all-polls-at-correct-time":
                 check_result = check_all_polls_at_correct_time(
-                    active_test_procedure, request_history or [], resolved_parameters
+                    active_test_procedure, request_history, resolved_parameters
                 )
 
     except Exception as exc:
