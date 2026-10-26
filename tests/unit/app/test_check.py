@@ -19,6 +19,7 @@ from cactus_test_definitions.client import (
     Step,
     TestProcedure,
 )
+from cactus_test_definitions.csipaus import CSIPAusResource
 from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
@@ -63,8 +64,10 @@ from cactus_runner.app.check import (
     check_end_device_contents,
     check_end_device_count,
     check_readings_voltage,
+    check_resource_requests,
     check_response_contents,
     check_subscription_contents,
+    csip_aus_resource_to_match_uri,
     determine_check_results,
     do_check_latest_reading_level,
     do_check_levels_for_readings,
@@ -79,6 +82,7 @@ from cactus_runner.app.check import (
     is_nth_bit_set_properly,
     merge_checks,
     mrid_matches_pen,
+    resolve_format,
     response_type_to_string,
     run_check,
     timestamp_on_minute_boundary,
@@ -114,7 +118,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str | None] = {
     "price-response-contents": None,  # Not supported in v1.2
     "readings-der-stored-energy": "check_readings_der_stored_energy",
     "all-polls-at-correct-time": "check_all_polls_at_correct_time",
-    "resource-requests": None,  # Not supported in v1.2
+    "resource-requests": "check_resource_requests",
     "end-device-count": "check_end_device_count",
 }
 
@@ -4390,3 +4394,90 @@ async def test_determine_check_results_distinguishes_same_type_checks(mock_run_c
 
     assert len(check_results) == 4, "Every check should have its own entry - none should overwrite another"
     assert sum(1 for r in check_results.values() if not r.passed) == 2, "The two failing DERC1 checks must survive"
+
+
+@pytest.mark.parametrize(
+    "fmt, replace, expected",
+    [
+        ("", "", ""),
+        ("", "aBc", ""),
+        ("abc DEF", "abc", "abc DEF"),
+        ("abc{var1}DEF{var2}", "*", "abc*DEF*"),
+        ("/dcap", "*", "/dcap"),
+        ("/edev/{site_id}/derp/{site_control_id}", "*", "/edev/*/derp/*"),
+    ],
+)
+def test_resolve_format(fmt: str, replace: str, expected: str):
+    actual = resolve_format(fmt, replace)
+    assert isinstance(actual, str)
+    assert actual == expected
+
+
+def test_csip_aus_resource_to_match_uri():
+    all_uris: set[str] = set()
+    for r in CSIPAusResource:
+        if r in {
+            CSIPAusResource.Notification,  # No URI for Notificaions
+            CSIPAusResource.UsagePointList,  # Unsupported in envoy
+            CSIPAusResource.UsagePoint,  # Unsupported in envoy
+            CSIPAusResource.MeterReadingList,  # Unsupported in envoy
+            CSIPAusResource.MeterReading,  # Unsupported in envoy
+            CSIPAusResource.ReadingType,  # Unsupported in envoy
+            CSIPAusResource.CombinedTimeTariffIntervalList,  # Unsupported in v1.2
+        }:
+            with pytest.raises(ValueError):
+                csip_aus_resource_to_match_uri(r)
+            continue
+
+        uri = csip_aus_resource_to_match_uri(r)
+        assert isinstance(uri, str)
+
+        assert uri == csip_aus_resource_to_match_uri(r.value), "Using a string equivalent gets the same result"  # ty:ignore[invalid-argument-type]
+
+        # The resulting uri should look like an envoy URI with some wildcards
+        assert re.match("[^a-z/\\*]", uri) is None, uri
+
+        assert uri not in all_uris, r
+        all_uris.add(uri)
+    assert len(all_uris) > 10, "Sanity check to ensure we are looping"
+
+
+@pytest.mark.parametrize(
+    "request_paths, resources, minimum_count, maximum_count, expected",
+    [
+        ([], [], None, None, True),
+        ([], [], 0, 0, True),
+        ([], [], 1, 0, False),
+        ([], [], 0, 99, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], ["EndDevice"], None, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], None, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, None, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDeviceList], 1, 1, True),
+        (
+            ["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"],
+            [CSIPAusResource.EndDeviceList, CSIPAusResource.EndDevice, CSIPAusResource.TariffProfile],
+            3,
+            3,
+            True,
+        ),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 3, None, False),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], None, 1, False),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 0, 3, True),
+    ],
+)
+def test_check_resource_requests(
+    request_paths: list[str],
+    resources: list[CSIPAusResource],
+    minimum_count: int | None,
+    maximum_count: int | None,
+    expected: bool,
+):
+    request_history = [generate_class_instance(RequestEntry, seed=idx, path=p) for idx, p in enumerate(request_paths)]
+    params: dict = {"resources": resources}
+    if minimum_count is not None:
+        params["minimum_count"] = minimum_count
+    if maximum_count is not None:
+        params["maximum_count"] = maximum_count
+
+    assert_check_result(check_resource_requests(params, request_history), expected)
