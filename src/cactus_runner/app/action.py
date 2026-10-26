@@ -1,7 +1,7 @@
 import logging
 import math
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from operator import attrgetter
 from typing import Any, cast
@@ -16,6 +16,7 @@ from cactus_runner.app.finalize import finish_active_test
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
+    ForcedResponseStatusOverride,
     Listener,
     ProxyRouteOverride,
     RunnerState,
@@ -453,6 +454,33 @@ def action_add_proxy_route(resolved_parameters: dict[str, Any], active_test_proc
     active_test_procedure.proxy_route_overrides.append(ProxyRouteOverride(route=route, proxy_to=proxy_to))
 
 
+def action_force_response_status(
+    resolved_parameters: dict[str, Any], active_test_procedure: ActiveTestProcedure
+) -> None:
+    endpoint: str = resolved_parameters["endpoint"]  # Mandatory
+    status: int = resolved_parameters["status"]  # Mandatory
+    retry_after_seconds: int | None = resolved_parameters.get("retry_after_seconds")
+    duration_seconds: int | None = resolved_parameters.get("duration_seconds")
+
+    expires_at = datetime.now(UTC) + timedelta(seconds=duration_seconds) if duration_seconds is not None else None
+
+    # Look for an existing override to replace (also acts as the "clear" mechanism - calling this action again
+    # for the same endpoint always replaces whatever override was previously in effect)
+    for override in active_test_procedure.forced_response_status_overrides:
+        if override.route == endpoint:
+            logger.info(f"Updating forced response status override '{endpoint}' to {status}")
+            override.status = status
+            override.retry_after_seconds = retry_after_seconds
+            override.expires_at = expires_at
+            return
+
+    active_test_procedure.forced_response_status_overrides.append(
+        ForcedResponseStatusOverride(
+            route=endpoint, status=status, retry_after_seconds=retry_after_seconds, expires_at=expires_at
+        )
+    )
+
+
 async def apply_action(  # noqa: C901
     action: Action,
     runner_state: RunnerState,
@@ -521,6 +549,9 @@ async def apply_action(  # noqa: C901
                 return
             case "add-proxy-route":
                 action_add_proxy_route(resolved_parameters, active_test_procedure)
+                return
+            case "force-response-status":
+                action_force_response_status(resolved_parameters, active_test_procedure)
                 return
 
     except Exception as exc:

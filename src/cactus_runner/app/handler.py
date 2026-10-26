@@ -775,7 +775,10 @@ async def proxied_request_handler(request: web.Request) -> web.Response:
 
         # Proxy the request to the utility server
         proxy_result = await proxy.proxy_request(
-            request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
+            request=request,
+            remote_url=remote_url,
+            relative_url=relative_url,
+            active_test_procedure=active_test_procedure,
         )
 
         # Fire "after request" event trigger (only if an event didn't handle the before event)
