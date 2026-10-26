@@ -1,3 +1,4 @@
+import inspect
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
@@ -18,8 +19,20 @@ from envoy.server.model import (
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
+
+
+def test_envoy_backend_implements_runner_backend_protocol() -> None:
+    """Ensure EnvoyBackend defines every method required by RunnerBackend."""
+    protocol_methods = {
+        name for name, member in vars(RunnerBackend).items() if inspect.isfunction(member) and not name.startswith("_")
+    }
+    envoy_backend_methods = {name for name, member in vars(EnvoyBackend).items() if inspect.isfunction(member)}
+
+    missing_methods = sorted(protocol_methods - envoy_backend_methods)
+    assert not missing_methods, f"EnvoyBackend is missing RunnerBackend methods: {missing_methods}"
 
 
 @pytest.mark.anyio
