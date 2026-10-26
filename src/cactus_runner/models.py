@@ -113,6 +113,16 @@ class ProxyRouteOverride:
 
 
 @dataclass
+class ForcedResponseStatusOverride:
+    """Forces matching proxied requests to receive a synthetic status response instead of being forwarded"""
+
+    route: str  # The route to be matched - sans any MOUNT_PREFIX (same as ProxyRouteOverride)
+    status: int
+    retry_after_seconds: int | None = None  # If set - sent to the client as the Retry-After response header
+    expires_at: datetime | None = None  # TZ aware. None = never expires (until cleared by another override)
+
+
+@dataclass
 class ActiveTestProcedure:
     name: str
     definition: TestProcedure
@@ -141,6 +151,7 @@ class ActiveTestProcedure:
     resource_annotations: ResourceAnnotations = field(default_factory=ResourceAnnotations)
     random_values: RandomValues = field(default_factory=RandomValues)
     proxy_route_overrides: list[ProxyRouteOverride] = field(default_factory=list)
+    forced_response_status_overrides: list[ForcedResponseStatusOverride] = field(default_factory=list)
     warnings: dict[str, WarningEntry] = field(default_factory=dict)
 
     def is_finished(self) -> bool:
