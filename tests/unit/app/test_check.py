@@ -2601,8 +2601,42 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
         backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+        assert actual.description is not None
+        assert "not presented by the runner backend" in actual.description, "No Subscription exists for the log"
 
     # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_failure_reports_notification_uri(pg_base_config):
+    """check_all_notifications_transmitted should report the notification_uri of the failing subscription"""
+
+    async with generate_async_session(pg_base_config) as session:
+        agg = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        session.add(
+            generate_class_instance(
+                Subscription, subscription_id=1, aggregator=agg, scoped_site_id=None, notification_uri="https://dev/1"
+            )
+        )
+        session.add(
+            generate_class_instance(
+                TransmitNotificationLog,
+                transmit_notification_log_id=None,
+                subscription_id_snapshot=1,
+                http_status_code=500,
+            )
+        )
+        await session.commit()
+
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_all_notifications_transmitted(backend)
+        assert_check_result(actual, False)
+        assert actual.description is not None
+        assert "https://dev/1" in actual.description
+
     mock_admin_client.assert_not_called()
 
 
