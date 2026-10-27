@@ -104,28 +104,42 @@ class EnvoyBackend(RunnerBackend):
         self._admin_client = admin_client
         self.context = test_context
 
+    # ------------------------------------------------------------------
+    # Common lifecycle management hooks
+    # ------------------------------------------------------------------
+
     def get_expression_resolver(self) -> EnvoyResolver:
         """Return an instance of an Envoy ExpressionResolver with the DB session attached."""
         return EnvoyResolver(session_factory=self._session_factory)
 
-    async def has_set_max_w_varied(self) -> bool:
-        """Check if setMaxW was varied during the test.
+    async def reset_playlist_state(self) -> None:
+        """Wrapper for reset_playlist_db."""
+        await reset_playlist_db(self._admin_client)
 
-        Any archive entry with a different max_w_value than the current SiteDERSetting for the
-        same site means it changed
-        """
-        async with self._session_factory() as session:
-            return (
-                await session.execute(
-                    select(ArchiveSiteDERSetting.site_id)
-                    .join(
-                        SiteDERSetting,
-                        (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
-                        & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
-                    )
-                    .limit(1)
-                )
-            ).scalar() is not None
+    async def reset_state(self) -> None:
+        """Performs a full db reset."""
+        logger.debug("Resetting envoy database")
+        await reset_db()
+
+    async def is_healthy(self) -> bool:
+        """Wrapping the db and client health checks."""
+        try:
+            async with self._session_factory() as session:
+                db_healthy = await is_db_healthy(session)
+
+            client_healthy = await is_admin_api_healthy(self._admin_client)
+            return db_healthy and client_healthy
+        except Exception as exc:
+            logger.error("Backend healthcheck failed.", exc_info=exc)
+            return False
+
+    async def register_aggregator(self, lfdi: str | None, subscription_domain: str | None) -> str:
+        """Returns the aggregator ID that should be used for registering devices"""
+        return await register_aggregator(lfdi, subscription_domain)
+
+    # ------------------------------------------------------------------
+    # Sites
+    # ------------------------------------------------------------------
 
     async def get_active_site(self) -> dtos.Site | None:
         """Returns the active site, interpreted as the most recently modified EndDevice in the database.
@@ -151,6 +165,39 @@ class EnvoyBackend(RunnerBackend):
             sites = (await session.execute(select(Site).order_by(Site.site_id.asc()))).scalars().all()
 
         return [mappers.map_envoy_site_to_dto(s) for s in sites]
+
+    async def register_site(self, site: dtos.SiteWrite) -> None:
+        """Registers a site.
+
+        Args:
+            site: particulars
+
+        Raises:
+            DB error if fails to commit result.
+        """
+        async with self._session_factory() as session:
+            session.add(mappers.map_dto_site_write_to_envoy(site))
+            await session.commit()
+
+    async def update_site_post_rate(self, site_id: str, post_rate_seconds: int) -> None:
+        """Updates the postRate for a site via the admin API.
+
+        All other site fields (nmi, timezone_id, device_category) are left unchanged.
+
+        Args:
+            site_id: The string-encoded identifier of the site to update.
+            post_rate_seconds: The new postRate interval in seconds.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        await self._admin_client.update_single_site(
+            int(site_id), mappers.map_dto_post_rate_to_site_update_request(post_rate_seconds)
+        )
+
+    # ------------------------------------------------------------------
+    # DER
+    # ------------------------------------------------------------------
 
     async def get_der_settings(self, site_id: str) -> dtos.SiteDERSetting | None:
         """Returns the DERSettings for the given site, or None if none are recorded.
@@ -202,6 +249,33 @@ class EnvoyBackend(RunnerBackend):
         der_status = response.scalar_one_or_none()
 
         return mappers.map_envoy_site_der_status_to_dto(der_status) if der_status is not None else None
+
+    # ------------------------------------------------------------------
+    # Readings
+    # ------------------------------------------------------------------
+
+    async def get_site_reading_types(self, site_ids: Sequence[str] | None = None) -> Sequence[dtos.SiteReadingType]:
+        """Returns SiteReadingTypes from the database, optionally scoped to specific sites.
+
+        Args:
+            site_ids: If provided, only reading types belonging to these sites are returned.
+                An empty list returns nothing immediately without querying the database.
+
+        Returns:
+            All matching SiteReadingType entries.
+        """
+        # For completeness
+        if site_ids == []:
+            return []
+
+        stmt = select(SiteReadingType)
+        if site_ids is not None:
+            stmt = stmt.where(SiteReadingType.site_id.in_([int(sid) for sid in site_ids]))
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
+
+        return [mappers.map_envoy_site_reading_type_to_dto(srt) for srt in results.scalars().all()]
 
     async def get_site_readings(
         self,
@@ -270,6 +344,207 @@ class EnvoyBackend(RunnerBackend):
             else:
                 return mappers.map_envoy_site_reading_to_dto(reading)
 
+    # ------------------------------------------------------------------
+    # DER Programs
+    # ------------------------------------------------------------------
+
+    async def get_site_control_groups(self, fsa_ids: Sequence[str] | None = None) -> Sequence[dtos.SiteControlGroup]:
+        """Returns DERPrograms from the database, optionally filtered by Function Set Assignment ID.
+
+        Args:
+            fsa_ids: If provided, only groups with a matching fsa_id are returned. An empty list
+                returns nothing immediately without querying the database. Pass None to return all groups.
+
+        Returns:
+            All matching SiteControlGroup entries.
+        """
+        # For completeness
+        if fsa_ids == []:
+            return []
+
+        stmt = select(SiteControlGroup)
+        if fsa_ids is not None:
+            stmt = stmt.where(SiteControlGroup.fsa_id.in_([int(fid) for fid in fsa_ids]))
+
+        async with self._session_factory() as session:
+            results = await session.execute(stmt)
+
+        return [mappers.map_envoy_site_control_group_to_dto(cg) for cg in results.scalars().all()]
+
+    async def create_site_control_group(self, group: dtos.SiteControlGroupWrite) -> str:
+        """Creates a new DERProgram via the admin API.
+
+        Args:
+            group: The DERProgram definition to create.
+
+        Returns:
+            The server-assigned site_control_group_id for the newly created group.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        return (
+            f"{await self._admin_client.post_site_control_group(mappers.map_dto_site_control_group_to_request(group))}"
+        )
+
+    async def update_site_control_group(self, group_id: str, group: dtos.SiteControlGroupWrite) -> None:
+        """Updates an existing DERProgram via the admin API.
+
+        Args:
+            group_id: The string-encoded identifier of the group to update.
+            group: The updated DERProgram definition. All fields are replaced on the server.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        await self._admin_client.put_site_control_group(
+            int(group_id), mappers.map_dto_site_control_group_to_request(group)
+        )
+
+    async def remove_function_set_assignment(self, fsa_id: str) -> None:
+        """Removes a function set assignment from all site control groups.
+
+        Args:
+            fsa_id: The id to query for when selecting which groups to be unassigned.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        existing_groups = await self.get_site_control_groups()
+        for scg in existing_groups:
+            if scg.fsa_id == fsa_id:
+                logger.info(f"Removing fsa_id {scg.fsa_id} from SiteControlGroup {scg.site_control_group_id}")
+                request = SiteControlGroupRequest(
+                    description=scg.description, primacy=scg.primacy, fsa_id=None, display_id=scg.display_id
+                )
+                await self._admin_client.put_site_control_group(int(scg.site_control_group_id), request)
+
+    async def get_exclusive_site_group(self, site_id: str) -> dtos.SiteGroup:
+        """Gets the site_group exclusive to the given site_id."""
+        response = await get_exclusive_site_group(self._admin_client, int(site_id))
+        return mappers.map_envoy_site_group_response_to_dto(response)
+
+    # ------------------------------------------------------------------
+    # DER Controls
+    # ------------------------------------------------------------------
+
+    async def create_site_control(
+        self,
+        *,
+        site_control_group_id: str,
+        control: dtos.SiteControlWrite,
+    ) -> None:
+        """Creates a DERControl under the specified DERProgram via the admin API.
+
+        Args:
+            control: The DERControl definition to create, including site, timing, and limit fields.
+            site_control_group_id: The string-encoded ID of the parent DERProgram.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        await self._admin_client.create_site_controls(
+            int(site_control_group_id),
+            [mappers.map_dto_site_control_create_to_request(control)],
+        )
+
+    async def get_site_controls(self) -> Sequence[dtos.SiteControl]:
+        """Returns all site controls ever issued during the test, including deleted and archived entries.
+
+        Both live DynamicOperatingEnvelope rows and their ArchiveDynamicOperatingEnvelope counterparts
+        are included so that checks can reason over the full control lifecycle.
+
+        Returns:
+            All active, completed, and archived site controls.
+        """
+        async with self._session_factory() as session:
+            controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
+            deleted_controls = (await session.execute(select(ArchiveDynamicOperatingEnvelope))).scalars().all()
+
+        all_controls = itertools.chain(controls, deleted_controls)
+
+        all_controls = [mappers.map_envoy_site_control_to_dto(c) for c in all_controls]
+        return all_controls
+
+    async def cancel_active_site_controls(self) -> None:
+        """Cancels all active DERControls across every DERProgram known to the server.
+
+        Fetches all DERPrograms and issues a delete-in-range spanning the years 2000–2100
+        for each, effectively cancelling any currently active or scheduled controls.
+
+        Raises:
+            aiohttp.ClientResponseError: If any admin API call returns a non-2xx response.
+        """
+        groups_response = await self._admin_client.get_all_site_control_groups()
+        if groups_response.site_control_groups:
+            for g in groups_response.site_control_groups:
+                await self._admin_client.delete_site_controls_in_range(
+                    g.site_control_group_id,
+                    datetime(2000, 1, 1, tzinfo=UTC),
+                    datetime(2100, 1, 1, tzinfo=UTC),
+                )
+
+    # ------------------------------------------------------------------
+    # Default DER Controls
+    # ------------------------------------------------------------------
+
+    async def set_site_control_default(
+        self,
+        *,
+        site_control_group_id: str,
+        default: dtos.SiteControlGroupDefaultWrite,
+    ) -> None:
+        """Sets or updates the DefaultDERControl for a DERProgram via the admin API.
+
+        Fields set to None in ``default`` are treated as "no change" unless ``default.cancelled``
+        is True, in which case they are explicitly nulled out on the server (cancelling any
+        previously set default value for that field).
+
+        Args:
+            site_control_group_id: The string-encoded ID of the DERProgram to update.
+            default: The default limit values to apply. Set ``cancelled=True`` to explicitly
+                clear all unset limit fields rather than leaving them unchanged.
+
+        Raises:
+            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+        """
+        await self._admin_client.post_site_control_default(
+            int(site_control_group_id),
+            mappers.map_dto_site_control_group_default_to_request(default),
+        )
+
+    async def get_site_control_group_defaults(
+        self,
+    ) -> Sequence[dtos.SiteControlGroupDefault]:
+        """Fetches all SiteControlGroupDefault's for all SiteControlGroups, both current and historic
+        (including update values)"""
+        async with self._session_factory() as session:
+            active_control_groups = (await session.execute(select(SiteControlGroupDefault))).scalars().all()
+            deleted_control_groups = (await session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
+
+        all_controls = itertools.chain(active_control_groups, deleted_control_groups)
+        return [map_envoy_site_control_group_default_to_dto(ctrl) for ctrl in all_controls]
+
+    # ------------------------------------------------------------------
+    # Responses
+    # ------------------------------------------------------------------
+
+    async def get_site_control_responses(self) -> Sequence[dtos.SiteControlResponse]:
+        """Returns all DERControl responses recorded in the database.
+
+        Returns:
+            All DynamicOperatingEnvelopeResponse entries, in no guaranteed order.
+        """
+        async with self._session_factory() as session:
+            response_result = await session.execute(select(DynamicOperatingEnvelopeResponse))
+        responses = response_result.scalars().all()
+
+        return [mappers.map_envoy_site_control_response_to_dto(r) for r in responses]
+
+    # ------------------------------------------------------------------
+    # Subscriptions
+    # ------------------------------------------------------------------
+
     async def get_subscription(self, subscription_id: str) -> dtos.Subscription | None:
         """Returns a single subscription by ID.
 
@@ -322,115 +597,9 @@ class EnvoyBackend(RunnerBackend):
 
         return [mappers.map_envoy_transmit_notification_log_to_dto(lg) for lg in all_logs]
 
-    async def get_site_controls(self) -> Sequence[dtos.SiteControl]:
-        """Returns all site controls ever issued during the test, including deleted and archived entries.
-
-        Both live DynamicOperatingEnvelope rows and their ArchiveDynamicOperatingEnvelope counterparts
-        are included so that checks can reason over the full control lifecycle.
-
-        Returns:
-            All active, completed, and archived site controls.
-        """
-        async with self._session_factory() as session:
-            controls = (await session.execute(select(DynamicOperatingEnvelope))).scalars().all()
-            deleted_controls = (await session.execute(select(ArchiveDynamicOperatingEnvelope))).scalars().all()
-
-        all_controls = itertools.chain(controls, deleted_controls)
-
-        all_controls = [mappers.map_envoy_site_control_to_dto(c) for c in all_controls]
-        return all_controls
-
-    async def get_site_control_responses(self) -> Sequence[dtos.SiteControlResponse]:
-        """Returns all DERControl responses recorded in the database.
-
-        Returns:
-            All DynamicOperatingEnvelopeResponse entries, in no guaranteed order.
-        """
-        async with self._session_factory() as session:
-            response_result = await session.execute(select(DynamicOperatingEnvelopeResponse))
-        responses = response_result.scalars().all()
-
-        return [mappers.map_envoy_site_control_response_to_dto(r) for r in responses]
-
-    async def parse_subscription_href(self, href: str) -> dtos.SubscriptionHref:
-        """Parses a subscription resource href into its component parts.
-
-        Delegates to the envoy SubscriptionMapper. Any parsing errors are intentionally
-        propagated to the caller for handling.
-
-        Args:
-            href: A subscription resource href as provided by the test definition.
-
-        Returns:
-            A SubscriptionHref containing the resolved resource_type, scoped_site_id, and resource_id.
-
-        Raises:
-            InvalidMappingError: If the href cannot be parsed into a valid subscription resource reference.
-        """
-        resource_type, scoped_site_id, resource_id = SubscriptionMapper.parse_resource_href(href)
-        return dtos.SubscriptionHref(
-            resource_type=resource_type,
-            scoped_site_id=f"{scoped_site_id}" if scoped_site_id is not None else None,
-            resource_id=f"{resource_id}" if resource_id is not None else None,
-        )
-
-    async def get_site_reading_types(self, site_ids: Sequence[str] | None = None) -> Sequence[dtos.SiteReadingType]:
-        """Returns SiteReadingTypes from the database, optionally scoped to specific sites.
-
-        Args:
-            site_ids: If provided, only reading types belonging to these sites are returned.
-                An empty list returns nothing immediately without querying the database.
-
-        Returns:
-            All matching SiteReadingType entries.
-        """
-        # For completeness
-        if site_ids == []:
-            return []
-
-        stmt = select(SiteReadingType)
-        if site_ids is not None:
-            stmt = stmt.where(SiteReadingType.site_id.in_([int(sid) for sid in site_ids]))
-
-        async with self._session_factory() as session:
-            results = await session.execute(stmt)
-
-        return [mappers.map_envoy_site_reading_type_to_dto(srt) for srt in results.scalars().all()]
-
-    async def get_site_control_groups(self, fsa_ids: Sequence[str] | None = None) -> Sequence[dtos.SiteControlGroup]:
-        """Returns DERPrograms from the database, optionally filtered by Function Set Assignment ID.
-
-        Args:
-            fsa_ids: If provided, only groups with a matching fsa_id are returned. An empty list
-                returns nothing immediately without querying the database. Pass None to return all groups.
-
-        Returns:
-            All matching SiteControlGroup entries.
-        """
-        # For completeness
-        if fsa_ids == []:
-            return []
-
-        stmt = select(SiteControlGroup)
-        if fsa_ids is not None:
-            stmt = stmt.where(SiteControlGroup.fsa_id.in_([int(fid) for fid in fsa_ids]))
-
-        async with self._session_factory() as session:
-            results = await session.execute(stmt)
-
-        return [mappers.map_envoy_site_control_group_to_dto(cg) for cg in results.scalars().all()]
-
-    async def get_site_control_group_defaults(
-        self,
-    ) -> Sequence[dtos.SiteControlGroupDefault]:
-        """Fetches all SiteControlGroupDefault's for all SiteControlGroups, both current and historic
-        (including update values)"""
-        async with self._session_factory() as session:
-            active_control_groups = (await session.execute(select(SiteControlGroupDefault))).scalars().all()
-            deleted_control_groups = (await session.execute(select(ArchiveSiteControlGroupDefault))).scalars().all()
-
-        all_controls = itertools.chain(active_control_groups, deleted_control_groups)
-        return [map_envoy_site_control_group_default_to_dto(ctrl) for ctrl in all_controls]
+    # ------------------------------------------------------------------
+    # Runtime Configuration
+    # ------------------------------------------------------------------
 
     async def get_runtime_config_history(self) -> Sequence[dtos.RuntimeConfig]:
         """Fetches the current and all historical values for RuntimeConfig
@@ -453,114 +622,9 @@ class EnvoyBackend(RunnerBackend):
         """
         await self._admin_client.update_runtime_config(mappers.map_dto_runtime_config_to_request(config))
 
-    async def create_site_control_group(self, group: dtos.SiteControlGroupWrite) -> str:
-        """Creates a new DERProgram via the admin API.
-
-        Args:
-            group: The DERProgram definition to create.
-
-        Returns:
-            The server-assigned site_control_group_id for the newly created group.
-
-        Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
-        """
-        return (
-            f"{await self._admin_client.post_site_control_group(mappers.map_dto_site_control_group_to_request(group))}"
-        )
-
-    async def update_site_control_group(self, group_id: str, group: dtos.SiteControlGroupWrite) -> None:
-        """Updates an existing DERProgram via the admin API.
-
-        Args:
-            group_id: The string-encoded identifier of the group to update.
-            group: The updated DERProgram definition. All fields are replaced on the server.
-
-        Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
-        """
-        await self._admin_client.put_site_control_group(
-            int(group_id), mappers.map_dto_site_control_group_to_request(group)
-        )
-
-    async def set_site_control_default(
-        self,
-        *,
-        site_control_group_id: str,
-        default: dtos.SiteControlGroupDefaultWrite,
-    ) -> None:
-        """Sets or updates the DefaultDERControl for a DERProgram via the admin API.
-
-        Fields set to None in ``default`` are treated as "no change" unless ``default.cancelled``
-        is True, in which case they are explicitly nulled out on the server (cancelling any
-        previously set default value for that field).
-
-        Args:
-            site_control_group_id: The string-encoded ID of the DERProgram to update.
-            default: The default limit values to apply. Set ``cancelled=True`` to explicitly
-                clear all unset limit fields rather than leaving them unchanged.
-
-        Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
-        """
-        await self._admin_client.post_site_control_default(
-            int(site_control_group_id),
-            mappers.map_dto_site_control_group_default_to_request(default),
-        )
-
-    async def cancel_active_site_controls(self) -> None:
-        """Cancels all active DERControls across every DERProgram known to the server.
-
-        Fetches all DERPrograms and issues a delete-in-range spanning the years 2000–2100
-        for each, effectively cancelling any currently active or scheduled controls.
-
-        Raises:
-            aiohttp.ClientResponseError: If any admin API call returns a non-2xx response.
-        """
-        groups_response = await self._admin_client.get_all_site_control_groups()
-        if groups_response.site_control_groups:
-            for g in groups_response.site_control_groups:
-                await self._admin_client.delete_site_controls_in_range(
-                    g.site_control_group_id,
-                    datetime(2000, 1, 1, tzinfo=UTC),
-                    datetime(2100, 1, 1, tzinfo=UTC),
-                )
-
-    async def create_site_control(
-        self,
-        control: dtos.SiteControlWrite,
-        *,
-        site_control_group_id: str,
-    ) -> None:
-        """Creates a DERControl under the specified DERProgram via the admin API.
-
-        Args:
-            control: The DERControl definition to create, including site, timing, and limit fields.
-            site_control_group_id: The string-encoded ID of the parent DERProgram.
-
-        Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
-        """
-        await self._admin_client.create_site_controls(
-            int(site_control_group_id),
-            [mappers.map_dto_site_control_create_to_request(control)],
-        )
-
-    async def update_site_post_rate(self, site_id: str, post_rate_seconds: int) -> None:
-        """Updates the postRate for a site via the admin API.
-
-        All other site fields (nmi, timezone_id, device_category) are left unchanged.
-
-        Args:
-            site_id: The string-encoded identifier of the site to update.
-            post_rate_seconds: The new postRate interval in seconds.
-
-        Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
-        """
-        await self._admin_client.update_single_site(
-            int(site_id), mappers.map_dto_post_rate_to_site_update_request(post_rate_seconds)
-        )
+    # ------------------------------------------------------------------
+    # Administrative cleanup
+    # ------------------------------------------------------------------
 
     async def delete_all_site_control_groups(self) -> None:
         """Deletes all DERPrograms and all downstream resources via the admin API.
@@ -585,36 +649,31 @@ class EnvoyBackend(RunnerBackend):
         """
         await self._admin_client.delete_single_site(int(site_id))
 
-    async def remove_function_set_assignment(self, fsa_id: str) -> None:
-        """Removes a function set assignment from all site control groups.
+    # ------------------------------------------------------------------
+    # Helper methods
+    # ------------------------------------------------------------------
+
+    async def parse_subscription_href(self, href: str) -> dtos.SubscriptionHref:
+        """Parses a subscription resource href into its component parts.
+
+        Delegates to the envoy SubscriptionMapper. Any parsing errors are intentionally
+        propagated to the caller for handling.
 
         Args:
-            fsa_id: The id to query for when selecting which groups to be unassigned.
+            href: A subscription resource href as provided by the test definition.
+
+        Returns:
+            A SubscriptionHref containing the resolved resource_type, scoped_site_id, and resource_id.
 
         Raises:
-            aiohttp.ClientResponseError: If the admin API returns a non-2xx response.
+            InvalidMappingError: If the href cannot be parsed into a valid subscription resource reference.
         """
-        existing_groups = await self.get_site_control_groups()
-        for scg in existing_groups:
-            if scg.fsa_id == fsa_id:
-                logger.info(f"Removing fsa_id {scg.fsa_id} from SiteControlGroup {scg.site_control_group_id}")
-                request = SiteControlGroupRequest(
-                    description=scg.description, primacy=scg.primacy, fsa_id=None, display_id=scg.display_id
-                )
-                await self._admin_client.put_site_control_group(int(scg.site_control_group_id), request)
-
-    async def register_site(self, site: dtos.SiteWrite) -> None:
-        """Registers a site.
-
-        Args:
-            site: particulars
-
-        Raises:
-            DB error if fails to commit result.
-        """
-        async with self._session_factory() as session:
-            session.add(mappers.map_dto_site_write_to_envoy(site))
-            await session.commit()
+        resource_type, scoped_site_id, resource_id = SubscriptionMapper.parse_resource_href(href)
+        return dtos.SubscriptionHref(
+            resource_type=resource_type,
+            scoped_site_id=f"{scoped_site_id}" if scoped_site_id is not None else None,
+            resource_id=f"{resource_id}" if resource_id is not None else None,
+        )
 
     async def get_end_device_metadata(self) -> EndDeviceMetadata | None:
         """Constructs and returns the current EndDeviceMetadata to be used in a status payload."""
@@ -684,37 +743,26 @@ class EnvoyBackend(RunnerBackend):
             serializable_sites=serializable_sites,
         )
 
-    async def reset_playlist_state(self) -> None:
-        """Wrapper for reset_playlist_db."""
-        await reset_playlist_db(self._admin_client)
-
-    async def is_healthy(self) -> bool:
-        """Wrapping the db and client health checks."""
-        try:
-            async with self._session_factory() as session:
-                db_healthy = await is_db_healthy(session)
-
-            client_healthy = await is_admin_api_healthy(self._admin_client)
-            return db_healthy and client_healthy
-        except Exception as exc:
-            logger.error("Backend healthcheck failed.", exc_info=exc)
-            return False
-
-    async def reset_state(self) -> None:
-        """Performs a full db reset."""
-        logger.debug("Resetting envoy database")
-        await reset_db()
-
-    async def register_aggregator(self, lfdi: str | None, subscription_domain: str | None) -> str:
-        """Returns the aggregator ID that should be used for registering devices"""
-        return await register_aggregator(lfdi, subscription_domain)
-
-    async def get_exclusive_site_group(self, site_id: str) -> dtos.SiteGroup:
-        """Gets the site_group exclusive to the given site_id."""
-        response = await get_exclusive_site_group(self._admin_client, int(site_id))
-        return mappers.map_envoy_site_group_response_to_dto(response)
-
     async def generate_warnings(self) -> list[WarningEntry]:
         """Performs the warning production following post test run analysis as part of finalization."""
         async with self._session_factory() as session:
             return await run_post_test_analysers(session)
+
+    async def has_set_max_w_varied(self) -> bool:
+        """Check if setMaxW was varied during the test.
+
+        Any archive entry with a different max_w_value than the current SiteDERSetting for the
+        same site means it changed
+        """
+        async with self._session_factory() as session:
+            return (
+                await session.execute(
+                    select(ArchiveSiteDERSetting.site_id)
+                    .join(
+                        SiteDERSetting,
+                        (SiteDERSetting.site_id == ArchiveSiteDERSetting.site_id)  # Same DER (one per site)
+                        & (SiteDERSetting.max_w_value != ArchiveSiteDERSetting.max_w_value),  # Same setmaxw
+                    )
+                    .limit(1)
+                )
+            ).scalar() is not None
