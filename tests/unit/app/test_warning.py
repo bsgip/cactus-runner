@@ -314,10 +314,10 @@ async def test_analyse_active_power_exceeds_max_w_no_warning_when_within_range(p
         session.add(srt)
         await session.flush()
 
-        # -5000W and 5000W are the inclusive boundaries of the setMaxW range
-        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt, value=-5000))
+        # -6250W and 6250W are the inclusive boundaries of the setMaxW range (with 1.25x buffer)
+        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt, value=-6250))
         session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt, value=0))
-        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt, value=5000))
+        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt, value=6250))
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
@@ -352,7 +352,7 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
             uom=UomType.REAL_POWER_WATT,
             power_of_ten_multiplier=0,
         )
-        # Values in tenths of a watt - power_of_ten_multiplier scales 51000 -> 5100W
+        # Values in tenths of a watt - power_of_ten_multiplier scales 63000 -> 6300W
         srt_b = generate_class_instance(
             SiteReadingType,
             seed=404,
@@ -365,13 +365,14 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
         session.add(srt_b)
         await session.flush()
 
-        # srt_a: one under (import) the limit (-5100W), one within range (0W), one over (export) the limit (5100W)
-        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt_a, value=-5100))
-        session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt_a, value=0))
-        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt_a, value=5100))
+        # srt_a: one under (import) the limit (-6300W), one above setMaxW but within the buffer (5100W), one over
+        # (export) the limit (6300W)
+        session.add(generate_class_instance(SiteReading, seed=1001, site_reading_type=srt_a, value=-6300))
+        session.add(generate_class_instance(SiteReading, seed=1002, site_reading_type=srt_a, value=5100))
+        session.add(generate_class_instance(SiteReading, seed=1003, site_reading_type=srt_a, value=6300))
 
-        # srt_b: one over the limit (51000 -> 5100W), rest in range
-        session.add(generate_class_instance(SiteReading, seed=2001, site_reading_type=srt_b, value=51000))
+        # srt_b: one over the limit (63000 -> 6300W), rest in range
+        session.add(generate_class_instance(SiteReading, seed=2001, site_reading_type=srt_b, value=63000))
         session.add(generate_class_instance(SiteReading, seed=2002, site_reading_type=srt_b, value=0))
 
         # A non-active-power reading type must be ignored entirely
