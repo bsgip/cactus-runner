@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 PostTestAnalyser = Callable[[AsyncSession], Awaitable[WarningEntry | None]]
 
+# Site readings include uncontrolled generation/load that isn't bound by setMaxW - this buffer allows for that
+ACTIVE_POWER_MAX_W_BUFFER = 1.25
+
 
 def append_warnings(warnings: Iterable[WarningEntry], active_test_procedure: ActiveTestProcedure) -> None:
     for warning in warnings:
@@ -106,7 +109,8 @@ async def _analyse_reading_type_varied(session: AsyncSession) -> WarningEntry | 
 
 
 async def _analyse_active_power_exceeds_max_w(session: AsyncSession) -> WarningEntry | None:
-    """Flags if any active power (Watts) readings received during the test exceed the DER's setMaxW limit."""
+    """Flags if any active power (Watts) readings received during the test exceed the DER's setMaxW limit (with a
+    buffer for uncontrolled generation/load at the site)."""
     der_settings_response = await session.execute(select(SiteDERSetting))
     max_w_by_site_id = {
         site_der_setting.site_id: site_der_setting.max_w_value * 10**site_der_setting.max_w_multiplier
@@ -122,10 +126,11 @@ async def _analyse_active_power_exceeds_max_w(session: AsyncSession) -> WarningE
         if max_w is None:
             continue
 
+        limit_w = ACTIVE_POWER_MAX_W_BUFFER * max_w
         readings = await get_site_readings(session, srt)
         for reading in readings:
             active_power = reading.value * 10**srt.power_of_ten_multiplier
-            if active_power < -max_w or active_power > max_w:
+            if active_power < -limit_w or active_power > limit_w:
                 out_of_range_count += 1
 
     if out_of_range_count > 0:
@@ -133,8 +138,10 @@ async def _analyse_active_power_exceeds_max_w(session: AsyncSession) -> WarningE
             type="readings.active-power-exceeds-set-max-w",
             description="Active power readings received exceed setMaxW",
             message=(
-                f"{out_of_range_count} active power readings received exceed the DER's setMaxW limit (in the "
-                "positive/export or negative/import direction). Active power should never exceed setMaxW."
+                f"{out_of_range_count} active power readings received exceed {ACTIVE_POWER_MAX_W_BUFFER}x the DER's "
+                "setMaxW limit (in the positive/export or negative/import direction). Uncontrolled "
+                "generation or load at the site may cause site readings to exceed setMaxW, which is acceptable - "
+                "otherwise, active power should never exceed setMaxW."
             ),
             timestamp=datetime.now(UTC),
         )
