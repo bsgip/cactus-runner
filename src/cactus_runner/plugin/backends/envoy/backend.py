@@ -545,6 +545,24 @@ class EnvoyBackend(RunnerBackend):
     # Subscriptions
     # ------------------------------------------------------------------
 
+    async def get_subscription(self, subscription_id: str) -> dtos.Subscription | None:
+        """Returns a single subscription by ID.
+
+        Args:
+            subscription_id: The string-encoded subscription identifier.
+
+        Returns:
+            The matching subscription, or None if no subscription with that ID exists.
+        """
+        stmt = select(Subscription).where(Subscription.subscription_id == int(subscription_id))
+
+        async with self._session_factory() as session:
+            subscription = (await session.execute(stmt)).scalar_one_or_none()
+
+        if subscription is None:
+            return None
+        return mappers.map_envoy_subscription_to_dto(subscription)
+
     async def get_subscriptions(
         self,
         aggregator_client_id: str | None = None,

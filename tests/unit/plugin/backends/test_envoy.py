@@ -1,3 +1,4 @@
+import inspect
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
@@ -14,12 +15,61 @@ from envoy.server.model import (
     SiteGroup,
     SiteReading,
     SiteReadingType,
+    Subscription,
 )
+from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cactus_runner.plugin.backends.common import RunnerBackend
 from cactus_runner.plugin.backends.envoy import EnvoyAdminClient, EnvoyBackend
 from cactus_runner.plugin.backends.envoy.resolver import EnvoyResolver
+
+
+def test_envoy_backend_implements_runner_backend_protocol() -> None:
+    """Ensure EnvoyBackend defines every method required by RunnerBackend."""
+    protocol_methods = {
+        name for name, member in vars(RunnerBackend).items() if inspect.isfunction(member) and not name.startswith("_")
+    }
+    envoy_backend_methods = {name for name, member in vars(EnvoyBackend).items() if inspect.isfunction(member)}
+
+    missing_methods = sorted(protocol_methods - envoy_backend_methods)
+    assert not missing_methods, f"EnvoyBackend is missing RunnerBackend methods: {missing_methods}"
+
+
+@pytest.mark.anyio
+async def test_get_subscription(pg_base_config, envoy_admin_client) -> None:
+    """Tests that get_subscription returns the matching subscription by ID, or None if it doesn't exist."""
+    async with generate_async_session(pg_base_config) as session:
+        agg = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        session.add(
+            generate_class_instance(
+                Subscription, subscription_id=1, aggregator=agg, scoped_site_id=None, notification_uri="https://dev/1"
+            )
+        )
+        session.add(
+            generate_class_instance(
+                Subscription,
+                seed=101,
+                subscription_id=2,
+                aggregator=agg,
+                scoped_site_id=None,
+                notification_uri="https://dev/2",
+            )
+        )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
+        sub = await backend.get_subscription("2")
+        missing = await backend.get_subscription("999")
+
+    assert sub is not None
+    assert sub.subscription_id == "2"
+    assert sub.client_aggregator_id == "1"
+    assert sub.notification_uri == "https://dev/2"
+    assert missing is None
 
 
 @pytest.mark.anyio
