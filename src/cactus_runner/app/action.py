@@ -257,14 +257,14 @@ async def action_create_der_control(  # noqa: C901
             site_control_group_id = f"{site_control_group_id_int}"
 
     randomize_seconds: int | None = resolved_parameters.get("randomizeStart_seconds", None)
-    ramp_time_seconds: Decimal | None = resolved_parameters.get("ramp_time_seconds", None)
+    ramp_time_seconds: float | None = resolved_parameters.get("ramp_time_seconds", None)
     energize: bool | None = resolved_parameters.get("opModEnergize", None)
     connect: bool | None = resolved_parameters.get("opModConnect", None)
-    import_limit_watts: Decimal | None = resolved_parameters.get("opModImpLimW", None)
-    export_limit_watts: Decimal | None = resolved_parameters.get("opModExpLimW", None)
-    gen_limit_watts: Decimal | None = resolved_parameters.get("opModGenLimW", None)
-    load_limit_watts: Decimal | None = resolved_parameters.get("opModLoadLimW", None)
-    set_point_percent: Decimal | None = resolved_parameters.get("opModFixedW", None)
+    import_limit_watts: float | None = resolved_parameters.get("opModImpLimW", None)
+    export_limit_watts: float | None = resolved_parameters.get("opModExpLimW", None)
+    gen_limit_watts: float | None = resolved_parameters.get("opModGenLimW", None)
+    load_limit_watts: float | None = resolved_parameters.get("opModLoadLimW", None)
+    set_point_percent: float | None = resolved_parameters.get("opModFixedW", None)
 
     # Update the pow10 multiplier system config - adjusting upward if any watt values would overflow Int16
     # at the requested multiplier. This mirrors the server's auto-scaling in DERControlMapper.map_to_active_power

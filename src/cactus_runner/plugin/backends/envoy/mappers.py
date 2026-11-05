@@ -543,12 +543,16 @@ def map_dto_site_control_create_to_request(control: dtos.SiteControlWrite) -> Si
         display_id=control.display_id,
         set_energized=control.set_energized,
         set_connect=control.set_connect,
-        import_limit_watts=control.import_limit_watts,
-        export_limit_watts=control.export_limit_watts,
-        generation_limit_watts=control.generation_limit_watts,
-        load_limit_watts=control.load_limit_watts,
-        set_point_percentage=control.set_point_percentage,
-        ramp_time_seconds=control.ramp_time_seconds,
+        import_limit_watts=Decimal(control.import_limit_watts) if control.import_limit_watts is not None else None,
+        export_limit_watts=Decimal(control.export_limit_watts) if control.export_limit_watts is not None else None,
+        generation_limit_watts=Decimal(control.generation_limit_watts)
+        if control.generation_limit_watts is not None
+        else None,
+        load_limit_watts=Decimal(control.load_limit_watts) if control.load_limit_watts is not None else None,
+        set_point_percentage=Decimal(control.set_point_percentage)
+        if control.set_point_percentage is not None
+        else None,
+        ramp_time_seconds=Decimal(control.ramp_time_seconds) if control.ramp_time_seconds is not None else None,
     )
 
 
@@ -587,9 +591,9 @@ def map_dto_site_control_group_default_to_request(
     null (UpdateDefaultValue(value=None)) rather than "don't update this field".
     """
 
-    def _wrap(value: Decimal | None) -> UpdateDefaultValue | None:
+    def _wrap(value: float | None) -> UpdateDefaultValue | None:
         if value is not None:
-            return UpdateDefaultValue(value=value)  # type: ignore[arg-type]
+            return UpdateDefaultValue(value=Decimal(value))  # type: ignore[arg-type]
         return UpdateDefaultValue(value=None) if default.cancelled else None
 
     return SiteControlGroupDefaultRequest(
