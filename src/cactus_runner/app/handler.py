@@ -1,11 +1,13 @@
 import http
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email import message, policy
 from itertools import groupby
 from pathlib import Path
 from typing import cast
+from urllib.request import parse_http_list
 
 from aiohttp import ContentTypeError, web
 from cactus_schema.runner import (
@@ -701,6 +703,10 @@ async def list_request_ids_handler(request: web.Request) -> web.Response:
     return web.Response(status=http.HTTPStatus.OK, content_type="application/json", text=request_list.to_json())
 
 
+# RFC 9110 12.4.2 qvalue
+QVALUE_PATTERN = re.compile(r"0(\.\d{0,3})?|1(\.0{0,3})?")
+
+
 def parse_media_type_header(raw_value: str) -> tuple[str, dict]:
     """Parse a Content-Type-like field value into a normalized (type/subtype, params) pair.
 
@@ -738,6 +744,26 @@ def media_type_header_check(raw_value: str) -> bool:
     return params.get(HEADER_MEDIA_PARAM_NAME.lower()) == HEADER_MEDIA_PARAM_VALUE
 
 
+def accept_header_check(raw_value: str) -> bool:
+    """Performs checking on a raw Accept header, which is a comma separated list of media ranges that may each carry
+    an RFC 9110 quality value (e.g. "application/sep+xml;csipaus=v1.3;q=0.5, application/sep+xml;csipaus=v1.2").
+
+    The server only offers a single media type so the relative preference between list entries is irrelevant - this
+    passes if ANY entry names the supported media type with a nonzero weight. A weight of 0 means "not acceptable" and
+    an entry with a malformed weight doesn't indicate support.
+    """
+    for media_range in parse_http_list(raw_value):
+        if not media_type_header_check(media_range):
+            continue
+
+        _, params = parse_media_type_header(media_range)
+        weight = params.get("q", "1")
+        if QVALUE_PATTERN.fullmatch(weight) and float(weight) > 0:
+            return True
+
+    return False
+
+
 async def media_headers_check(request: web.Request) -> list[tuple[http.HTTPStatus, str]]:
     """Performs media type checks.
 
@@ -745,7 +771,8 @@ async def media_headers_check(request: web.Request) -> list[tuple[http.HTTPStatu
     If a content-type is missing on put or post requests, an error is generated
     If a header value is provided on any requests for either content-type and accept that doesn't match
     that supported by the server, an error is generated regardless if it is used in the context of the
-    request method.
+    request method. An accept header matches if it lists the supported media type amongst its (possibly
+    weighted) entries - see accept_header_check.
 
     Args:
         request: request to be proxied through to the utility server.
@@ -773,7 +800,7 @@ async def media_headers_check(request: web.Request) -> list[tuple[http.HTTPStatu
         logger.error(msg)
         results.append((http.HTTPStatus.BAD_REQUEST, msg))
 
-    if accept and not media_type_header_check(accept):
+    if accept and not accept_header_check(accept):
         msg = f"Request header 'Accept: {accept_sanitized}' incorrect; should be 'Accept: {HEADER_MEDIA_ALL}'"
         logger.error(msg)
         results.append((http.HTTPStatus.NOT_ACCEPTABLE, msg))

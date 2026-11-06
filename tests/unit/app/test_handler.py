@@ -1108,6 +1108,21 @@ async def test_proceed_handler_logs_error_with_finished_test(mocker):
     [
         "application/sep+xml",
         "application/sep+xml;csipaus=bad",
+        "application/sep+xml;csipaus=1.3",
+        "application/sep+xml;csipaus=V1.3",
+        "application/sep+xml;csipaus=v1.2",
+        "application/sep+xml;csipaus=v1.2, application/sep+xml;csipaus=v1.1;q=0.5",
+        "application/sep+xml;csipaus=v1.3;q=0",
+        "application/sep+xml;csipaus=v1.3;q=0.000",
+        "application/sep+xml;csipaus=v1.3;q=0, application/sep+xml;csipaus=v1.2",
+        "application/sep+xml;csipaus=v1.3;q=abc",
+        "application/sep+xml;csipaus=v1.3;q=1.5",
+        "application/sep+xml;csipaus=v1.3;q=-1",
+        "application/sep+xml;csipaus=v1.3;q=0.1234",
+        'application/sep+xml;other="a, application/sep+xml;csipaus=v1.3"',
+        "application/json;csipaus=v1.3",
+        "*/*",
+        "application/*",
         "application/json",
         "application/xml",
         "application/csipaus.org",
@@ -1136,55 +1151,55 @@ async def test_incorrect_accept_header_not_accepted(mocker, assertical_extension
     "accept_header,ct_header,req_method,expected",
     [
         (
-            'application/sep+xml; CSIPAUS="1.3"',
-            "application/sep+xml;csipaus=1.3",
+            'application/sep+xml; CSIPAUS="v1.3"',
+            "application/sep+xml;csipaus=v1.3",
             http.HTTPMethod.GET,
             [],
         ),
         (
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml; csipaus=v1.3",
             "",
             http.HTTPMethod.GET,
             [],
         ),
         (
-            'application/sep+xml;csipaus="1.3"',
-            "application/sep+xml; Csipaus=1.3",
+            'application/sep+xml;csipaus="v1.3"',
+            "application/sep+xml; Csipaus=v1.3",
             http.HTTPMethod.PUT,
             [],
         ),
         (
             None,
-            "application/sep+xml;csipaus=1.3",
+            "application/sep+xml;csipaus=v1.3",
             http.HTTPMethod.PUT,
             [],
         ),
         (
-            "application/sep+xml; csipaus=1.3",
-            'application/sep+xml;csipaus="1.3"',
+            "application/sep+xml; csipaus=v1.3",
+            'application/sep+xml;csipaus="v1.3"',
             http.HTTPMethod.POST,
             [],
         ),
         (
             None,
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml; csipaus=v1.3",
             http.HTTPMethod.POST,
             [],
         ),
         (
-            "application/sep+xml;csipaus=1.3",
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml;csipaus=v1.3",
+            "application/sep+xml; csipaus=v1.3",
             http.HTTPMethod.DELETE,
             [],
         ),
         (
             "",
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml; csipaus=v1.3",
             http.HTTPMethod.DELETE,
             [],
         ),
         (
-            "application/sep+xml;csipaus=1.3",
+            "application/sep+xml;csipaus=v1.3",
             None,
             http.HTTPMethod.DELETE,
             [],
@@ -1197,7 +1212,7 @@ async def test_incorrect_accept_header_not_accepted(mocker, assertical_extension
         ),
         # Even if there is no body for the request, reject it
         (
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml; csipaus=v1.3",
             "application/sep+xml",
             http.HTTPMethod.GET,
             [
@@ -1212,7 +1227,7 @@ async def test_incorrect_accept_header_not_accepted(mocker, assertical_extension
         ),
         # Even if there is no body for the request, reject it, bad content-type
         (
-            "application/sep+xml;csipaus=1.3",
+            "application/sep+xml;csipaus=v1.3",
             "application/sep+xml",
             http.HTTPMethod.DELETE,
             [
@@ -1228,7 +1243,7 @@ async def test_incorrect_accept_header_not_accepted(mocker, assertical_extension
         # Bad Accept
         (
             "application/sep+xml",
-            "application/sep+xml; csipaus=1.3",
+            "application/sep+xml; csipaus=v1.3",
             http.HTTPMethod.GET,
             [
                 (
@@ -1314,3 +1329,39 @@ async def test_media_headers_check(
 
     actual = await handler.media_headers_check(request)
     assert actual == expected
+
+
+@pytest.mark.parametrize(
+    "accept_header",
+    [
+        "application/sep+xml;csipaus=v1.3;q=1",
+        "application/sep+xml;csipaus=v1.3;q=1.000",
+        "application/sep+xml;csipaus=v1.3;q=0.001",
+        "application/sep+xml; csipaus=v1.3; q=0.5",
+        "application/sep+xml;csipaus=v1.3;Q=0.5",
+        'application/sep+xml;csipaus="v1.3";q=0.5',
+        "APPLICATION/SEP+XML;CSIPAUS=v1.3;q=0.5",
+        # v1.3 is preferred
+        "application/sep+xml;csipaus=v1.3, application/sep+xml;csipaus=v1.2;q=0.5",
+        # v1.3 is NOT preferred, but it is still supported
+        "application/sep+xml;csipaus=v1.2, application/sep+xml;csipaus=v1.3",
+        "application/sep+xml;csipaus=v1.2, application/sep+xml;csipaus=v1.3;q=0.1",
+        "application/sep+xml;csipaus=v1.2;q=0.9,application/sep+xml;csipaus=v1.3;q=0.8",
+        "application/json , application/sep+xml;csipaus=v1.2;q=0.9 ,\tapplication/sep+xml;csipaus=v1.3;q=0.8",
+        "application/sep+xml;csipaus=v1.3;q=0.5, */*;q=0.1",
+        # An explicitly unacceptable version doesn't affect v1.3 support
+        "application/sep+xml;csipaus=v1.2;q=0, application/sep+xml;csipaus=v1.3;q=0.1",
+        # Commas inside a quoted parameter value do not delimit list entries
+        'application/sep+xml;other="a,b";csipaus=v1.3',
+        # RFC 9110 allows empty list entries
+        "application/sep+xml;csipaus=v1.2,, application/sep+xml;csipaus=v1.3,",
+    ],
+)
+@pytest.mark.asyncio
+async def test_media_headers_check_accept_lists(accept_header: str) -> None:
+    """Accept passes if v1.3 is listed at all, regardless of its position or (nonzero) weight"""
+    request = MagicMock()
+    request.headers = {"accept": accept_header, "content-type": None}
+    request.method = http.HTTPMethod.GET
+
+    assert await handler.media_headers_check(request) == []
