@@ -165,7 +165,6 @@ Actions represent mutations and configuration changes triggered before or during
 | `get_exclusive_site_group(site_id)` | Retrieves or creates a site group exclusive to the specified site. |
 | `create_site_control(site_control_group_id, control: SiteControlWrite)` | Schedules a DERControl (DOE limits, start/duration). |
 | `cancel_active_site_controls()` | Cancels all active and scheduled DERControls across all groups. |
-| `delete_site_controls_for_group(site_control_group_id)` | Deletes controls belonging to a specific group. |
 | `set_site_control_default(site_control_group_id, default: SiteControlGroupDefaultWrite)` | Applies or clears DefaultDERControl limits for a DERProgram. |
 | `update_runtime_config(config: RuntimeConfigWrite)` | Applies runtime configuration updates (e.g., server features, timing). |
 | `delete_all_site_control_groups()` | Removes all DERPrograms, DERControls, and DefaultDERControls. |

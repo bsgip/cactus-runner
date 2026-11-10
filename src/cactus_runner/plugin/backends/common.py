@@ -366,17 +366,6 @@ class RunnerBackend(Protocol):
         """
         ...
 
-    async def delete_site_controls_for_group(self, site_control_group_id: str) -> None:
-        """Delete all controls for the given group, if can be differentiated from cancelling.
-
-        Args:
-            site_control_group_id: id of group the controls will belong to
-
-        Raises:
-            Exception: If a cancellation request fails.
-        """
-        ...
-
     # ------------------------------------------------------------------
     # Default DER Controls
     # ------------------------------------------------------------------
