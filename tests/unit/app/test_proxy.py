@@ -194,42 +194,24 @@ async def test_proxy_request_forced_response_status_expires(mocker):
 
 
 @pytest.mark.parametrize(
-    "overrides, relative_url, expected",
+    "route, expires_offset, relative_url, expect_match",
     [
-        ([], "/dcap", None),
-        ([ForcedResponseStatusOverride(route="/dcap", status=503)], "/edev", None),
-        (
-            [ForcedResponseStatusOverride(route="/dcap", status=503)],
-            "/dcap",
-            ForcedResponseStatusOverride(route="/dcap", status=503),
-        ),
-        (
-            [
-                ForcedResponseStatusOverride(
-                    route="/dcap", status=503, expires_at=datetime.now(UTC) - timedelta(seconds=1)
-                )
-            ],
-            "/dcap",
-            None,
-        ),
-        (
-            [
-                ForcedResponseStatusOverride(
-                    route="/dcap", status=503, expires_at=datetime.now(UTC) + timedelta(seconds=60)
-                )
-            ],
-            "/dcap",
-            ForcedResponseStatusOverride(
-                route="/dcap", status=503, expires_at=datetime.now(UTC) + timedelta(seconds=60)
-            ),
-        ),
+        (None, None, "/dcap", False),
+        ("/dcap", None, "/edev", False),
+        ("/dcap", None, "/dcap", True),
+        ("/dcap", timedelta(seconds=-1), "/dcap", False),
+        ("/dcap", timedelta(seconds=60), "/dcap", True),
     ],
 )
-def test_find_active_forced_response_status_override(overrides, relative_url, expected):
+def test_find_active_forced_response_status_override(route, expires_offset, relative_url, expect_match):
+    # expires_at is computed here (not at collection time) so slow test runs can't let it lapse
+    overrides = []
+    if route is not None:
+        expires_at = datetime.now(UTC) + expires_offset if expires_offset is not None else None
+        overrides = [ForcedResponseStatusOverride(route=route, status=503, expires_at=expires_at)]
+
     result = proxy.find_active_forced_response_status_override(relative_url, overrides)
-    if expected is None:
-        assert result is None
+    if expect_match:
+        assert result is overrides[0]
     else:
-        assert result is not None
-        assert result.route == expected.route
-        assert result.status == expected.status
+        assert result is None
