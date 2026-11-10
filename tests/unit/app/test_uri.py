@@ -5,12 +5,14 @@ import jsonschema
 import pytest
 from aiohttp.web import Request
 from assertical.fake.generator import generate_class_instance
+from cactus_test_definitions import CSIPAusVersion
 from multidict import MultiDict
 
 from cactus_runner.app.uri import (
     MountedProxyPathParts,
     calculate_proxy_uri,
     does_endpoint_match,
+    generate_default_well_known_file,
     generate_well_known_file,
     uri_path_join,
     uri_proxy_path_extract,
@@ -203,3 +205,18 @@ def test_generate_well_known_file_valid_json(entries):
         schema = json.load(fp)
 
     jsonschema.validate(instance=contents, schema=schema)
+
+
+@pytest.mark.parametrize(
+    "mount_point, envoy_prefix, expected_dcap",
+    [
+        ("/", "/", "/dcap"),
+        ("/", "/envoy", "/envoy/dcap"),
+        ("/runner", "/", "/runner/dcap"),
+        ("/runner", "/envoy", "/runner/envoy/dcap"),
+    ],
+)
+def test_generate_default_well_known_file(mount_point, envoy_prefix, expected_dcap):
+    """Regression test - mount_point/envoy_prefix must only be applied once"""
+    contents = generate_default_well_known_file(CSIPAusVersion.RELEASE_1_3, mount_point, envoy_prefix)
+    assert contents == {"supportedSchemaVersions": {"https://csipaus.org/ns/v1.3": {"dcap": [expected_dcap]}}}

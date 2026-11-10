@@ -129,7 +129,7 @@ def generate_default_well_known_file(version: CSIPAusVersion, mount_point: str, 
     default_entries: list[WellKnownEntry] = [
         WellKnownEntry(
             version=f"https://csipaus.org/ns/{version}",
-            dcap_paths=[uri_path_join(mount_point, envoy_prefix, uri.DeviceCapabilityUri)],
+            dcap_paths=[uri.DeviceCapabilityUri],  # generate_well_known_file will apply mount_point/envoy_prefix
         )
     ]
     return generate_well_known_file(default_entries, mount_point, envoy_prefix)
