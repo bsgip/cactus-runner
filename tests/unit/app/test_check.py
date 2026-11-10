@@ -2775,8 +2775,42 @@ async def test_check_all_notifications_transmitted_failure_logs(pg_base_config, 
         backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         actual = await check_all_notifications_transmitted(backend)
         assert_check_result(actual, False)
+        assert actual.description is not None
+        assert "not presented by the runner backend" in actual.description, "No Subscription exists for the log"
 
     # Currently not relying on admin api for checks. This may change.
+    mock_admin_client.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_check_all_notifications_transmitted_failure_reports_notification_uri(pg_base_config):
+    """check_all_notifications_transmitted should report the notification_uri of the failing subscription"""
+
+    async with generate_async_session(pg_base_config) as session:
+        agg = (await session.execute(select(Aggregator).where(Aggregator.aggregator_id == 1))).scalar_one()
+        session.add(
+            generate_class_instance(
+                Subscription, subscription_id=1, aggregator=agg, scoped_site_id=None, notification_uri="https://dev/1"
+            )
+        )
+        session.add(
+            generate_class_instance(
+                TransmitNotificationLog,
+                transmit_notification_log_id=None,
+                subscription_id_snapshot=1,
+                http_status_code=500,
+            )
+        )
+        await session.commit()
+
+    mock_admin_client = mock.Mock(spec=EnvoyAdminClient)
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
+        actual = await check_all_notifications_transmitted(backend)
+        assert_check_result(actual, False)
+        assert actual.description is not None
+        assert "https://dev/1" in actual.description
+
     mock_admin_client.assert_not_called()
 
 
@@ -3433,7 +3467,7 @@ def test_params_der_settings_contents_model_has_correct_fields():
     """Ensures aliases for fields matches expected in the param definitions"""
     dscm = ParamsDERSettingsContents()
 
-    assert sorted([f.alias for f in dscm.__pydantic_fields__.values()]) == sorted(
+    assert sorted([f.alias or "" for f in dscm.__pydantic_fields__.values()]) == sorted(
         [f for f in CHECK_PARAMETER_SCHEMA["der-settings-contents"]]
     )
 
@@ -3442,7 +3476,7 @@ def test_params_der_capability_contents_model_has_correct_fields():
     """Ensures aliases for fields matches expected in the param definitions"""
     dccm = ParamsDERCapabilityContents()
 
-    assert sorted([f.alias for f in dccm.__pydantic_fields__.values()]) == sorted(
+    assert sorted([f.alias or "" for f in dccm.__pydantic_fields__.values()]) == sorted(
         [f for f in CHECK_PARAMETER_SCHEMA["der-capability-contents"]]
     )
 
@@ -4624,6 +4658,47 @@ async def test_determine_check_results_distinguishes_same_type_checks(mock_run_c
     assert sum(1 for r in check_results.values() if not r.passed) == 2, "The two failing DERC1 checks must survive"
 
 
+@pytest.mark.parametrize(
+    "request_paths, resources, minimum_count, maximum_count, expected",
+    [
+        ([], [], None, None, True),
+        ([], [], 0, 0, True),
+        ([], [], 1, 0, False),
+        ([], [], 0, 99, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], ["EndDevice"], None, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], None, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, None, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, 2, True),
+        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDeviceList], 1, 1, True),
+        (
+            ["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"],
+            [CSIPAusResource.EndDeviceList, CSIPAusResource.EndDevice, CSIPAusResource.TariffProfile],
+            3,
+            3,
+            True,
+        ),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 3, None, False),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], None, 1, False),
+        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 0, 3, True),
+    ],
+)
+def test_check_resource_requests(
+    request_paths: list[str],
+    resources: list[CSIPAusResource],
+    minimum_count: int | None,
+    maximum_count: int | None,
+    expected: bool,
+):
+    request_history = [generate_class_instance(RequestEntry, seed=idx, path=p) for idx, p in enumerate(request_paths)]
+    params: dict = {"resources": resources}
+    if minimum_count is not None:
+        params["minimum_count"] = minimum_count
+    if maximum_count is not None:
+        params["maximum_count"] = maximum_count
+
+    assert_check_result(check_resource_requests(params, request_history), expected)
+
+
 @pytest.mark.anyio
 async def test_check_price_response_contents_latest(pg_base_config):
     """check_price_response_contents should behave correctly when looking ONLY at the latest Response"""
@@ -5197,44 +5272,3 @@ def test_csip_aus_resource_to_match_uri():
         assert uri not in all_uris, r
         all_uris.add(uri)
     assert len(all_uris) > 10, "Sanity check to ensure we are looping"
-
-
-@pytest.mark.parametrize(
-    "request_paths, resources, minimum_count, maximum_count, expected",
-    [
-        ([], [], None, None, True),
-        ([], [], 0, 0, True),
-        ([], [], 1, 0, False),
-        ([], [], 0, 99, True),
-        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], ["EndDevice"], None, 2, True),
-        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], None, 2, True),
-        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, None, True),
-        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDevice], 2, 2, True),
-        (["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"], [CSIPAusResource.EndDeviceList], 1, 1, True),
-        (
-            ["/dcap", "/edev/1", "/edev", "/edev/2", "/edev/1/derp/2/derc"],
-            [CSIPAusResource.EndDeviceList, CSIPAusResource.EndDevice, CSIPAusResource.TariffProfile],
-            3,
-            3,
-            True,
-        ),
-        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 3, None, False),
-        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], None, 1, False),
-        (["/dcap", "/edev/1", "/edev/2", "/edev/1/derp"], [CSIPAusResource.EndDevice], 0, 3, True),
-    ],
-)
-def test_check_resource_requests(
-    request_paths: list[str],
-    resources: list[CSIPAusResource],
-    minimum_count: int | None,
-    maximum_count: int | None,
-    expected: bool,
-):
-    request_history = [generate_class_instance(RequestEntry, seed=idx, path=p) for idx, p in enumerate(request_paths)]
-    params: dict = {"resources": resources}
-    if minimum_count is not None:
-        params["minimum_count"] = minimum_count
-    if maximum_count is not None:
-        params["maximum_count"] = maximum_count
-
-    assert_check_result(check_resource_requests(params, request_history), expected)

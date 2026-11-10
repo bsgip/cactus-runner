@@ -59,7 +59,7 @@ class JSONLFormatter(logging.Formatter):
             "timestamp": dt.datetime.fromtimestamp(record.created, tz=dt.UTC).isoformat(),
         }
 
-        if record.exc_info is not None:
+        if record.exc_info:
             always_fields["exc_info"] = self.formatException(record.exc_info)
 
         if record.stack_info is not None:

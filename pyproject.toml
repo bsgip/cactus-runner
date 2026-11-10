@@ -29,7 +29,7 @@ dependencies = [
   "aiohttp>=3.11.12,<4",
   "cactus-schema>=1.4.0,<2",
   "cactus-test-definitions>=1.18.0,<2",
-  "envoy @ git+https://github.com/bsgip/envoy.git@v2.5.0",
+  "envoy @ git+https://github.com/bsgip/envoy.git@v2.5.1",
   "psycopg[binary]>=3.2.5,<4",
   "asyncpg>=0.30.0,<1",
   "pandas>=2.2.3,<3",

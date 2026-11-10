@@ -1,10 +1,11 @@
 import http
+from datetime import UTC, datetime, timedelta
 from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
 from cactus_runner.app import proxy
-from cactus_runner.models import ActiveTestProcedure
+from cactus_runner.models import ActiveTestProcedure, ForcedResponseStatusOverride
 
 
 @pytest.mark.asyncio
@@ -30,11 +31,12 @@ async def test_proxy_request(mocker):
 
     active_test_procedure = MagicMock()
     active_test_procedure.communications_disabled = False
+    active_test_procedure.forced_response_status_overrides = []
     remote_url = request.path
 
     # Act
     proxy_result = await proxy.proxy_request(
-        request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
+        request=request, remote_url=remote_url, relative_url=request.path, active_test_procedure=active_test_procedure
     )
 
     # Assert
@@ -68,12 +70,13 @@ async def test_proxy_request_disables_communications(mocker):
     mock_client_request = mocker.patch("aiohttp.client.request")
     active_test_procedure = MagicMock()
     active_test_procedure.communications_disabled = True
+    active_test_procedure.forced_response_status_overrides = []
     active_test_procedure.is_finished.return_value = False
     remote_url = ""
 
     # Act
     proxy_result = await proxy.proxy_request(
-        request=request, remote_url=remote_url, active_test_procedure=active_test_procedure
+        request=request, remote_url=remote_url, relative_url="/dcap", active_test_procedure=active_test_procedure
     )
 
     # Assert
@@ -88,3 +91,127 @@ async def test_proxy_request_disables_communications(mocker):
 
 def test_communications_disabled_defaults_false():
     assert ActiveTestProcedure.communications_disabled is False
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_forced_response_status_intercepts(mocker):
+    """A matching, non-expired override should short circuit the proxy entirely and return the forced status"""
+    # Arrange
+    request = MagicMock()
+    request_data = bytes([1, 2, 3])
+    request.read = AsyncMock(return_value=request_data)
+    request.method = "GET"
+
+    mock_client_request = mocker.patch("aiohttp.client.request")
+    active_test_procedure = MagicMock()
+    active_test_procedure.communications_disabled = False
+    active_test_procedure.forced_response_status_overrides = [
+        ForcedResponseStatusOverride(route="/edev/1/derp/1/derc", status=429, retry_after_seconds=180)
+    ]
+
+    # Act
+    proxy_result = await proxy.proxy_request(
+        request=request,
+        remote_url="http://example.com/edev/1/derp/1/derc",
+        relative_url="/edev/1/derp/1/derc",
+        active_test_procedure=active_test_procedure,
+    )
+
+    # Assert
+    assert mock_client_request.call_count == 0, "The reference server should never have been contacted"
+    assert proxy_result.response.status == http.HTTPStatus.TOO_MANY_REQUESTS
+    assert proxy_result.response.headers["Retry-After"] == "180"
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_forced_response_status_ignores_mismatched_route(mocker):
+    """An override for a different route should not affect this request"""
+    # Arrange
+    request = MagicMock()
+    request.read = AsyncMock(return_value=b"")
+    request.method = "GET"
+    request.charset = "utf-8"
+
+    response_status = http.HTTPStatus.OK
+    mock_client_request = mocker.patch("aiohttp.client.request")
+    mock_client_request.return_value.__aenter__.return_value.status = response_status
+    mock_client_request.return_value.__aenter__.return_value.read.return_value = b""
+    mock_client_request.return_value.__aenter__.return_value.headers = {}
+
+    active_test_procedure = MagicMock()
+    active_test_procedure.communications_disabled = False
+    active_test_procedure.forced_response_status_overrides = [
+        ForcedResponseStatusOverride(route="/some/other/endpoint", status=429)
+    ]
+
+    # Act
+    proxy_result = await proxy.proxy_request(
+        request=request,
+        remote_url="http://example.com/edev/1/derp/1/derc",
+        relative_url="/edev/1/derp/1/derc",
+        active_test_procedure=active_test_procedure,
+    )
+
+    # Assert
+    assert mock_client_request.call_count == 1
+    assert proxy_result.response.status == response_status
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_forced_response_status_expires(mocker):
+    """An override whose expiry has passed should no longer intercept requests"""
+    # Arrange
+    request = MagicMock()
+    request.read = AsyncMock(return_value=b"")
+    request.method = "GET"
+    request.charset = "utf-8"
+
+    response_status = http.HTTPStatus.OK
+    mock_client_request = mocker.patch("aiohttp.client.request")
+    mock_client_request.return_value.__aenter__.return_value.status = response_status
+    mock_client_request.return_value.__aenter__.return_value.read.return_value = b""
+    mock_client_request.return_value.__aenter__.return_value.headers = {}
+
+    active_test_procedure = MagicMock()
+    active_test_procedure.communications_disabled = False
+    active_test_procedure.forced_response_status_overrides = [
+        ForcedResponseStatusOverride(
+            route="/edev/1/derp/1/derc", status=429, expires_at=datetime.now(UTC) - timedelta(seconds=1)
+        )
+    ]
+
+    # Act
+    proxy_result = await proxy.proxy_request(
+        request=request,
+        remote_url="http://example.com/edev/1/derp/1/derc",
+        relative_url="/edev/1/derp/1/derc",
+        active_test_procedure=active_test_procedure,
+    )
+
+    # Assert
+    assert mock_client_request.call_count == 1
+    assert proxy_result.response.status == response_status
+
+
+@pytest.mark.parametrize(
+    "route, expires_offset, relative_url, expect_match",
+    [
+        (None, None, "/dcap", False),
+        ("/dcap", None, "/edev", False),
+        ("/dcap", None, "/dcap", True),
+        ("/dcap", timedelta(seconds=-1), "/dcap", False),
+        ("/dcap", timedelta(seconds=60), "/dcap", True),
+    ],
+)
+def test_find_active_forced_response_status_override(route, expires_offset, relative_url, expect_match):
+    # expires_at is computed here (not at collection time) so slow test runs can't let it lapse
+    overrides = []
+    if route is not None:
+        expires_at = datetime.now(UTC) + expires_offset if expires_offset is not None else None
+        overrides = [ForcedResponseStatusOverride(route=route, status=503, expires_at=expires_at)]
+
+    result = proxy.find_active_forced_response_status_override(relative_url, overrides)
+    if expect_match:
+        assert result is overrides[0]
+    else:
+        assert result is None
