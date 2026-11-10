@@ -2,6 +2,7 @@ import http
 import logging
 import math
 import re
+import string
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
@@ -14,9 +15,11 @@ import pydantic.alias_generators
 import pydantic.fields
 from cactus_test_definitions import variable_expressions
 from cactus_test_definitions.client import Check
+from cactus_test_definitions.csipaus import CSIPAusResource
 from envoy.server.crud.common import convert_lfdi_to_sfdi
 from envoy.server.exception import InvalidMappingError
 from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
+from envoy_schema.server.schema import uri
 from envoy_schema.server.schema.sep2.response import ResponseType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
 
@@ -27,7 +30,7 @@ from cactus_runner.app.evaluator import (
     ResolvedParam,
     resolve_variable_expressions_from_parameters,
 )
-from cactus_runner.app.uri import does_endpoint_match
+from cactus_runner.app.uri import WILDCARD, does_endpoint_match
 from cactus_runner.models import (
     ActiveTestProcedure,
     CheckResult,
@@ -1487,6 +1490,111 @@ def check_all_polls_at_correct_time(
     return result
 
 
+def resolve_format(fmt: str, constant: str = WILDCARD) -> str:
+    """Replace every format variable in fmt with a constant string."""
+    variables = {
+        field_name: constant for _, field_name, _, _ in string.Formatter().parse(fmt) if field_name is not None
+    }
+    return fmt.format(**variables)
+
+
+def csip_aus_resource_to_match_uri(resource: CSIPAusResource) -> str:  # noqa: C901
+    """Given a CSIPAusResource - generate a URI that envoy will expect when resolving that resource. Any parameters
+    on that URI will be substituted with a wildcard. eg DERControlList should yield something like /edev/*/derp/*/derc
+    """
+    match resource:
+        case CSIPAusResource.DeviceCapability:
+            return resolve_format(uri.DeviceCapabilityUri)
+        case CSIPAusResource.Time:
+            return resolve_format(uri.TimeUri)
+        case CSIPAusResource.MirrorUsagePointList:
+            return resolve_format(uri.MirrorUsagePointListUri)
+        case CSIPAusResource.MirrorUsagePoint:
+            return resolve_format(uri.MirrorUsagePointUri)
+        case CSIPAusResource.EndDeviceList:
+            return resolve_format(uri.EndDeviceListUri)
+        case CSIPAusResource.EndDevice:
+            return resolve_format(uri.EndDeviceUri)
+        case CSIPAusResource.ConnectionPoint:
+            return resolve_format(uri.ConnectionPointUri)
+        case CSIPAusResource.Registration:
+            return resolve_format(uri.RegistrationUri)
+        case CSIPAusResource.FunctionSetAssignmentsList:
+            return resolve_format(uri.FunctionSetAssignmentsListUri)
+        case CSIPAusResource.FunctionSetAssignments:
+            return resolve_format(uri.FunctionSetAssignmentsUri)
+        case CSIPAusResource.DERProgramList:
+            return resolve_format(uri.DERProgramListUri)
+        case CSIPAusResource.DERProgram:
+            return resolve_format(uri.DERProgramUri)
+        case CSIPAusResource.DERControlList:
+            return resolve_format(uri.DERControlListUri)
+        case CSIPAusResource.DERControl:
+            return resolve_format(uri.DERControlUri)
+        case CSIPAusResource.DefaultDERControl:
+            return resolve_format(uri.DefaultDERControlUri)
+        case CSIPAusResource.DERList:
+            return resolve_format(uri.DERListUri)
+        case CSIPAusResource.DER:
+            return resolve_format(uri.DERUri)
+        case CSIPAusResource.DERCapability:
+            return resolve_format(uri.DERCapabilityUri)
+        case CSIPAusResource.DERSettings:
+            return resolve_format(uri.DERSettingsUri)
+        case CSIPAusResource.DERStatus:
+            return resolve_format(uri.DERStatusUri)
+        case CSIPAusResource.SubscriptionList:
+            return resolve_format(uri.SubscriptionListUri)
+        case CSIPAusResource.Subscription:
+            return resolve_format(uri.SubscriptionUri)
+        case CSIPAusResource.TariffProfileList:
+            return resolve_format(uri.TariffProfileFSAListUri)
+        case CSIPAusResource.TariffProfile:
+            return resolve_format(uri.TariffProfileUri)
+        case CSIPAusResource.RateComponentList:
+            return resolve_format(uri.RateComponentListUri)
+        case CSIPAusResource.RateComponent:
+            return resolve_format(uri.RateComponentUri)
+        case CSIPAusResource.TimeTariffIntervalList:
+            return resolve_format(uri.TimeTariffIntervalListUri)
+        case CSIPAusResource.TimeTariffInterval:
+            return resolve_format(uri.TimeTariffIntervalUri)
+        case CSIPAusResource.ConsumptionTariffIntervalList:
+            return resolve_format(uri.ConsumptionTariffIntervalListUri)
+        case CSIPAusResource.ConsumptionTariffInterval:
+            return resolve_format(uri.ConsumptionTariffIntervalUri)
+        case _:
+            raise ValueError(f"Unsupported resource type {resource}")
+
+
+def check_resource_requests(resolved_parameters: dict[str, Any], request_history: list[RequestEntry]) -> CheckResult:
+    """Validates the request_history has a specific number of requests for the specified resource(s)"""
+
+    resources: list[CSIPAusResource] = resolved_parameters["resources"]
+    minimum_count: int | None = resolved_parameters.get("minimum_count", None)
+    maximum_count: int | None = resolved_parameters.get("maximum_count", None)
+
+    resource_match_uris: list[str] = [csip_aus_resource_to_match_uri(r) for r in resources]
+
+    total_matches: int = 0
+    for request in request_history:
+        total_matches += any(
+            does_endpoint_match(path=request.path, match=match_uri) for match_uri in resource_match_uris
+        )
+
+    resources_string = ", ".join(resources)
+    if minimum_count is not None and total_matches < minimum_count:
+        return CheckResult(
+            False, f"Expected at least {minimum_count} {resources_string} matches but only saw {total_matches}"
+        )
+    if maximum_count is not None and total_matches > maximum_count:
+        return CheckResult(
+            False, f"Expected at most {maximum_count} {resources_string} matches but saw {total_matches}"
+        )
+
+    return CheckResult(True, f"Found {resources_string} matches")
+
+
 async def run_check(  # noqa: C901
     check: Check,
     active_test_procedure: ActiveTestProcedure,
@@ -1578,6 +1686,9 @@ async def run_check(  # noqa: C901
                 check_result = check_all_polls_at_correct_time(
                     active_test_procedure, request_history, resolved_parameters
                 )
+
+            case "resource-requests":
+                check_result = check_resource_requests(resolved_parameters, request_history or [])
 
     except Exception as exc:
         logger.error(f"Failed performing check {check}", exc_info=exc)
