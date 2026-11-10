@@ -57,6 +57,7 @@ To implement a plugin, define a class with `@hookimpl` methods matching [Backend
 from cactus_runner.plugin.backends.models import RunnerBackendTestContext
 from cactus_runner.plugin.backends.common import RunnerBackend
 
+
 class MyCustomPlugin:
     @hookimpl
     async def create_backend(self, context: RunnerBackendTestContext | None) -> RunnerBackend:
@@ -120,6 +121,7 @@ It is recommended to keep all conversion logic isolated in a standalone `mappers
 ```python
 from cactus_runner.plugin import dtos
 
+
 def map_native_site_to_dto(native_site: Any) -> dtos.Site:
     return dtos.Site(
         site_id=str(native_site.id),
@@ -133,6 +135,7 @@ def map_native_site_to_dto(native_site: Any) -> dtos.Site:
 #### Outbound Mapping Example (Write DTO ➔ Native Request/Payload):
 ```python
 from cactus_runner.plugin import dtos
+
 
 def map_site_control_write_to_request(control: dtos.SiteControlWrite) -> dict[str, Any]:
     return {
@@ -165,7 +168,6 @@ Actions represent mutations and configuration changes triggered before or during
 | `get_exclusive_site_group(site_id)` | Retrieves or creates a site group exclusive to the specified site. |
 | `create_site_control(site_control_group_id, control: SiteControlWrite)` | Schedules a DERControl (DOE limits, start/duration). |
 | `cancel_active_site_controls()` | Cancels all active and scheduled DERControls across all groups. |
-| `delete_site_controls_for_group(site_control_group_id)` | Deletes controls belonging to a specific group. |
 | `set_site_control_default(site_control_group_id, default: SiteControlGroupDefaultWrite)` | Applies or clears DefaultDERControl limits for a DERProgram. |
 | `update_runtime_config(config: RuntimeConfigWrite)` | Applies runtime configuration updates (e.g., server features, timing). |
 | `delete_all_site_control_groups()` | Removes all DERPrograms, DERControls, and DefaultDERControls. |
@@ -251,16 +253,12 @@ class MyExpressionResolver(ExpressionResolver):
         site = await self._client.get_active_site()
 
         if site is None:
-            raise UnresolvableVariableError(
-                "No active site found"
-            )
+            raise UnresolvableVariableError("No active site found")
 
         der_setting = await self._client.get_der_settings(site.site_id)
 
         if der_setting is None or der_setting.max_w_value is None:
-            raise UnresolvableVariableError(
-                "Unable to resolve setMaxW"
-            )
+            raise UnresolvableVariableError("Unable to resolve setMaxW")
 
         return float(der_setting.max_w_value)
 ```
@@ -288,8 +286,7 @@ Alternate backend implementations may expose equivalent resources using differen
 To support this, the resolver must implement:
 
 ```python
-async def resolve_uri(self, uri: ParsedUri) -> str:
-    ...
+async def resolve_uri(self, uri: ParsedUri) -> str: ...
 ```
 
 The runner automatically parses endpoint definitions before passing them to the resolver. Plugin implementations should never need to manually parse SEP2 URIs.
@@ -340,7 +337,6 @@ from cactus_runner.plugin.backends.uri import ParsedUri
 
 
 class EnvoyResolver(ExpressionResolver):
-
     async def resolve_uri(self, uri: ParsedUri) -> str:
         return uri.original_uri
 ```
@@ -352,11 +348,9 @@ from cactus_test_definitions.errors import UnresolvableVariableError
 
 
 class MyResolver(ExpressionResolver):
-
     async def resolve_uri(self, uri: ParsedUri) -> str:
 
         match uri.matched_uri_name:
-
             case "DERStatusUri":
                 return "/api/device/status"
 
@@ -367,9 +361,7 @@ class MyResolver(ExpressionResolver):
                 return "/api/metering"
 
             case _:
-                raise UnresolvableVariableError(
-                    f"Unsupported URI type: {uri.matched_uri_name}"
-                )
+                raise UnresolvableVariableError(f"Unsupported URI type: {uri.matched_uri_name}")
 ```
 
 Implementations are free to query databases, external APIs, cached resources, or in-memory state when determining the appropriate URI mapping.
@@ -423,10 +415,7 @@ Backend implementations should preserve wildcard semantics when translating URIs
 Example:
 
 ```python
-if (
-    uri.mirror_usage_point is not None
-    and uri.mirror_usage_point.is_wildcard
-):
+if uri.mirror_usage_point is not None and uri.mirror_usage_point.is_wildcard:
     ...
 ```
 
@@ -437,9 +426,7 @@ Resolvers should fail clearly when required resources cannot be resolved.
 Example:
 
 ```python
-raise UnresolvableVariableError(
-    "Backend does not support DERStatusUri"
-)
+raise UnresolvableVariableError("Backend does not support DERStatusUri")
 ```
 
 Plugin implementations are only expected to support the URI types required by the test procedures they are intended to execute.
@@ -460,7 +447,6 @@ Example:
 
 ```python
 match uri.matched_uri_name:
-
     case "DERStatusUri":
         ...
 
@@ -474,9 +460,7 @@ match uri.matched_uri_name:
         ...
 
     case _:
-        raise UnresolvableVariableError(
-            f"Unsupported URI type: {uri.matched_uri_name}"
-        )
+        raise UnresolvableVariableError(f"Unsupported URI type: {uri.matched_uri_name}")
 ```
 
 This approach is generally more maintainable than matching raw URI strings and allows implementations to benefit from the URI parsing already performed by the runner.
@@ -494,12 +478,13 @@ When a test completes, [finalize.py](src/cactus_runner/app/finalize.py) compiles
 ```python
 from cactus_runner.plugin.backends.models import FinalSerializableReportingData
 
+
 async def generate_final_serializable_report_data(self) -> FinalSerializableReportingData:
     """Returns formatted reporting data including readings as pandas DataFrames."""
     return FinalSerializableReportingData(
-        serializable_readings=...,        # dict[SiteReadingTypeFinalReport, pd.DataFrame]
-        serializable_reading_counts=..., # dict[SiteReadingTypeFinalReport, int]
-        serializable_sites=...,          # list[SiteFinalReport]
+        serializable_readings=...,  # dict[SiteReadingTypeFinalReport, pd.DataFrame]
+        serializable_reading_counts=...,  # dict[SiteReadingTypeFinalReport, int]
+        serializable_sites=...,  # list[SiteFinalReport]
     )
 ```
 *If not generating custom reporting tables, return empty collections.*
@@ -509,6 +494,7 @@ async def generate_final_serializable_report_data(self) -> FinalSerializableRepo
 
 ```python
 from cactus_schema.runner import WarningEntry
+
 
 async def generate_warnings(self) -> list[WarningEntry]:
     """Inspects historical/archived data to generate post-test warnings."""
