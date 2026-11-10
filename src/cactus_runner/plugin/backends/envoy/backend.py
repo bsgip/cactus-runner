@@ -26,7 +26,7 @@ from envoy.server.model.archive import (
     ArchiveSiteDERSetting,
 )
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -484,6 +484,26 @@ class EnvoyBackend(RunnerBackend):
                     datetime(2100, 1, 1, tzinfo=UTC),
                 )
 
+    async def delete_site_controls_for_group(self, site_control_group_id: str) -> None:
+        """Delete all controls for the given group, if can be differentiated from cancelling.
+
+        Args:
+            site_control_group_id: id of group the controls will belong to
+
+        Raises:
+            Exception: If a cancellation request fails.
+        """
+
+        # This is distinct from cancelling into the archive - it's a straight delete. Not a normal operation in a
+        # normal utility server - the controls will just disappear
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(DynamicOperatingEnvelope).where(
+                    DynamicOperatingEnvelope.site_control_group_id == int(site_control_group_id)
+                )
+            )
+            await session.commit()
+
     # ------------------------------------------------------------------
     # Default DER Controls
     # ------------------------------------------------------------------
@@ -544,6 +564,21 @@ class EnvoyBackend(RunnerBackend):
     # ------------------------------------------------------------------
     # Subscriptions
     # ------------------------------------------------------------------
+
+    async def get_subscription(self, subscription_id: str) -> dtos.Subscription | None:
+        """Returns a single subscription by ID.
+
+        Args:
+            subscription_id: The string-encoded subscription identifier.
+
+        Returns:
+            The matching Subscription, or None if no subscription with that ID exists.
+        """
+        stmt = select(Subscription).where(Subscription.subscription_id == int(subscription_id))
+        async with self._session_factory() as session:
+            sub = (await session.execute(stmt)).scalar_one_or_none()
+
+        return mappers.map_envoy_subscription_to_dto(sub) if sub is not None else None
 
     async def get_subscriptions(
         self,
