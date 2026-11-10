@@ -26,7 +26,7 @@ from envoy.server.model.archive import (
     ArchiveSiteDERSetting,
 )
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
