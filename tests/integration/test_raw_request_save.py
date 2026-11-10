@@ -38,7 +38,7 @@ async def test_request_data_retrieval_endpoints(
 
     result = await cactus_runner_client.post(
         "/mup",
-        data=(xml_data_dir / "mup.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+        data=(xml_data_dir / "mup.xml").read_text().strip(),
         headers=xml_headers,
     )
     await assert_success_response(result)
@@ -47,7 +47,7 @@ async def test_request_data_retrieval_endpoints(
     await assert_success_response(
         await cactus_runner_client.post(
             f"/mup/{mup_id}",
-            data=(xml_data_dir / "mmr.xml").read_text().strip(),  # ty:ignore[invalid-argument-type]
+            data=(xml_data_dir / "mmr.xml").read_text().strip(),
             headers=xml_headers,
         )
     )

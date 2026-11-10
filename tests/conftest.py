@@ -30,9 +30,11 @@ from envoy.admin.settings import generate_settings as admin_gen_settings
 from envoy.server.alembic import upgrade
 from envoy.server.main import generate_app as envoy_gen_app
 from envoy.server.settings import generate_settings as envoy_gen_settings
+from fastapi import FastAPI
+from fastapi_async_sqlalchemy import SQLAlchemyMiddleware
 from multidict import CIMultiDict
 from psycopg import Connection
-from pytest_postgresql.executor import PostgreSQLExecutor
+from pytest_postgresql.executors import PostgreSQLExecutor
 from pytest_postgresql.janitor import DatabaseJanitor
 
 from cactus_runner.app.database import (
@@ -206,14 +208,37 @@ def anyio_backend():
 
 
 @pytest.fixture(scope="function")
-async def envoy_admin_client(pg_empty_config: Connection):
+async def envoy_db_engine(pg_empty_config: Connection):
+    """Binds fastapi_async_sqlalchemy's process-global `db` session proxy to a single engine for this test.
+
+    The envoy admin and server apps both use that global proxy. In production they're separate processes, but in
+    tests they run in the same process, and fastapi-async-sqlalchemy>=0.8 refuses to re-bind the proxy to a second
+    engine. Instead, this "owner" middleware binds the proxy (and disposes/unbinds it at teardown) and every envoy
+    app created for this test shares its engine via `use_shared_db_engine`."""
+    owner = SQLAlchemyMiddleware(None, **envoy_gen_settings().db_middleware_kwargs)
+    try:
+        yield owner.engine
+    finally:
+        await owner.dispose()
+
+
+def use_shared_db_engine(app: FastAPI, engine) -> FastAPI:
+    """Rewrites app's SQLAlchemyMiddleware to use engine (rather than creating its own) - see envoy_db_engine"""
+    for m in app.user_middleware:
+        if m.cls is SQLAlchemyMiddleware:
+            m.kwargs = {"custom_engine": engine, "commit_on_exit": m.kwargs.get("commit_on_exit", False)}  # ty:ignore[invalid-assignment]
+    return app
+
+
+@pytest.fixture(scope="function")
+async def envoy_admin_client(pg_empty_config: Connection, envoy_db_engine):
     """Creates an AsyncClient for a test that is configured to talk to the admin server app"""
     settings = admin_gen_settings()
     basic_auth = (settings.admin_username, settings.admin_password)
 
     # We want a new app instance for every test - otherwise connection pools get shared and we hit problems
     # when trying to run multiple tests sequentially
-    app = admin_gen_app(settings)
+    app = use_shared_db_engine(admin_gen_app(settings), envoy_db_engine)
     async with start_app_with_client(app, client_auth=basic_auth) as httpx_c:
         session = HttpxClientSessionAdapter(httpx_c)
         admin_client = EnvoyAdminClient(
@@ -234,7 +259,7 @@ def ensure_logs_dir():
 
 
 @pytest.fixture(scope="function")
-async def envoy_server_client(pg_empty_config: Connection):
+async def envoy_server_client(pg_empty_config: Connection, envoy_db_engine):
     """Creates an AsyncClient for a test that is configured to talk to the envoy server app"""
 
     # We want our tests to operate under the assumption that device registration is enabled
@@ -245,7 +270,7 @@ async def envoy_server_client(pg_empty_config: Connection):
 
     # We want a new app instance for every test - otherwise connection pools get shared and we hit problems
     # when trying to run multiple tests sequentially
-    app = envoy_gen_app(settings)
+    app = use_shared_db_engine(envoy_gen_app(settings), envoy_db_engine)
     async with start_app_with_client(app) as envoy_client:
 
         async def envoy_proxy(method: str, headers: CIMultiDict[str], remote_url: str, request_body: bytes):
