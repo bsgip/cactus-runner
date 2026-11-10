@@ -48,7 +48,7 @@ The cactus runner application uses the following environment variables,
 | DEV_SKIP_AUTHORIZATION_CHECK | "false" | If True ("true", "1", "t") no check is made that the forwarded certificate is valid. Intended for dev purposes only. |
 | **HEADER_MEDIA_TYPE** | `application/sep+xml` | The only allowed header media type value allowable for request using "Accept" or "Content-Type" (storage extension) |
 | **HEADER_MEDIA_PARAM_NAME** | `csipaus` | The only allowed header media parameter name allowable for request using "Accept" or "Content-Type" (storage extension) |
-| **HEADER_MEDIA_PARAM_VALUE** | `1.3-beta_storage` | The only allowed header media parameter value allowable, assigned to the parameter name above, for request using "Accept" or "Content-Type" (storage extension) |
+| **HEADER_MEDIA_PARAM_VALUE** | `v1.3` | The only allowed header media parameter value allowable, assigned to the parameter name above, for request using "Accept" or "Content-Type" (storage extension) |
 
 > NOTE:
 > The `DATABASE_URL` has no default value so it must be a defined. `postgresql+psycopg://test_user:test_pwd@localhost:8003/test_db` is suitable value to use with the envoy stack defined in the [docker-compose.yaml](https://github.com/bsgip/cactus-runner/blob/main/docker-compose.yaml).
