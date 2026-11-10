@@ -31,6 +31,7 @@ from cactus_runner.app.action import (
     action_create_der_program,
     action_edev_registration_links,
     action_enable_steps,
+    action_force_response_status,
     action_register_end_device,
     action_remove_function_set_assignment,
     action_remove_steps,
@@ -43,6 +44,7 @@ from cactus_runner.app.envoy_common import get_all_site_control_groups
 from cactus_runner.models import (
     ActiveTestProcedure,
     ClientCertificateType,
+    ForcedResponseStatusOverride,
     Listener,
     ProxyRouteOverride,
     ResourceAnnotations,
@@ -76,7 +78,7 @@ ACTION_TYPE_TO_HANDLER: dict[str, str | None] = {
     "remove-function-set-assignment": "action_remove_function_set_assignment",
     "create-wellknown-route": None,  # Not supported in v1.2
     "add-proxy-route": "action_add_proxy_route",  # Not supported in v1.2
-    "force-response-status": None,  # To be added in a seperate PR
+    "force-response-status": "action_force_response_status",
 }
 
 
@@ -1458,3 +1460,77 @@ def test_action_add_proxy_route_insert():
     assert_list_type(ProxyRouteOverride, atp.proxy_route_overrides, count=4)
     assert [o.route for o in atp.proxy_route_overrides] == ["/r1", "/r2", "/r3", "/r4"]
     assert [o.proxy_to for o in atp.proxy_route_overrides] == ["/11", "/22", "/33", "/aaa"]
+
+
+def test_action_force_response_status_insert():
+    """Forcing a status on a route with no existing override appends a new one"""
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        forced_response_status_overrides=[],
+    )
+    resolved_params = {
+        "endpoint": "/edev/1/derp/1/derc",
+        "status": 429,
+        "retry_after_seconds": 180,
+        "duration_seconds": 180,
+    }
+
+    before = datetime.now(UTC)
+
+    # Act
+    action_force_response_status(resolved_params, atp)
+
+    after = datetime.now(UTC)
+
+    # Assert
+    assert_list_type(ForcedResponseStatusOverride, atp.forced_response_status_overrides, count=1)
+    override = atp.forced_response_status_overrides[0]
+    assert override.route == "/edev/1/derp/1/derc"
+    assert override.status == 429
+    assert override.retry_after_seconds == 180
+    assert override.expires_at is not None
+    assert before + timedelta(seconds=180) <= override.expires_at <= after + timedelta(seconds=180)
+
+
+def test_action_force_response_status_no_duration_never_expires():
+    """Omitting duration_seconds leaves the override active indefinitely (until cleared)"""
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        forced_response_status_overrides=[],
+    )
+    resolved_params = {"endpoint": "/dcap", "status": 503}
+
+    # Act
+    action_force_response_status(resolved_params, atp)
+
+    # Assert
+    assert atp.forced_response_status_overrides[0].expires_at is None
+
+
+def test_action_force_response_status_update():
+    """Specifying an existing override's endpoint replaces it in place (also acts as the "clear" mechanism)"""
+    # Arrange
+    atp = generate_class_instance(
+        ActiveTestProcedure,
+        finished_zip_path=None,
+        forced_response_status_overrides=[
+            ForcedResponseStatusOverride(route="/r1", status=429, retry_after_seconds=180),
+            ForcedResponseStatusOverride(route="/r2", status=503),
+        ],
+    )
+    resolved_params = {"endpoint": "/r1", "status": 200}
+
+    # Act
+    action_force_response_status(resolved_params, atp)
+
+    # Assert
+    assert_list_type(ForcedResponseStatusOverride, atp.forced_response_status_overrides, count=2)
+    assert [o.route for o in atp.forced_response_status_overrides] == ["/r1", "/r2"]
+    updated = atp.forced_response_status_overrides[0]
+    assert updated.status == 200
+    assert updated.retry_after_seconds is None
+    assert updated.expires_at is None
