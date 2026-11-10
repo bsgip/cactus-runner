@@ -73,11 +73,11 @@ class SiteControlGroupDefaultWrite:
     rather than left unchanged.
     """
 
-    import_limit_watts: Decimal | None
-    export_limit_watts: Decimal | None
-    generation_limit_watts: Decimal | None
-    load_limit_watts: Decimal | None
-    ramp_rate_percent_per_second: Decimal | None
+    import_limit_watts: float | None
+    export_limit_watts: float | None
+    generation_limit_watts: float | None
+    load_limit_watts: float | None
+    ramp_rate_percent_per_second: float | None
     cancelled: bool = False
 
 
@@ -93,9 +93,9 @@ class SiteControlWrite:
     display_id: int | None = None
     set_energized: bool | None = None
     set_connect: bool | None = None
-    import_limit_watts: Decimal | None = None
-    export_limit_watts: Decimal | None = None
-    generation_limit_watts: Decimal | None = None
-    load_limit_watts: Decimal | None = None
-    set_point_percentage: Decimal | None = None
-    ramp_time_seconds: Decimal | None = None
+    import_limit_watts: float | None = None
+    export_limit_watts: float | None = None
+    generation_limit_watts: float | None = None
+    load_limit_watts: float | None = None
+    set_point_percentage: float | None = None
+    ramp_time_seconds: float | None = None
