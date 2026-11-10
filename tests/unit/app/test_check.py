@@ -3239,7 +3239,7 @@ def test_params_der_settings_contents_model_has_correct_fields():
     """Ensures aliases for fields matches expected in the param definitions"""
     dscm = ParamsDERSettingsContents()
 
-    assert sorted([f.alias for f in dscm.__pydantic_fields__.values()]) == sorted(
+    assert sorted([f.alias or "" for f in dscm.__pydantic_fields__.values()]) == sorted(
         [f for f in CHECK_PARAMETER_SCHEMA["der-settings-contents"]]
     )
 
@@ -3248,7 +3248,7 @@ def test_params_der_capability_contents_model_has_correct_fields():
     """Ensures aliases for fields matches expected in the param definitions"""
     dccm = ParamsDERCapabilityContents()
 
-    assert sorted([f.alias for f in dccm.__pydantic_fields__.values()]) == sorted(
+    assert sorted([f.alias or "" for f in dccm.__pydantic_fields__.values()]) == sorted(
         [f for f in CHECK_PARAMETER_SCHEMA["der-capability-contents"]]
     )
 
