@@ -3911,6 +3911,7 @@ async def test_do_check_readings_received_after_interval_end_overwritten_reading
 
     assert_check_result(result, expected_early_count == 0)
     if expected_early_count:
+        assert result.description is not None
         assert result.description.startswith(f"{expected_early_count} readings were received before")
         assert "- 1 were later re-posted with the same start time" in result.description
 
