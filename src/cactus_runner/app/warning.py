@@ -239,9 +239,9 @@ async def _analyse_missing_intervals(session: AsyncSession) -> WarningEntry | No
 
 
 async def _analyse_duplicate_readings(session: AsyncSession) -> WarningEntry | None:
-    """Envoy keeps one reading per (reading type, start time). Re-post replace and archive the previous version. 
+    """Envoy keeps one reading per (reading type, start time). Re-posts replace and archive the previous version.
     Only archived versions that still have a matching live reading count (readings archived because their MUP/EndDevice
-    was deleted are ignored. An interval posted 3 times counts once."""
+    was deleted are ignored). An interval posted 3 times counts once."""
     duplicated_intervals = (
         await session.execute(
             select(ArchiveSiteReading.site_reading_type_id, ArchiveSiteReading.time_period_start)
