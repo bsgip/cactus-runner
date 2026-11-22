@@ -1,14 +1,15 @@
 import logging
+import statistics
 from collections.abc import Awaitable, Callable, Iterable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from cactus_schema.runner import WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
-from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
+from envoy.server.model.archive.site_reading import ArchiveSiteReading, ArchiveSiteReadingType
 from envoy.server.model.site import SiteDERSetting
-from envoy.server.model.site_reading import SiteReadingType
+from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import UomType
-from sqlalchemy import func, inspect, select
+from sqlalchemy import and_, func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cactus_runner.app.envoy_common import get_site_readings
@@ -21,6 +22,10 @@ PostTestAnalyser = Callable[[AsyncSession], Awaitable[WarningEntry | None]]
 
 # Site readings include uncontrolled generation/load that isn't bound by setMaxW - this buffer allows for that
 ACTIVE_POWER_MAX_W_BUFFER = 1.25
+
+# Deliberately loose - a few dropped intervals are ok, only warn when a reading type is missing a lot of them
+MISSING_INTERVALS_MIN_FRACTION = 0.25  # More than this fraction of the span must be missing...
+MISSING_INTERVALS_MIN_COUNT = 5  # ...AND at least this many intervals (so one gap in a short test doesn't warn)
 
 
 def append_warnings(warnings: Iterable[WarningEntry], active_test_procedure: ActiveTestProcedure) -> None:
@@ -175,11 +180,101 @@ async def _analyse_voltage_out_of_range(session: AsyncSession) -> WarningEntry |
         )
 
 
+async def _analyse_missing_intervals(session: AsyncSession) -> WarningEntry | None:
+    """Flags reading types with large gaps between their first and last reading.
+
+    For each reading type, the span runs from the start of the earliest reading to the end of the latest one, and
+    "covered" is the union of all reading intervals within it. Summing actual reading intervals (rather than dividing
+    the span by one post rate) means a post rate change mid-test doesn't create false gaps. Gaps before the first or
+    after the last reading are not counted. Zero duration (instantaneous) readings have no interval to cover, so are
+    ignored.
+
+    Only live readings at finalisation are considered, so readings backfilled after a disconnect fill their gap."""
+    site_reading_types = (await session.execute(select(SiteReadingType))).scalars().all()
+
+    gap_descriptions: list[str] = []
+    for srt in site_reading_types:
+        readings = sorted(
+            (r for r in await get_site_readings(session, srt) if r.time_period_seconds > 0),
+            key=lambda r: r.time_period_start,
+        )
+        if not readings:
+            continue
+
+        span_start = readings[0].time_period_start
+        covered = timedelta(0)
+        covered_until = span_start
+        for reading in readings:
+            reading_end = reading.time_period_start + timedelta(seconds=reading.time_period_seconds)
+            if reading_end > covered_until:
+                covered += reading_end - max(reading.time_period_start, covered_until)
+                covered_until = reading_end
+
+        span = covered_until - span_start
+        missing = span - covered
+        interval = timedelta(seconds=statistics.median(r.time_period_seconds for r in readings))
+        missing_intervals = round(missing / interval)
+        expected_intervals = round(span / interval)
+
+        if missing_intervals >= MISSING_INTERVALS_MIN_COUNT and missing / span > MISSING_INTERVALS_MIN_FRACTION:
+            gap_descriptions.append(
+                f"- ReadingType for MirrorUsagePoint mRID {srt.mrid}: about {missing_intervals} of "
+                f"{expected_intervals} {int(interval.total_seconds())}s intervals missing ({missing / span:.0%}) "
+                f"between {span_start.isoformat()} and {covered_until.isoformat()}"
+            )
+
+    if gap_descriptions:
+        return WarningEntry(
+            type="readings.missing-intervals",
+            description="Readings have large gaps",
+            message=(
+                f"Readings for {len(gap_descriptions)} reading type(s) have large gaps between the first and last "
+                "reading received. Readings received at any point before the test ends are counted, so backfilling "
+                "readings missed during a disconnect is fine - these intervals were never received at all.\n"
+                + "\n".join(gap_descriptions)
+                + "\nMissing readings may cause checks that rely on readings during a control's active period to fail."
+            ),
+            timestamp=datetime.now(UTC),
+        )
+
+
+async def _analyse_duplicate_readings(session: AsyncSession) -> WarningEntry | None:
+    """Envoy keeps one reading per (reading type, start time). Re-post replace and archive the previous version. 
+    Only archived versions that still have a matching live reading count (readings archived because their MUP/EndDevice
+    was deleted are ignored. An interval posted 3 times counts once."""
+    duplicated_intervals = (
+        await session.execute(
+            select(ArchiveSiteReading.site_reading_type_id, ArchiveSiteReading.time_period_start)
+            .join(
+                SiteReading,
+                and_(
+                    SiteReading.site_reading_type_id == ArchiveSiteReading.site_reading_type_id,
+                    SiteReading.time_period_start == ArchiveSiteReading.time_period_start,
+                ),
+            )
+            .distinct()
+        )
+    ).all()
+
+    if duplicated_intervals:
+        return WarningEntry(
+            type="readings.duplicate-intervals",
+            description="Readings were posted more than once for the same interval",
+            message=(
+                f"{len(duplicated_intervals)} reading intervals were posted more than once (same reading type and "
+                "start time). Only the most recent post is kept. Each interval should normally be posted once."
+            ),
+            timestamp=datetime.now(UTC),
+        )
+
+
 POST_TEST_ANALYSERS: list[PostTestAnalyser] = [
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
     _analyse_active_power_exceeds_max_w,
     _analyse_voltage_out_of_range,
+    _analyse_missing_intervals,
+    _analyse_duplicate_readings,
 ]
 
 
