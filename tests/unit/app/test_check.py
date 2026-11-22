@@ -24,6 +24,7 @@ from envoy.server.model import SiteGroup, SiteGroupAssignment
 from envoy.server.model.aggregator import Aggregator
 from envoy.server.model.archive.doe import ArchiveDynamicOperatingEnvelope
 from envoy.server.model.archive.server import ArchiveRuntimeServerConfig
+from envoy.server.model.archive.site_reading import ArchiveSiteReading
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroup
 from envoy.server.model.response import DynamicOperatingEnvelopeResponse
 from envoy.server.model.server import RuntimeServerConfig
@@ -77,6 +78,7 @@ from cactus_runner.app.check import (
     do_check_readings_for_types,
     do_check_readings_match_post_rate,
     do_check_readings_on_minute_boundary,
+    do_check_readings_received_after_interval_end,
     do_check_site_readings_and_params,
     first_failing_check,
     is_nth_bit_set_properly,
@@ -1970,6 +1972,7 @@ async def test_do_check_reading_type_mrids_match_pen(
         ),
     ],
 )
+@mock.patch("cactus_runner.app.check.do_check_readings_received_after_interval_end")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
@@ -1982,6 +1985,7 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
+    mock_do_check_readings_received_after_interval_end: mock.MagicMock,
     resolved_parameters: dict[str, Any],
     uom: UomType,
     reading_location: ReadingLocation,
@@ -2019,6 +2023,7 @@ async def test_do_check_site_readings_and_params(
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
     mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
     mock_do_check_readings_match_post_rate.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_received_after_interval_end.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -2039,6 +2044,10 @@ async def test_do_check_site_readings_and_params(
         mock_do_check_reading_type_mrids_match_pen.assert_called_once_with(site_reading_types, pen)
         mock_do_check_readings_for_duration.assert_called_once_with(mock_backend, site_reading_types)
         mock_do_check_readings_match_post_rate.assert_called_once_with(mock_backend, site_reading_types)
+        if qualifier == DataQualifierType.AVERAGE:
+            mock_do_check_readings_received_after_interval_end.assert_called_once_with(mock_backend, site_reading_types)
+        else:
+            mock_do_check_readings_received_after_interval_end.assert_not_called()  # Not an interval average
     else:
         assert_check_result(result, False)
         mock_do_check_readings_for_types.assert_not_called()
@@ -2117,6 +2126,7 @@ async def test_do_check_site_readings_and_params(
         ),
     ],
 )
+@mock.patch("cactus_runner.app.check.do_check_readings_received_after_interval_end")
 @mock.patch("cactus_runner.app.check.do_check_readings_for_types")
 @mock.patch("cactus_runner.app.check.do_check_readings_on_minute_boundary")
 @mock.patch("cactus_runner.app.check.do_check_reading_type_mrids_match_pen")
@@ -2129,6 +2139,7 @@ async def test_do_check_site_readings_and_params_roleflags(
     mock_do_check_reading_type_mrids_match_pen: mock.MagicMock,
     mock_do_check_readings_on_minute_boundary: mock.MagicMock,
     mock_do_check_readings_for_types: mock.MagicMock,
+    mock_do_check_readings_received_after_interval_end: mock.MagicMock,
     site_reading_types: list[dtos.SiteReadingType],
     expected_passed: bool,
 ):
@@ -2146,6 +2157,7 @@ async def test_do_check_site_readings_and_params_roleflags(
     mock_do_check_reading_type_mrids_match_pen.return_value = CheckResult(True, description=None)
     mock_do_check_readings_for_duration.return_value = CheckResult(True, description=None)
     mock_do_check_readings_match_post_rate.return_value = CheckResult(True, description=None)
+    mock_do_check_readings_received_after_interval_end.return_value = CheckResult(True, description=None)
 
     # Act
     result = await do_check_site_readings_and_params(
@@ -3799,6 +3811,156 @@ async def test_do_check_readings_match_post_rate_mid_run_change(pg_base_config):
         backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock_admin_client)
         result = await do_check_readings_match_post_rate(backend, site_reading_types=faked_srts)
         assert_check_result(result, True)
+
+
+# Every reading in these tests covers 10:00:00 -> 10:01:00 (60s) unless stated otherwise
+INTERVAL_START = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
+INTERVAL_END = INTERVAL_START + timedelta(seconds=60)
+
+
+@pytest.mark.parametrize(
+    "time_period_start, time_period_seconds, received_at, expected_pass",
+    [
+        pytest.param(INTERVAL_START, 60, INTERVAL_END, True, id="received-exactly-at-interval-end"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_END + timedelta(seconds=5), True, id="received-after-interval-end"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_END + timedelta(hours=3), True, id="backfilled-hours-later"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_END - timedelta(seconds=10), True, id="10s-early-within-leeway"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_END - timedelta(seconds=11), False, id="11s-early-outside-leeway"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_START + timedelta(seconds=5), False, id="received-partway-through"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_START, False, id="received-at-interval-start"),
+        pytest.param(INTERVAL_START, 60, INTERVAL_START - timedelta(minutes=5), False, id="start-time-in-future"),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_received_after_interval_end(
+    pg_base_config,
+    time_period_start: datetime,
+    time_period_seconds: int,
+    received_at: datetime,
+    expected_pass: bool,
+):
+    """A single reading, received (created_time) at received_at - it should only pass if received no more than 10s
+    before its interval ended."""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        reading = generate_class_instance(
+            SiteReading,
+            seed=1,
+            site_reading_type=srt,
+            time_period_start=time_period_start,
+            time_period_seconds=time_period_seconds,
+            created_time=received_at,
+        )
+        session.add_all([site, srt, reading])
+        await session.commit()
+
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock.Mock(spec=EnvoyAdminClient))
+        result = await do_check_readings_received_after_interval_end(backend, site_reading_types=faked_srts)
+
+    assert_check_result(result, expected_pass)
+
+
+@pytest.mark.parametrize(
+    "original_received_at, repost_received_at, expected_early_count",
+    [
+        pytest.param(INTERVAL_START, INTERVAL_END, 1, id="early-post-later-corrected-by-repost"),
+        pytest.param(INTERVAL_END, INTERVAL_END + timedelta(seconds=30), 0, id="on-time-post-then-on-time-retry"),
+        pytest.param(INTERVAL_START, INTERVAL_START + timedelta(seconds=30), 2, id="early-post-then-early-repost"),
+    ],
+)
+@pytest.mark.anyio
+async def test_do_check_readings_received_after_interval_end_overwritten_readings(
+    pg_base_config,
+    original_received_at: datetime,
+    repost_received_at: datetime,
+    expected_early_count: int,
+):
+    """The same interval posted twice: envoy archives the original and stores the repost. Same rules apply to timing."""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        repost = generate_class_instance(
+            SiteReading,
+            seed=1,
+            site_reading_type=srt,
+            time_period_start=INTERVAL_START,
+            time_period_seconds=60,
+            created_time=repost_received_at,
+        )
+        original = generate_class_instance(
+            ArchiveSiteReading,
+            seed=2,
+            site_reading_type_id=1,
+            time_period_start=INTERVAL_START,
+            time_period_seconds=60,
+            created_time=original_received_at,
+            deleted_time=repost_received_at,
+        )
+        session.add_all([site, srt, repost, original])
+        await session.commit()
+
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock.Mock(spec=EnvoyAdminClient))
+        result = await do_check_readings_received_after_interval_end(backend, site_reading_types=faked_srts)
+
+    assert_check_result(result, expected_early_count == 0)
+    if expected_early_count:
+        assert result.description is not None
+        assert result.description.startswith(f"{expected_early_count} readings were received before")
+        assert "- 1 were later re-posted with the same start time" in result.description
+
+
+@pytest.mark.anyio
+async def test_do_check_readings_received_after_interval_end_error_message(pg_base_config):
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
+        partway = generate_class_instance(
+            SiteReading,
+            seed=1,
+            site_reading_type=srt,
+            time_period_start=INTERVAL_START,
+            time_period_seconds=60,
+            created_time=INTERVAL_START + timedelta(seconds=2),  # 58s before the interval ended
+        )
+        future = generate_class_instance(
+            SiteReading,
+            seed=2,
+            site_reading_type=srt,
+            time_period_start=INTERVAL_START + timedelta(minutes=10),
+            time_period_seconds=60,
+            created_time=INTERVAL_START + timedelta(minutes=9),  # Before the interval started
+        )
+        on_time = generate_class_instance(
+            SiteReading,
+            seed=3,
+            site_reading_type=srt,
+            time_period_start=INTERVAL_START + timedelta(minutes=20),
+            time_period_seconds=60,
+            created_time=INTERVAL_START + timedelta(minutes=21),
+        )
+        session.add_all([site, srt, partway, future, on_time])
+        await session.commit()
+
+    faked_srts = [generate_class_instance(dtos.SiteReadingType, seed=1, site_reading_type_id="1")]
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=mock.Mock(spec=EnvoyAdminClient))
+        result = await do_check_readings_received_after_interval_end(backend, site_reading_types=faked_srts)
+
+    assert_check_result(result, False)
+    assert result.description == (
+        "2 readings were received before their interval had ended (10s leeway). Only post a reading once its interval "
+        "is over.\n"
+        "- 1 were received during their interval.\n"
+        "- 1 had a start time in the future (check your clock is synced to /tm)."
+    )
 
 
 @pytest.mark.parametrize(
