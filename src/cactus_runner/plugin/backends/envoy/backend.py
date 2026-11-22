@@ -24,6 +24,7 @@ from envoy.server.model.archive import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
     ArchiveSiteDERSetting,
+    ArchiveSiteReading,
 )
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
 from sqlalchemy import select, text
@@ -312,6 +313,18 @@ class EnvoyBackend(RunnerBackend):
 
         readings = results.scalars().all()
         return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in readings]
+
+    async def get_archived_site_readings(
+        self,
+        site_reading_type_ids: Sequence[str],
+    ) -> Sequence[dtos.SiteReading]:
+        srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
+        async with self._session_factory() as session:
+            results = await session.execute(
+                select(ArchiveSiteReading).where(ArchiveSiteReading.site_reading_type_id.in_(srt_ids))
+            )
+
+        return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in results.scalars().all()]
 
     async def get_latest_site_reading(
         self,
