@@ -928,6 +928,8 @@ async def do_check_site_readings_and_params(
     if check_duration:
         check_results.append(await do_check_readings_for_duration(backend, site_reading_types))
         check_results.append(await do_check_readings_match_post_rate(backend, site_reading_types))
+    if data_qualifier == DataQualifierType.AVERAGE:
+        check_results.append(await do_check_readings_received_after_interval_end(backend, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
     check_results.append(
@@ -1024,6 +1026,63 @@ async def do_check_readings_match_post_rate(
         )
 
     return CheckResult(True, "All readings have a time_period_seconds matching the configured post rate")
+
+
+# Allowance for clock differences between the client (sets timePeriod.start) and server (records when it was received)
+READING_RECEIVED_LEEWAY = timedelta(seconds=10)
+
+
+async def do_check_readings_received_after_interval_end(
+    backend: RunnerBackend, site_reading_types: Sequence[dtos.SiteReadingType]
+) -> CheckResult:
+    """Check that every reading was received after the interval it averages had ended.
+
+    Scoped to AVERAGE readings only: site_reading_types is already filtered to the caller's dataQualifier, and
+    do_check_site_readings_and_params only calls this for AVERAGE. Instantaneous readings (of any uom) have no interval
+    to wait for, so are never checked.
+
+    An average over [timePeriod.start, timePeriod.start + timePeriod.duration) can't exist until that interval is
+    over, so every version of every reading the server received must satisfy:
+
+        received_time (server created_time) >= time_period_start + time_period_duration - READING_RECEIVED_LEEWAY
+
+    This one rule catches:
+
+    - Posted partway through its interval: e.g. a reading with timePeriod.start=10:00, duration=60s posted at
+      10:00:05.
+    - Start time in the future: received before the interval started, so also before it ended.
+    - The same interval posted more than once: a re-post replaces the stored reading and the original is archived
+      with its original created_time. Re-posts received after the interval ended (e.g. retries) are fine.
+
+    Readings posted late (e.g. backfilled after a disconnect) are always fine."""
+
+    site_reading_type_ids = [srt.site_reading_type_id for srt in site_reading_types]
+    live_readings = await backend.get_site_readings(site_reading_type_ids)
+    archived_readings = await backend.get_archived_site_readings(site_reading_type_ids)
+
+    early_readings = [
+        r
+        for r in [*live_readings, *archived_readings]
+        if r.created_time < r.time_period_start + r.time_period_duration - READING_RECEIVED_LEEWAY
+    ]
+    if not early_readings:
+        return CheckResult(True, "All readings were received after their interval had ended")
+
+    future_count = sum(1 for r in early_readings if r.created_time < r.time_period_start)
+    partway_count = len(early_readings) - future_count
+    reposted_count = sum(1 for r in early_readings if r.archive_time is not None)
+
+    lines = [
+        f"{len(early_readings)} readings were received before their interval had ended "
+        f"({int(READING_RECEIVED_LEEWAY.total_seconds())}s leeway). Only post a reading once its interval is over."
+    ]
+    if partway_count:
+        lines.append(f"- {partway_count} were received during their interval.")
+    if future_count:
+        lines.append(f"- {future_count} had a start time in the future (check your clock is synced to /tm).")
+    if reposted_count:
+        lines.append(f"- {reposted_count} were later re-posted with the same start time.")
+    return CheckResult(False, "\n".join(lines))
 
 
 async def check_readings_site_active_power(
