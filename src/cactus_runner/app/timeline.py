@@ -6,7 +6,7 @@ from itertools import chain
 from typing import cast
 
 from dataclass_wizard import JSONWizard
-from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, FlowDirectionType, KindType, PhaseCode, UomType
 from intervaltree import Interval, IntervalTree
 
 from cactus_runner.app.envoy_common import (
@@ -181,12 +181,27 @@ def generate_offset_watt_values(
     return fetched_data
 
 
+def import_positive_sign(flow_direction: int, location: ReadingLocation) -> int:
+    """The multiplier that converts a real power reading to import positive watts. Per the CSIP-AUS client test
+    procedures, a set flowDirection determines the sign (FORWARD is delivered to the customer - import positive, REVERSE
+    is received from the customer - export positive). If absent, the CSIP-AUS conventions apply: load convention at the
+    site (import positive) and generator convention at the DER (generation positive)."""
+    if flow_direction == FlowDirectionType.FORWARD:
+        return 1
+    if flow_direction == FlowDirectionType.REVERSE:
+        return -1
+    return 1 if location == ReadingLocation.SITE_READING else -1
+
+
 async def generate_readings_data_stream(
     backend: RunnerBackend, label: str, location: ReadingLocation, start: datetime, end: datetime, interval_seconds: int
 ) -> TimelineDataStream:
     srts = await get_csip_aus_site_reading_types_active_site(
         backend, UomType.REAL_POWER_WATT, location, KindType.POWER, DataQualifierType.AVERAGE
     )
+    # Clients commonly report a net (phase n/a) value AND per-phase values - summing all of them would double count,
+    # so net is used alone if present, otherwise the per-phase values are summed
+    srts = [srt for srt in srts if srt.phase == PhaseCode.NOT_APPLICABLE] or srts
 
     # Build one interval tree per SiteReadingType. Multi-phase setups report each phase as a separate SRT;
     # mixing them into one tree causes highest_priority_entity to discard all but one phase per interval.
@@ -203,13 +218,14 @@ async def generate_readings_data_stream(
             for r in readings
             if r.time_period_duration > timedelta(0)
         )
+        sign = import_positive_sign(srt.flow_direction, location)
         per_srt_values.append(
             generate_offset_watt_values(
                 tree,
                 start,
                 end,
                 interval_seconds,
-                [lambda e, _srt=srt: reading_to_watts([_srt], cast(dtos.SiteReading, e))],
+                [lambda e, _srt=srt, _sign=sign: _sign * reading_to_watts([_srt], cast(dtos.SiteReading, e))],
             )[0]
         )
 
