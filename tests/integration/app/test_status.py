@@ -35,11 +35,12 @@ async def test_status_end_device_metadata(cactus_runner_client: TestClient, pg_b
     async with generate_async_session(pg_base_config) as db_session:
         new_site = generate_class_instance(
             Site,
+            nmi_checksum="A",
             aggregator_id=1,
             site_id=None,
             lfdi="aabbccddeeff00112233445566778899aabbccdd",
             sfdi=1234567890,
-            nmi="1234567890A",
+            nmi="1234567890",
             device_category=1,
             timezone_id="Australia/Sydney",
             changed_time=datetime.now(),

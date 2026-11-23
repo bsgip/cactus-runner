@@ -18,7 +18,7 @@ from envoy.server.model import (
     Subscription,
 )
 from envoy.server.model.aggregator import Aggregator
-from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope
+from envoy.server.model.archive import ArchiveDynamicOperatingEnvelope, ArchiveSiteReading
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -164,7 +164,7 @@ async def test_get_site_readings_start_end_time(
         r3 (value=3): [00:10:00, 00:11:00)
     """
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
         session.add(site)
 
         srt = generate_class_instance(
@@ -220,7 +220,7 @@ async def test_get_site_readings_start_end_time(
 async def test_get_site_readings_start_end_time_combines_with_type_filter(pg_base_config, envoy_admin_client) -> None:
     """Tests that the start_time/end_time window is applied in addition to (not instead of) site_reading_type_ids."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
         session.add(site)
 
         srt1 = generate_class_instance(SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site)
@@ -306,7 +306,7 @@ async def test_get_end_device_metadata(mocker) -> None:
         inverter_status=2,  # InverterStatusType.SLEEPING
         alarm_status=None,
     )
-    site = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=42)
+    site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=42)
     site.site_der_setting = site_der_setting
     site.site_der_rating = site_der_rating
     site.site_der_status = site_der_status
@@ -348,3 +348,28 @@ async def test_get_end_device_metadata(mocker) -> None:
     assert metadata.der_status is not None
     assert metadata.der_status.inverter_status == "SLEEPING"
     assert metadata.der_status.alarm_status is None
+
+
+@pytest.mark.anyio
+async def test_get_archived_site_readings(pg_base_config, envoy_admin_client) -> None:
+    """Only archived readings for the requested reading types are returned, with their original created_time and the
+    archive metadata populated. Live readings are not included."""
+    created_time = datetime(2024, 1, 1, 0, 0, 30, tzinfo=UTC)
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site)
+        live = generate_class_instance(SiteReading, seed=1, site_reading_id=None, site_reading_type=srt, value=1)
+        archived = generate_class_instance(
+            ArchiveSiteReading, seed=2, site_reading_type_id=1, value=2, created_time=created_time
+        )
+        archived_other_type = generate_class_instance(ArchiveSiteReading, seed=3, site_reading_type_id=99, value=3)
+        session.add_all([site, srt, live, archived, archived_other_type])
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
+        result = await backend.get_archived_site_readings(["1"])
+
+    assert [r.value for r in result] == [2]
+    assert result[0].created_time == created_time
+    assert result[0].archive_time is not None

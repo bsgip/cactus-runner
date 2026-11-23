@@ -6,7 +6,7 @@ from assertical.fake.generator import generate_class_instance
 from assertical.fixtures.postgres import generate_async_session
 from cactus_schema.runner import WarningEntry
 from envoy.server.model.archive.site import ArchiveSiteDERSetting
-from envoy.server.model.archive.site_reading import ArchiveSiteReadingType
+from envoy.server.model.archive.site_reading import ArchiveSiteReading, ArchiveSiteReadingType
 from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import UomType
@@ -16,6 +16,8 @@ from cactus_runner.app.warning import (
     POST_TEST_ANALYSERS,
     _analyse_active_power_exceeds_max_w,
     _analyse_der_settings_varied,
+    _analyse_duplicate_readings,
+    _analyse_missing_intervals,
     _analyse_reading_type_varied,
     _analyse_voltage_out_of_range,
     append_warnings,
@@ -112,7 +114,7 @@ async def test_analyse_der_settings_varied_no_warning_when_unchanged(pg_base_con
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -172,7 +174,7 @@ async def test_analyse_der_settings_varied_warns_when_any_value_changed(
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -219,7 +221,7 @@ async def test_analyse_reading_type_varied_no_warning_when_unchanged(pg_base_con
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -253,7 +255,7 @@ async def test_analyse_reading_type_varied_warns_when_uom_changed(pg_base_config
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -294,7 +296,7 @@ async def test_analyse_active_power_exceeds_max_w_no_warning_when_within_range(p
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -335,7 +337,7 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -402,7 +404,7 @@ async def test_analyse_voltage_out_of_range_no_warning_when_all_within_range(pg_
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -432,7 +434,7 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -489,3 +491,143 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
 
 def test_analyse_voltage_out_of_range_is_registered():
     assert _analyse_voltage_out_of_range in POST_TEST_ANALYSERS
+
+
+READINGS_T0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
+
+
+async def _create_readings(
+    pg_base_config,
+    readings: list[tuple[int, int]],
+    archived_minutes: list[int] | None = None,
+    received_at: datetime | None = None,
+) -> None:
+    """Creates one SiteReadingType with a live reading for each start time, duration pair plus an archived 60s reading
+    starting at each of archived_minutes. Received_at defaults to the end of each live reading's interval."""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
+        srt = generate_class_instance(
+            SiteReadingType, seed=202, site=site, aggregator_id=1, site_reading_type_id=1, mrid="abc123"
+        )
+        session.add_all([site, srt])
+        for i, (start_minute, seconds) in enumerate(readings):
+            start = READINGS_T0 + timedelta(minutes=start_minute)
+            session.add(
+                generate_class_instance(
+                    SiteReading,
+                    seed=1000 + i,
+                    site_reading_type=srt,
+                    time_period_start=start,
+                    time_period_seconds=seconds,
+                    created_time=received_at or start + timedelta(seconds=seconds),
+                )
+            )
+        for i, minute in enumerate(archived_minutes or []):
+            session.add(
+                generate_class_instance(
+                    ArchiveSiteReading,
+                    seed=2000 + i,
+                    site_reading_type_id=1,
+                    time_period_start=READINGS_T0 + timedelta(minutes=minute),
+                    time_period_seconds=60,
+                )
+            )
+        await session.commit()
+
+
+@pytest.mark.parametrize(
+    "readings",
+    [
+        pytest.param([], id="no-readings"),
+        pytest.param([(m, 60) for m in range(60)], id="every-interval-present"),
+        pytest.param([(m, 60) for m in range(60) if m not in (10, 20, 30, 40)], id="4-missed-of-60-is-fine"),
+        pytest.param([(m, 60) for m in range(60) if not 10 <= m < 20], id="10-missed-of-60-under-25%-is-fine"),
+        pytest.param([(0, 60), (2, 60)], id="short-test-1-missed-of-3-under-min-count"),
+        pytest.param([(m, 60) for m in range(30)] + [(30 + 5 * m, 300) for m in range(6)], id="post-rate-change"),
+        pytest.param([(m, 0) for m in range(0, 60, 10)], id="zero-duration-readings-ignored"),
+    ],
+)
+@pytest.mark.anyio
+async def test_analyse_missing_intervals_no_warning(pg_base_config, readings: list[tuple[int, int]]):
+    await _create_readings(pg_base_config, readings)
+
+    async with generate_async_session(pg_base_config) as session:
+        assert await _analyse_missing_intervals(session) is None
+
+
+@pytest.mark.anyio
+async def test_analyse_missing_intervals_backfilled_readings_fill_gaps(pg_base_config):
+    """Every reading was received long after its interval (e.g. backfilled after a disconnect) - there are no gaps
+    because only the final set of readings is checked."""
+    await _create_readings(pg_base_config, [(m, 60) for m in range(60)], received_at=READINGS_T0 + timedelta(hours=1))
+
+    async with generate_async_session(pg_base_config) as session:
+        assert await _analyse_missing_intervals(session) is None
+
+
+@pytest.mark.anyio
+async def test_analyse_missing_intervals_warns_on_large_gap(pg_base_config):
+    """60 one minute intervals, with the middle 30 never received - 50% missing"""
+    await _create_readings(pg_base_config, [(m, 60) for m in range(60) if not 15 <= m < 45])
+
+    async with generate_async_session(pg_base_config) as session:
+        warning = await _analyse_missing_intervals(session)
+
+    assert warning is not None
+    assert warning.type == "readings.missing-intervals"
+    assert_nowish(warning.timestamp)
+    assert "Readings for 1 reading type(s) have large gaps" in warning.message
+    assert "backfilling readings missed during a disconnect is fine" in warning.message
+    assert (
+        "- ReadingType for MirrorUsagePoint mRID abc123: about 30 of 60 60s intervals missing (50%) "
+        f"between {READINGS_T0.isoformat()} and {(READINGS_T0 + timedelta(hours=1)).isoformat()}" in warning.message
+    )
+
+
+def test_analyse_missing_intervals_is_registered():
+    assert _analyse_missing_intervals in POST_TEST_ANALYSERS
+
+
+@pytest.mark.parametrize(
+    "readings, archived_minutes",
+    [
+        pytest.param([], [], id="no-readings"),
+        pytest.param([(0, 60), (1, 60), (2, 60)], [], id="each-interval-posted-once"),
+        pytest.param([(0, 60), (1, 60), (2, 60)], [5], id="archived-reading-without-live-match-is-ignored"),
+    ],
+)
+@pytest.mark.anyio
+async def test_analyse_duplicate_readings_no_warning(
+    pg_base_config, readings: list[tuple[int, int]], archived_minutes: list[int]
+):
+    """An archived reading with no matching live reading was archived for another reason (e.g. its MUP was deleted),
+    not because it was re-posted."""
+    await _create_readings(pg_base_config, readings, archived_minutes)
+
+    async with generate_async_session(pg_base_config) as session:
+        assert await _analyse_duplicate_readings(session) is None
+
+
+@pytest.mark.parametrize(
+    "archived_minutes, expected_count",
+    [
+        pytest.param([0], 1, id="one-interval-posted-twice"),
+        pytest.param([0, 0], 1, id="one-interval-posted-three-times-counts-once"),
+        pytest.param([0, 0, 2], 2, id="two-different-intervals-reposted"),
+    ],
+)
+@pytest.mark.anyio
+async def test_analyse_duplicate_readings_warns(pg_base_config, archived_minutes: list[int], expected_count: int):
+    await _create_readings(pg_base_config, [(0, 60), (1, 60), (2, 60)], archived_minutes)
+
+    async with generate_async_session(pg_base_config) as session:
+        warning = await _analyse_duplicate_readings(session)
+
+    assert warning is not None
+    assert warning.type == "readings.duplicate-intervals"
+    assert_nowish(warning.timestamp)
+    assert warning.message.startswith(f"{expected_count} reading intervals were posted more than once")
+
+
+def test_analyse_duplicate_readings_is_registered():
+    assert _analyse_duplicate_readings in POST_TEST_ANALYSERS

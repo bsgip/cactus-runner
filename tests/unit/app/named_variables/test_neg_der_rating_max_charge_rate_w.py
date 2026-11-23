@@ -15,6 +15,7 @@ async def test_resolve_named_variable_neg_der_rating_max_charge_rate_w_single_se
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 site_id=None,
                 aggregator_id=1,
                 site_der_rating=generate_class_instance(

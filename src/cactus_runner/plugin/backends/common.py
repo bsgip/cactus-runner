@@ -226,6 +226,22 @@ class RunnerBackend(Protocol):
         """
         ...
 
+    async def get_archived_site_readings(
+        self,
+        site_reading_type_ids: Sequence[str],
+    ) -> Sequence[dtos.SiteReading]:
+        """Returns the archived (superseded or deleted) versions of readings belonging to the specified
+        SiteReadingTypes. A reading posted again with the same start time replaces the original, which is archived
+        with its original created_time preserved.
+
+        Args:
+            site_reading_type_ids: IDs of the SiteReadingTypes whose archived readings should be returned.
+
+        Returns:
+            All archived SiteReadings for the supplied type IDs (with archive_time/deleted_time populated).
+        """
+        ...
+
     async def get_latest_site_reading(
         self,
         site_reading_type_ids: Sequence[str] | None,

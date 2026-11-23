@@ -137,6 +137,7 @@ async def test_resolve_variable_expected_use(
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 site_id=None,
                 aggregator_id=1,
                 site_der_setting=generate_class_instance(

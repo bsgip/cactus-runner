@@ -56,8 +56,8 @@ async def test_get_exclusive_site_group(pg_base_config, envoy_admin_client: Envo
 
     # Create the basics - two sites and take stock of the existing SiteGroups
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, seed=101, aggregator_id=int(agg_id), site_id=11))
-        session.add(generate_class_instance(Site, seed=202, aggregator_id=int(agg_id), site_id=22))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=int(agg_id), site_id=11))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=202, aggregator_id=int(agg_id), site_id=22))
         await session.commit()
         site_group_count_before = (await session.execute(select(func.count()).select_from(SiteGroup))).scalar_one()
         site_group_assignment_count_before = (
@@ -186,13 +186,19 @@ async def test_get_active_site_no_site(pg_base_config):
 async def test_get_active_site_many_sites(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
         session.add(
-            generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10)
+            )
         )
         session.add(
-            generate_class_instance(Site, seed=202, aggregator_id=1, site_id=2, changed_time=datetime(2022, 11, 11))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=202, aggregator_id=1, site_id=2, changed_time=datetime(2022, 11, 11)
+            )
         )
         session.add(
-            generate_class_instance(Site, seed=303, aggregator_id=1, site_id=3, changed_time=datetime(2000, 11, 10))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=303, aggregator_id=1, site_id=3, changed_time=datetime(2000, 11, 10)
+            )
         )
         await session.commit()
 
@@ -206,8 +212,12 @@ async def test_get_active_site_many_sites(pg_base_config):
 async def test_get_active_site_with_der_settings(pg_base_config):
     """Test that include_der_settings=True eagerly loads the most recently changed site's DER settings"""
     async with generate_async_session(pg_base_config) as session:
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10))
-        site2 = generate_class_instance(Site, seed=202, aggregator_id=1, site_id=2, changed_time=datetime(2022, 11, 11))
+        site1 = generate_class_instance(
+            Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10)
+        )
+        site2 = generate_class_instance(
+            Site, nmi_checksum=None, seed=202, aggregator_id=1, site_id=2, changed_time=datetime(2022, 11, 11)
+        )
 
         # Give site 2 der settings
         site_der_setting = generate_class_instance(SiteDERSetting, seed=401)
@@ -245,13 +255,19 @@ async def test_get_all_sites_no_sites(pg_base_config):
 async def test_get_all_sites_many_sites(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
         session.add(
-            generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1, changed_time=datetime(2022, 11, 10)
+            )
         )
         session.add(
-            generate_class_instance(Site, seed=202, aggregator_id=1, site_id=22, changed_time=datetime(2022, 11, 11))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=202, aggregator_id=1, site_id=22, changed_time=datetime(2022, 11, 11)
+            )
         )
         session.add(
-            generate_class_instance(Site, seed=303, aggregator_id=1, site_id=3, changed_time=datetime(2000, 11, 10))
+            generate_class_instance(
+                Site, nmi_checksum=None, seed=303, aggregator_id=1, site_id=3, changed_time=datetime(2000, 11, 10)
+            )
         )
         await session.commit()
 
@@ -273,7 +289,7 @@ async def test_get_csip_aus_site_reading_types_no_sites(pg_base_config):
 @pytest.mark.anyio
 async def test_get_csip_aus_site_reading_types_no_mups(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1))
         await session.commit()
 
     async with generate_async_session(pg_base_config) as session:
@@ -286,8 +302,8 @@ async def test_get_csip_aus_site_reading_types_no_mups(pg_base_config):
 @pytest.mark.anyio
 async def test_get_csip_aus_site_reading_types_many_mups(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
-        site2 = generate_class_instance(Site, seed=202, aggregator_id=1, site_id=2)  # Active site
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1)
+        site2 = generate_class_instance(Site, nmi_checksum=None, seed=202, aggregator_id=1, site_id=2)  # Active site
         session.add_all([site1, site2])
 
         session.add(
@@ -413,7 +429,7 @@ async def test_get_site_readings(pg_base_config):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1)
         session.add(site1)
 
         # Add reading type
@@ -511,7 +527,7 @@ async def test_get_reading_counts_grouped_by_reading_type(pg_base_config):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1)
         session.add(site1)
 
         # Add reading type
@@ -731,7 +747,7 @@ async def test_get_site_controls_active_archived(pg_base_config):
         sg1 = generate_class_instance(SiteGroup, seed=101)
         session.add(sg1)
 
-        site1 = generate_class_instance(Site, seed=11, aggregator_id=1, site_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=11, aggregator_id=1, site_id=1)
         session.add(site1)
         await session.flush()
 
@@ -911,8 +927,8 @@ async def test_count_all_site_controls_with_cancelled(pg_base_config):
         session.add(sg1)
         session.add(sg2)
 
-        site1 = generate_class_instance(Site, seed=11, aggregator_id=1, site_id=1)
-        site2 = generate_class_instance(Site, seed=22, aggregator_id=1, site_id=2)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=11, aggregator_id=1, site_id=1)
+        site2 = generate_class_instance(Site, nmi_checksum=None, seed=22, aggregator_id=1, site_id=2)
         session.add(site1)
         session.add(site2)
         await session.flush()

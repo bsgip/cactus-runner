@@ -28,6 +28,7 @@ from envoy.server.model.archive import (
     ArchiveDynamicOperatingEnvelope,
     ArchiveSiteControlGroupDefault,
     ArchiveSiteDERSetting,
+    ArchiveSiteReading,
     ArchiveTariffGeneratedRate,
 )
 from envoy_schema.admin.schema.site_control import SiteControlGroupRequest
@@ -244,6 +245,18 @@ class EnvoyBackend(RunnerBackend):
 
         readings = results.scalars().all()
         return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in readings]
+
+    async def get_archived_site_readings(
+        self,
+        site_reading_type_ids: Sequence[str],
+    ) -> Sequence[dtos.SiteReading]:
+        srt_ids = [int(srt_id) for srt_id in site_reading_type_ids]
+        async with self._session_factory() as session:
+            results = await session.execute(
+                select(ArchiveSiteReading).where(ArchiveSiteReading.site_reading_type_id.in_(srt_ids))
+            )
+
+        return [mappers.map_envoy_site_reading_to_dto(rdg) for rdg in results.scalars().all()]
 
     async def get_latest_site_reading(
         self,
@@ -773,7 +786,7 @@ class EnvoyBackend(RunnerBackend):
                 edevid=active_site.site_id,
                 lfdi=active_site.lfdi,
                 sfdi=active_site.sfdi,
-                nmi=active_site.nmi,
+                nmi=mappers.join_nmi(active_site),
                 aggregator_id=active_site.aggregator_id,
                 set_max_w=set_max_w,
                 doe_modes_enabled=doe_modes_enabled,

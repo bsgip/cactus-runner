@@ -88,7 +88,7 @@ async def test_client_interactions(
     # matter)
     async with generate_async_session(pg_base_config) as session:
         agg_id = 1 if aggregator_cert is not None else 0
-        new_site = generate_class_instance(Site, aggregator_id=agg_id, site_id=None)
+        new_site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=agg_id, site_id=None)
         session.add(new_site)
 
         new_der_settings = generate_class_instance(
