@@ -456,6 +456,7 @@ def der_bool_param_scenario(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=der_props[der_key],
@@ -470,6 +471,7 @@ def der_bool_param_scenario(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=der_props[der_key],
@@ -555,6 +557,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting),
@@ -567,6 +570,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(
@@ -607,6 +611,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
@@ -619,6 +624,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
@@ -631,6 +637,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating),
@@ -643,6 +650,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -654,6 +662,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -665,6 +674,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("ff", 16)),
@@ -677,6 +687,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
@@ -689,6 +700,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("ff", 16)),
@@ -701,6 +713,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
@@ -713,6 +726,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fc", 16)),
@@ -725,6 +739,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
@@ -737,6 +752,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fc", 16)),
@@ -749,6 +765,7 @@ DERSETTING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
@@ -812,6 +829,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating),
@@ -824,6 +842,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(
@@ -864,6 +883,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting),
@@ -876,6 +896,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -887,6 +908,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -898,6 +920,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("ff", 16)),
@@ -910,6 +933,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
@@ -922,6 +946,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("ff", 16)),
@@ -934,6 +959,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
@@ -946,6 +972,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fc", 16)),
@@ -958,6 +985,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
@@ -970,6 +998,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fc", 16)),
@@ -982,6 +1011,7 @@ DERRATING_BOOL_PARAM_SCENARIOS = [
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
@@ -1019,6 +1049,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(SiteDERStatus),
@@ -1031,6 +1062,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1045,6 +1077,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1059,6 +1092,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1073,6 +1107,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1087,6 +1122,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1101,6 +1137,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1115,6 +1152,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1129,6 +1167,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1143,6 +1182,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1157,6 +1197,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1171,6 +1212,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1185,6 +1227,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting),
@@ -1197,6 +1240,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -1208,6 +1252,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -1219,6 +1264,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1233,6 +1279,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1247,6 +1294,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1261,6 +1309,7 @@ async def test_check_der_capability_contents(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_status=generate_class_instance(
@@ -1319,7 +1368,7 @@ async def test_do_check_readings_for_types(
     """Tests that do_check_readings_for_types can handle various queries against a static DB model"""
     async with generate_async_session(pg_base_config) as session:
         # Load 3 SiteReadingTypes, the first has 3 readings, the second has 2.
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         srt2 = generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2, aggregator_id=1, site=site)
         srt3 = generate_class_instance(SiteReadingType, seed=303, site_reading_type_id=3, aggregator_id=1, site=site)
@@ -1382,7 +1431,7 @@ async def test_do_check_readings_for_types_started_at(
         # srt1 has 3 readings: one strictly before started_at, one ending exactly at started_at (inclusive
         # boundary - should count) and one strictly after started_at.
         # srt2 has 2 readings, both of which end strictly before started_at.
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         srt2 = generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2, aggregator_id=1, site=site)
 
@@ -1541,7 +1590,7 @@ async def test_do_check_levels_for_readings(
     and without a window_period"""
     async with generate_async_session(pg_base_config) as session:
         # Load 3 SiteReadingTypes
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(
             SiteReadingType, seed=101, power_of_ten_multiplier=mult, site_reading_type_id=1, aggregator_id=1, site=site
         )
@@ -1628,7 +1677,7 @@ async def test_do_check_latest_reading_level(
     """Tests that do_check_latest_reading_level only considers the single most recent reading per type"""
     async with generate_async_session(pg_base_config) as session:
         # Load 3 SiteReadingTypes
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(
             SiteReadingType, seed=101, power_of_ten_multiplier=mult, site_reading_type_id=1, aggregator_id=1, site=site
         )
@@ -1763,7 +1812,7 @@ async def test_do_check_readings_on_minute_boundary(pg_base_config, srt_ids: lis
     """Tests that do_check_readings_for_types can handle various queries against a static DB model"""
     async with generate_async_session(pg_base_config) as session:
         # Load 3 SiteReadingTypes, the first has 3 readings, the second has 2.
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         srt2 = generate_class_instance(SiteReadingType, seed=202, site_reading_type_id=2, aggregator_id=1, site=site)
         srt3 = generate_class_instance(SiteReadingType, seed=303, site_reading_type_id=3, aggregator_id=1, site=site)
@@ -1895,7 +1944,7 @@ async def test_do_check_reading_type_mrids_match_pen(
     mrid1: str | None, mrid2: str | None, group_mrid: str | None, pen: int, expected_result: bool
 ):
     # Arrange
-    site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+    site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
     srts = []
     if mrid1 is not None and group_mrid is not None:
         srt1 = generate_class_instance(
@@ -2388,8 +2437,10 @@ async def test_check_subscription_contents_no_matches(pg_base_config):
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=UTC))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
-        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=agg_id)
+        site1 = generate_class_instance(
+            Site, nmi_checksum=None, seed=1001, site_id=1, aggregator_id=agg_id
+        )  # Active Site
+        site2 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=2, aggregator_id=agg_id)
         session.add(site1)
         session.add(site2)
         await session.flush()
@@ -2470,8 +2521,10 @@ async def test_check_subscription_contents_success(pg_base_config):
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=UTC))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
-        site2 = generate_class_instance(Site, seed=202, site_id=2, aggregator_id=agg_id)
+        site1 = generate_class_instance(
+            Site, nmi_checksum=None, seed=1001, site_id=1, aggregator_id=agg_id
+        )  # Active Site
+        site2 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=2, aggregator_id=agg_id)
         session.add(site1)
         session.add(site2)
         await session.flush()
@@ -2564,7 +2617,9 @@ async def test_check_subscription_contents_success_unscoped(pg_base_config):
         agg2 = Aggregator(aggregator_id=2, name="test2", changed_time=datetime(2022, 11, 22, tzinfo=UTC))
         session.add(agg2)
 
-        site1 = generate_class_instance(Site, seed=1001, site_id=1, aggregator_id=agg_id)  # Active Site
+        site1 = generate_class_instance(
+            Site, nmi_checksum=None, seed=1001, site_id=1, aggregator_id=agg_id
+        )  # Active Site
         session.add(site1)
         await session.flush()
 
@@ -2686,7 +2741,7 @@ async def test_check_response_contents_latest(pg_base_config):
         site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
-        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
         sg1 = generate_class_instance(SiteGroup, seed=303)
@@ -2798,7 +2853,7 @@ async def test_check_response_contents_all(
         site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
-        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
         sg1 = generate_class_instance(SiteGroup, seed=303)
@@ -2864,7 +2919,7 @@ async def test_check_response_contents_any(pg_base_config):
         site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
-        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
         sg1 = generate_class_instance(SiteGroup, seed=303)
@@ -2998,7 +3053,7 @@ async def test_check_response_contents_tag_DERC1(pg_base_config):
         site_control_group = generate_class_instance(SiteControlGroup, seed=101, required_site_group_id=None)
         session.add(site_control_group)
 
-        site1 = generate_class_instance(Site, seed=202, site_id=1, aggregator_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=1, aggregator_id=1)
         session.add(site1)
 
         sg1 = generate_class_instance(SiteGroup, seed=303)
@@ -3305,6 +3360,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, grad_w=12345),
@@ -3318,6 +3374,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating),
@@ -3331,6 +3388,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -3343,6 +3401,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -3355,6 +3414,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fe", 16)),
@@ -3368,6 +3428,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fe", 16)),
@@ -3381,6 +3442,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, doe_modes_enabled=int("fd", 16)),
@@ -3394,6 +3456,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, modes_enabled=int("fd", 16)),
@@ -3407,6 +3470,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
@@ -3431,6 +3495,7 @@ def test_merge_check_results(checkresults: list[CheckResult], expected: CheckRes
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting, max_va_value=12345),
@@ -3477,6 +3542,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_setting=generate_class_instance(SiteDERSetting),
@@ -3490,6 +3556,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -3502,6 +3569,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                 )
@@ -3514,6 +3582,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fe", 16)),
@@ -3527,6 +3596,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fe", 16)),
@@ -3540,6 +3610,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, doe_modes_supported=int("fd", 16)),
@@ -3553,6 +3624,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, modes_supported=int("fd", 16)),
@@ -3566,6 +3638,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
@@ -3590,6 +3663,7 @@ async def test_check_der_settings_contents_error_messages_meaningful(
             [
                 generate_class_instance(
                     Site,
+                    nmi_checksum=None,
                     seed=101,
                     aggregator_id=1,
                     site_der_rating=generate_class_instance(SiteDERRating, max_va_value=12345),
@@ -3645,7 +3719,7 @@ async def test_check_der_capability_contents_error_messages_meaningful(
 async def test_do_check_readings_for_duration_envoy(pg_base_config, srt_ids: list[int], expected_result: bool):
     """Tests that do_check_readings_for_duration validates time_period_seconds for envoy backend."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt1 = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         srt2 = generate_class_instance(SiteReadingType, seed=102, site_reading_type_id=2, aggregator_id=1, site=site)
         srt3 = generate_class_instance(SiteReadingType, seed=103, site_reading_type_id=3, aggregator_id=1, site=site)
@@ -3709,7 +3783,7 @@ async def test_do_check_readings_match_post_rate(
     base_time = datetime(2024, 1, 1, tzinfo=UTC)
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         session.add_all([site, srt])
 
@@ -3754,7 +3828,7 @@ async def test_do_check_readings_match_post_rate_mid_run_change(pg_base_config):
     t2 = t1 + timedelta(hours=1)  # rate reverted to 60s
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         session.add_all([site, srt])
 
@@ -3842,7 +3916,7 @@ async def test_do_check_readings_received_after_interval_end(
     """A single reading, received (created_time) at received_at - it should only pass if received no more than 10s
     before its interval ended."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         reading = generate_class_instance(
             SiteReading,
@@ -3881,7 +3955,7 @@ async def test_do_check_readings_received_after_interval_end_overwritten_reading
 ):
     """The same interval posted twice: envoy archives the original and stores the repost. Same rules apply to timing."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         repost = generate_class_instance(
             SiteReading,
@@ -3919,7 +3993,7 @@ async def test_do_check_readings_received_after_interval_end_overwritten_reading
 @pytest.mark.anyio
 async def test_do_check_readings_received_after_interval_end_error_message(pg_base_config):
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         partway = generate_class_instance(
             SiteReading,
@@ -3986,7 +4060,7 @@ async def test_do_check_readings_match_post_rate_near_transition(
     t1 = t0 + timedelta(hours=1)  # rate changes to 300s
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=101, site_reading_type_id=1, aggregator_id=1, site=site)
         session.add_all([site, srt])
 

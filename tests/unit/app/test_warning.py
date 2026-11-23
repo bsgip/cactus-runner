@@ -114,7 +114,7 @@ async def test_analyse_der_settings_varied_no_warning_when_unchanged(pg_base_con
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -174,7 +174,7 @@ async def test_analyse_der_settings_varied_warns_when_any_value_changed(
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -221,7 +221,7 @@ async def test_analyse_reading_type_varied_no_warning_when_unchanged(pg_base_con
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -255,7 +255,7 @@ async def test_analyse_reading_type_varied_warns_when_uom_changed(pg_base_config
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -296,7 +296,7 @@ async def test_analyse_active_power_exceeds_max_w_no_warning_when_within_range(p
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -337,7 +337,7 @@ async def test_analyse_active_power_exceeds_max_w_warns_and_counts_across_readin
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -404,7 +404,7 @@ async def test_analyse_voltage_out_of_range_no_warning_when_all_within_range(pg_
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 
@@ -434,7 +434,7 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
     active_test_procedure = _make_active_test_procedure()
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1)
         session.add(site)
         await session.flush()
 

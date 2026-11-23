@@ -164,7 +164,7 @@ async def test_get_site_readings_start_end_time(
         r3 (value=3): [00:10:00, 00:11:00)
     """
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
         session.add(site)
 
         srt = generate_class_instance(
@@ -220,7 +220,7 @@ async def test_get_site_readings_start_end_time(
 async def test_get_site_readings_start_end_time_combines_with_type_filter(pg_base_config, envoy_admin_client) -> None:
     """Tests that the start_time/end_time window is applied in addition to (not instead of) site_reading_type_ids."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
         session.add(site)
 
         srt1 = generate_class_instance(SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site)
@@ -306,7 +306,7 @@ async def test_get_end_device_metadata(mocker) -> None:
         inverter_status=2,  # InverterStatusType.SLEEPING
         alarm_status=None,
     )
-    site = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=42)
+    site = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=42)
     site.site_der_setting = site_der_setting
     site.site_der_rating = site_der_rating
     site.site_der_status = site_der_status
@@ -356,7 +356,7 @@ async def test_get_archived_site_readings(pg_base_config, envoy_admin_client) ->
     archive metadata populated. Live readings are not included."""
     created_time = datetime(2024, 1, 1, 0, 0, 30, tzinfo=UTC)
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=1, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, seed=1, aggregator_id=1, site_id=1)
         srt = generate_class_instance(SiteReadingType, seed=1, aggregator_id=1, site_reading_type_id=1, site=site)
         live = generate_class_instance(SiteReading, seed=1, site_reading_id=None, site_reading_type=srt, value=1)
         archived = generate_class_instance(

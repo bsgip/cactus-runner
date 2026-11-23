@@ -717,7 +717,7 @@ class EnvoyBackend(RunnerBackend):
                 edevid=active_site.site_id,
                 lfdi=active_site.lfdi,
                 sfdi=active_site.sfdi,
-                nmi=active_site.nmi,
+                nmi=mappers.join_nmi(active_site),
                 aggregator_id=active_site.aggregator_id,
                 set_max_w=set_max_w,
                 doe_modes_enabled=doe_modes_enabled,

@@ -26,8 +26,8 @@ async def test_reset_db_on_content(pg_base_config):
 
     # Insert some extra content
     async with generate_async_session(pg_base_config) as session:
-        s1 = generate_class_instance(Site, seed=1, site_id=None, aggregator_id=0)
-        s2 = generate_class_instance(Site, seed=2, site_id=None, aggregator_id=1)
+        s1 = generate_class_instance(Site, nmi_checksum=None, seed=1, site_id=None, aggregator_id=0)
+        s2 = generate_class_instance(Site, nmi_checksum=None, seed=2, site_id=None, aggregator_id=1)
 
         sc1 = generate_class_instance(SiteControlGroup, seed=3, site_control_group_id=None, required_site_group_id=None)
 
@@ -81,7 +81,7 @@ async def test_reset_db_on_content(pg_base_config):
 
         assert agg.aggregator_id == 1, "Sequence should've been reset"
 
-        s1 = generate_class_instance(Site, seed=2, site_id=None, aggregator_id=1)
+        s1 = generate_class_instance(Site, nmi_checksum=None, seed=2, site_id=None, aggregator_id=1)
         session.add(s1)
         await session.flush()
         assert s1.site_id == 1, "Sequence should've been reset"
