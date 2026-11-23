@@ -14,6 +14,7 @@ from envoy.server.model.archive.doe import (
 )
 from envoy.server.model.doe import DynamicOperatingEnvelope, SiteControlGroupDefault
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
+from envoy_schema.server.schema.sep2.types import FlowDirectionType, PhaseCode
 from intervaltree import Interval, IntervalTree
 
 from cactus_runner.app.envoy_common import ReadingLocation
@@ -28,6 +29,7 @@ from cactus_runner.app.timeline import (
     generate_readings_data_stream,
     generate_timeline,
     highest_priority_entity,
+    import_positive_sign,
     pow10_to_watts,
     reading_to_watts,
 )
@@ -41,6 +43,23 @@ from cactus_runner.plugin.backends.envoy.mappers import (
 )
 
 BASIS = datetime(2022, 1, 2, 3, 4, 5, 6, tzinfo=UTC)  # Used as an arbitrary - non aligned datetime
+
+
+def _power_srt(
+    seed: int,
+    srt_id: str,
+    power_of_ten_multiplier: int = 0,
+    phase: PhaseCode = PhaseCode.NOT_APPLICABLE,
+    flow_direction: FlowDirectionType = FlowDirectionType.FORWARD,
+) -> dtos.SiteReadingType:
+    return generate_class_instance(
+        dtos.SiteReadingType,
+        seed=seed,
+        site_reading_type_id=srt_id,
+        power_of_ten_multiplier=power_of_ten_multiplier,
+        phase=phase,
+        flow_direction=flow_direction,
+    )
 
 
 @pytest.mark.parametrize(
@@ -360,8 +379,8 @@ async def test_generate_readings_data_stream(mock_get_csip_aus_site_reading_type
     # Arrange
     interval_seconds = 5
     mock_backend = mock.Mock(spec=RunnerBackend)
-    srt1 = generate_class_instance(dtos.SiteReadingType, seed=101, power_of_ten_multiplier=-1, site_reading_type_id="1")
-    srt2 = generate_class_instance(dtos.SiteReadingType, seed=202, power_of_ten_multiplier=1, site_reading_type_id="2")
+    srt1 = _power_srt(101, "1", power_of_ten_multiplier=-1, phase=PhaseCode.PHASE_AN_S1N)
+    srt2 = _power_srt(202, "2", power_of_ten_multiplier=1, phase=PhaseCode.PHASE_BN)
     mock_get_csip_aus_site_reading_types.return_value = [srt1, srt2]
     srt1_readings = [
         generate_class_instance(
@@ -438,7 +457,7 @@ async def test_generate_readings_data_stream_filters_zero_durations(
     # Arrange
     interval_seconds = 5
     mock_backend = mock.Mock(spec=RunnerBackend)
-    srt = generate_class_instance(dtos.SiteReadingType, seed=101, power_of_ten_multiplier=0, site_reading_type_id="1")
+    srt = _power_srt(101, "1")
     mock_get_csip_aus_site_reading_types.return_value = [srt]
 
     readings = [
@@ -499,9 +518,9 @@ async def test_generate_readings_data_stream_three_phase(mock_get_csip_aus_site_
     """Three concurrent single-phase SRTs covering the same interval should be summed, not winner-takes-all."""
     interval_seconds = 5
     mock_backend = mock.Mock(spec=RunnerBackend)
-    srt_a = generate_class_instance(dtos.SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id="1")
-    srt_b = generate_class_instance(dtos.SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id="2")
-    srt_c = generate_class_instance(dtos.SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id="3")
+    srt_a = _power_srt(1, "1", phase=PhaseCode.PHASE_AN_S1N)
+    srt_b = _power_srt(2, "2", phase=PhaseCode.PHASE_BN)
+    srt_c = _power_srt(3, "3", phase=PhaseCode.PHASE_CN_S2N)
     mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
 
     phase_values = {srt_a.site_reading_type_id: 100, srt_b.site_reading_type_id: 200, srt_c.site_reading_type_id: 300}
@@ -566,9 +585,9 @@ async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_sit
     None appears only when NO phase has a reading — not when just some are absent."""
     interval_seconds = 5
     mock_backend = mock.Mock(spec=RunnerBackend)
-    srt_a = generate_class_instance(dtos.SiteReadingType, seed=1, power_of_ten_multiplier=0, site_reading_type_id="1")
-    srt_b = generate_class_instance(dtos.SiteReadingType, seed=2, power_of_ten_multiplier=0, site_reading_type_id="2")
-    srt_c = generate_class_instance(dtos.SiteReadingType, seed=3, power_of_ten_multiplier=0, site_reading_type_id="3")
+    srt_a = _power_srt(1, "1", phase=PhaseCode.PHASE_AN_S1N)
+    srt_b = _power_srt(2, "2", phase=PhaseCode.PHASE_BN)
+    srt_c = _power_srt(3, "3", phase=PhaseCode.PHASE_CN_S2N)
     mock_get_csip_aus_site_reading_types.return_value = [srt_a, srt_b, srt_c]
 
     # Only srt_b reports in interval 1; no phase reports in interval 2
@@ -619,6 +638,63 @@ async def test_generate_readings_data_stream_partial_phase(mock_get_csip_aus_sit
             ),
         ],
         any_order=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "flow_direction, location, expected",
+    [
+        (FlowDirectionType.FORWARD, ReadingLocation.SITE_READING, 1),
+        (FlowDirectionType.FORWARD, ReadingLocation.DEVICE_READING, 1),
+        (FlowDirectionType.REVERSE, ReadingLocation.SITE_READING, -1),
+        (FlowDirectionType.REVERSE, ReadingLocation.DEVICE_READING, -1),
+        (FlowDirectionType.NOT_APPLICABLE, ReadingLocation.SITE_READING, 1),  # load convention
+        (FlowDirectionType.NOT_APPLICABLE, ReadingLocation.DEVICE_READING, -1),  # generator convention
+    ],
+)
+def test_import_positive_sign(flow_direction, location, expected):
+    assert import_positive_sign(flow_direction, location) == expected
+
+
+@mock.patch("cactus_runner.app.timeline.get_csip_aus_site_reading_types_active_site")
+@pytest.mark.asyncio
+async def test_generate_readings_data_stream_net_and_phases_device_reverse(
+    mock_get_csip_aus_site_reading_types: mock.MagicMock,
+):
+    """A DER reporting net + per-phase generation (no flowDirection) is charted from the net value only - not summed
+    with its phases - and negated to import positive (generator convention applies when flowDirection is absent)."""
+    interval_seconds = 5
+    mock_backend = mock.Mock(spec=RunnerBackend)
+    net = _power_srt(1, "1", flow_direction=FlowDirectionType.NOT_APPLICABLE)
+    phase_a = _power_srt(2, "2", phase=PhaseCode.PHASE_AN_S1N, flow_direction=FlowDirectionType.NOT_APPLICABLE)
+    phase_b = _power_srt(3, "3", phase=PhaseCode.PHASE_BN, flow_direction=FlowDirectionType.NOT_APPLICABLE)
+    mock_get_csip_aus_site_reading_types.return_value = [phase_a, net, phase_b]
+
+    values = {"1": 3000, "2": 1000, "3": 2000}
+
+    def readings_for(
+        site_reading_type_ids: list[str], start_time: datetime, end_time: datetime
+    ) -> list[dtos.SiteReading]:
+        return [
+            generate_class_instance(
+                dtos.SiteReading,
+                seed=values[site_reading_type_ids[0]],
+                site_reading_type_id=site_reading_type_ids[0],
+                value=values[site_reading_type_ids[0]],
+                time_period_start=BASIS,
+                time_period_duration=timedelta(seconds=5),
+            )
+        ]
+
+    mock_backend.get_site_readings.side_effect = readings_for
+
+    result = await generate_readings_data_stream(
+        mock_backend, "Device", ReadingLocation.DEVICE_READING, BASIS, BASIS + timedelta(seconds=10), interval_seconds
+    )
+
+    assert result.offset_watt_values == [-3000, None]
+    mock_backend.get_site_readings.assert_called_once_with(
+        site_reading_type_ids=[net.site_reading_type_id], start_time=BASIS, end_time=BASIS + timedelta(seconds=10)
     )
 
 
