@@ -53,11 +53,29 @@ from cactus_runner.plugin import dtos
 # ------------------------------------------------------------------
 
 
+NMI_LENGTH_EXCLUDING_CHECKSUM = 10
+
+
+def split_nmi(nmi: str | None) -> tuple[str | None, str | None]:
+    """Splits a (possibly 11 character) NMI into its envoy (nmi, nmi_checksum) components. The 11th character (if
+    present) is treated as the checksum. NMIs of 10 characters or less have no checksum."""
+    if nmi is None or len(nmi) <= NMI_LENGTH_EXCLUDING_CHECKSUM:
+        return nmi, None
+    return nmi[:NMI_LENGTH_EXCLUDING_CHECKSUM], nmi[NMI_LENGTH_EXCLUDING_CHECKSUM:]
+
+
+def join_nmi(site: Site) -> str | None:
+    """Recombines an envoy site's nmi and nmi_checksum into a single (possibly 11 character) NMI."""
+    if site.nmi is None:
+        return None
+    return site.nmi + (site.nmi_checksum or "")
+
+
 def map_envoy_site_to_dto(site: Site) -> dtos.Site:
     """Maps an envoy site to the plugin dto."""
     return dtos.Site(
         site_id=f"{site.site_id}",
-        nmi=site.nmi,
+        nmi=join_nmi(site),
         lfdi=site.lfdi,
         sfdi=site.sfdi,
         device_category=site.device_category,
@@ -66,8 +84,10 @@ def map_envoy_site_to_dto(site: Site) -> dtos.Site:
 
 def map_dto_site_write_to_envoy(site: dtos.SiteWrite) -> Site:
     """Maps a dto SiteWrite object to a envoy DB model for committing."""
+    nmi, nmi_checksum = split_nmi(site.nmi)
     return Site(
-        nmi=site.nmi,
+        nmi=nmi,
+        nmi_checksum=nmi_checksum,
         aggregator_id=int(site.aggregator_id) if site.aggregator_id is not None else None,
         timezone_id=site.timezone_id,
         created_time=site.created_time,

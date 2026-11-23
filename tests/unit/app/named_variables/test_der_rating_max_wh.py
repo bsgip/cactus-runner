@@ -20,7 +20,7 @@ async def test_resolve_named_variable_der_rating_max_wh_empty(pg_empty_config):
 async def test_resolve_named_variable_der_rating_max_wh_no_setting(pg_base_config):
     """If there is everything up to (but not including) a DERSetting in the db  - fail in a predictable way"""
     async with begin_session() as session:
-        session.add(generate_class_instance(Site, site_id=None, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, site_id=None, aggregator_id=1))
         await session.commit()
 
     async with begin_session() as session:
@@ -38,6 +38,7 @@ async def test_resolve_named_variable_der_rating_max_wh_single_setting(pg_base_c
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 site_id=None,
                 aggregator_id=1,
                 site_der_rating=generate_class_instance(
@@ -67,6 +68,7 @@ async def test_resolve_named_variable_der_rating_max_wh_many_settings(pg_base_co
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 seed=1001,
                 site_id=None,
                 aggregator_id=1,
@@ -76,6 +78,7 @@ async def test_resolve_named_variable_der_rating_max_wh_many_settings(pg_base_co
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 seed=2002,
                 site_id=None,
                 aggregator_id=1,
@@ -92,6 +95,7 @@ async def test_resolve_named_variable_der_rating_max_wh_many_settings(pg_base_co
         session.add(
             generate_class_instance(
                 Site,
+                nmi_checksum=None,
                 seed=3003,
                 site_id=None,
                 aggregator_id=1,

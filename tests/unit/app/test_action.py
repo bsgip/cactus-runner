@@ -474,7 +474,7 @@ async def test_action_create_der_control_no_group(pg_base_config, envoy_admin_cl
     # Arrange
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         await session.commit()
     resolved_params = {
         "start": datetime.now(UTC),
@@ -573,7 +573,7 @@ async def test_action_create_der_control_existing_group(pg_base_config, envoy_ad
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     existing_fsa_id = fsa_id if fsa_id is not None else 21515215
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         session.add(
             generate_class_instance(SiteControlGroup, primacy=2, fsa_id=existing_fsa_id, required_site_group_id=None)
         )
@@ -626,7 +626,7 @@ async def test_action_create_der_control_existing_group_with_tag(pg_base_config,
         ),
     )
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         session.add(
             generate_class_instance(
                 SiteControlGroup, primacy=2, site_control_group_id=existing_scg_id, required_site_group_id=None
@@ -679,7 +679,7 @@ async def test_action_create_der_control_derp_tag_missing(pg_base_config, envoy_
         ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
     )
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         session.add(generate_class_instance(SiteControlGroup, primacy=2, required_site_group_id=None))
         await session.commit()
     resolved_params = {
@@ -719,7 +719,7 @@ async def test_action_create_der_control_control_values(pg_base_config, envoy_ad
     # Arrange
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         await session.commit()
 
     def gen_bool(s: int | None, offset: int) -> bool | None:
@@ -780,7 +780,7 @@ async def test_action_create_der_control_with_tag(pg_base_config, envoy_admin_cl
         ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
     )
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         await session.commit()
     tag = "DERC1"
     resolved_params = {
@@ -834,7 +834,7 @@ async def test_action_create_der_control_with_tag_that_supersedes(pg_base_config
     existing_creation_time = datetime.now(UTC) - timedelta(seconds=20)
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1)
         session.add(site)
         site_ctrl_grp = generate_class_instance(
             SiteControlGroup, primacy=2, site_control_group_id=1, required_site_group_id=None
@@ -909,7 +909,7 @@ async def test_action_create_der_control_with_tag_and_edev_indexes(pg_base_confi
         ActiveTestProcedure, step_status={}, finished_zip_path=None, resource_annotations=ResourceAnnotations()
     )
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, aggregator_id=1))
         await session.commit()
     tag = "DERC1"
     resolved_params = {
@@ -949,10 +949,10 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
     id for the appropriate site_ids"""
     # Arrange
     async with generate_async_session(pg_base_config) as session:
-        session.add(generate_class_instance(Site, seed=101, site_id=11, aggregator_id=1))
-        session.add(generate_class_instance(Site, seed=202, site_id=22, aggregator_id=1))
-        session.add(generate_class_instance(Site, seed=303, site_id=44, aggregator_id=1))
-        session.add(generate_class_instance(Site, seed=404, site_id=33, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=101, site_id=11, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=202, site_id=22, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=303, site_id=44, aggregator_id=1))
+        session.add(generate_class_instance(Site, nmi_checksum=None, seed=404, site_id=33, aggregator_id=1))
         await session.commit()
 
     active_test_procedure = generate_class_instance(ActiveTestProcedure, step_status={}, finished_zip_path=None)
@@ -1013,7 +1013,7 @@ async def test_action_create_der_control_with_end_device_indexes(pg_base_config,
 async def test_action_cancel_active_controls(pg_base_config, envoy_admin_client):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         session.add(site)
         site_group = generate_class_instance(SiteGroup, site_group_id=None)
         session.add(site_group)
@@ -1066,7 +1066,7 @@ async def test_action_set_comms_rate_all_values(pg_base_config, envoy_admin_clie
     }
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1)
         session.add(site)
         await session.commit()
 
@@ -1099,7 +1099,7 @@ async def test_action_set_comms_rate_no_values(pg_base_config, envoy_admin_clien
     resolved_params = {}
 
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, aggregator_id=1, site_id=1, post_rate_seconds=123)
+        site = generate_class_instance(Site, nmi_checksum=None, aggregator_id=1, site_id=1, post_rate_seconds=123)
         session.add(site)
         await session.commit()
 

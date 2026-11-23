@@ -35,7 +35,7 @@ async def test_get_readings(pg_base_config):
     # Arrange
     async with generate_async_session(pg_base_config) as session:
         # Add active site
-        site1 = generate_class_instance(Site, seed=101, aggregator_id=1, site_id=1)
+        site1 = generate_class_instance(Site, nmi_checksum=None, seed=101, aggregator_id=1, site_id=1)
         session.add(site1)
 
         # Add reading type
