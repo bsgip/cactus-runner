@@ -505,7 +505,7 @@ async def _create_readings(
     """Creates one SiteReadingType with a live reading for each start time, duration pair plus an archived 60s reading
     starting at each of archived_minutes. Received_at defaults to the end of each live reading's interval."""
     async with generate_async_session(pg_base_config) as session:
-        site = generate_class_instance(Site, seed=101, aggregator_id=1)
+        site = generate_class_instance(Site, seed=101, aggregator_id=1, nmi_checksum=None)
         srt = generate_class_instance(
             SiteReadingType, seed=202, site=site, aggregator_id=1, site_reading_type_id=1, mrid="abc123"
         )
