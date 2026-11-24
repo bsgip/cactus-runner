@@ -24,7 +24,7 @@ from envoy.server.exception import InvalidMappingError
 from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
 from envoy_schema.server.schema import uri
 from envoy_schema.server.schema.sep2.response import ResponseType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, PhaseCode, UomType
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -43,6 +43,7 @@ from cactus_runner.models import (
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import (
     RunnerBackend,
+    get_csip_aus_site_reading_types_active_site,
     get_site_reading_types_ordered,
     get_site_readings_ordered,
 )
@@ -1296,6 +1297,74 @@ async def check_readings_voltage(
     return merge_checks([site_check, device_check])
 
 
+# The only phase codes that a client should be using to report voltage
+VOLTAGE_PHASE_CODES: set[PhaseCode] = {
+    PhaseCode.PHASE_AN_S1N,
+    PhaseCode.PHASE_BN,
+    PhaseCode.PHASE_CN_S2N,
+    PhaseCode.PHASE_ABC,
+}
+
+
+def do_check_voltage_phase_codes(
+    site_reading_types: Sequence[dtos.SiteReadingType], reading_location: ReadingLocation
+) -> CheckResult:
+    """Checks the phase codes for all voltage MirrorMeterReadings at a single reading location. Will pass if there is:
+
+    a) A single MirrorMeterReading with a phase code in VOLTAGE_PHASE_CODES
+    b) Multiple MirrorMeterReadings, all with a phase code in VOLTAGE_PHASE_CODES and at least one being ABC"""
+    location_description = READING_LOCATION_DESCRIPTIONS.get(reading_location, reading_location.name)
+
+    unexpected = [srt for srt in site_reading_types if srt.phase not in VOLTAGE_PHASE_CODES]
+    if unexpected:
+        expected_codes = ", ".join(f"{p.name} ({p.value})" for p in sorted(VOLTAGE_PHASE_CODES))
+        unexpected_codes = ", ".join(f"{srt.mrid} has phase {int(srt.phase)}" for srt in unexpected)
+        return CheckResult(
+            False,
+            f"Found {len(unexpected)} {location_description} voltage MirrorMeterReading(s) with an unexpected phase "
+            f"code: {unexpected_codes}. Expected one of {expected_codes}.",
+        )
+
+    phase_codes = ", ".join(str(int(srt.phase)) for srt in site_reading_types)
+    if len(site_reading_types) > 1 and not any(srt.phase == PhaseCode.PHASE_ABC for srt in site_reading_types):
+        return CheckResult(
+            False,
+            f"Found {len(site_reading_types)} {location_description} voltage MirrorMeterReadings with phase codes "
+            f"{phase_codes} but none are {PhaseCode.PHASE_ABC.name} ({PhaseCode.PHASE_ABC.value}). This is required "
+            "when reporting voltage via multiple MirrorMeterReadings.",
+        )
+
+    return CheckResult(True, f"Found {location_description} voltage with valid phase code(s): {phase_codes}.")
+
+
+async def check_voltage_phase_code(backend: RunnerBackend) -> CheckResult:
+    """Implements the voltage-phase-code check.
+
+    SITE and DER voltage are assessed independently (eg a three phase site can have a single phase DER). At least one
+    must be registered and everything that's registered must be valid.
+
+    Will only consider the mandatory "Average" readings"""
+    if not await backend.get_active_site():
+        return CheckResult(False, "No active site found.")
+
+    location_checks: list[CheckResult] = []
+    for location in ReadingLocation:
+        site_reading_types = await get_csip_aus_site_reading_types_active_site(
+            backend, UomType.VOLTAGE, location, KindType.POWER, DataQualifierType.AVERAGE
+        )
+        if site_reading_types:
+            location_checks.append(do_check_voltage_phase_codes(site_reading_types, location))
+
+    if not location_checks:
+        return CheckResult(
+            False,
+            "No site level or DER/device level MirrorUsagePoint for the active EndDevice with "
+            f"{UomType.VOLTAGE.name} readings using DataQualifier {DataQualifierType.AVERAGE.name}.",
+        )
+
+    return merge_checks(location_checks)
+
+
 async def check_readings_der_active_power(
     active_test_procedure: ActiveTestProcedure, backend: RunnerBackend, resolved_parameters: dict[str, Any], pen: int
 ) -> CheckResult:
@@ -1854,6 +1923,9 @@ async def run_check(  # noqa: C901
 
             case "readings-voltage":
                 check_result = await check_readings_voltage(active_test_procedure, backend, resolved_parameters, pen)
+
+            case "voltage-phase-code":
+                check_result = await check_voltage_phase_code(backend)
 
             case "readings-der-active-power":
                 check_result = await check_readings_der_active_power(
