@@ -23,11 +23,12 @@ from cactus_schema.runner import (
 )
 from cactus_test_definitions import CSIPAusVersion
 from cactus_test_definitions.client import TestProcedureId
-from envoy.server.model.site import Site, SiteDERSetting
+from envoy.server.model.site import Site, SiteDERRating, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
 from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, RoleFlagsType, UomType
 from pytest_aiohttp.plugin import TestClient
 
+from cactus_runner.app.check import DER_MODES_EQUIVALENTS, DER_VALUE_EQUIVALENTS
 from cactus_runner.app.database import remove_database_connection
 from cactus_runner.app.requests_archive import ensure_request_data_dir
 from cactus_runner.client import RunnerClient, RunnerClientError
@@ -100,6 +101,19 @@ async def test_client_interactions(
             max_discharge_rate_w_value=int(MAX_EXPORT_W),
         )
         session.add(new_der_settings)
+
+        # der-settings-contents requires the DERSettings to be within the DERCapability - so make them match
+        new_der_rating = generate_class_instance(
+            SiteDERRating,
+            site=new_site,
+            **{m.rating_property: getattr(new_der_settings, m.setting_property) for m in DER_MODES_EQUIVALENTS},
+            **{
+                prop: getattr(new_der_settings, prop)
+                for e in DER_VALUE_EQUIVALENTS
+                for prop in (e.value_property, e.multiplier_property)
+            },
+        )
+        session.add(new_der_rating)
 
         # GEN-01's preconditions gate the test start on the site/DER currently reporting active power readings
         # within a band of the DER's rated export capacity - so we need some readings in place before /start.

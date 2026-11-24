@@ -5,7 +5,10 @@ import re
 import string
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
+from enum import StrEnum
 from itertools import chain
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlparse
@@ -152,6 +155,81 @@ class ParamsDERCapabilityContents(pydantic.BaseModel):
     vpp_modes_supported: Annotated[
         bool | None, pydantic.Field(alias="vppModesSupported"), SiteReadingTypeProperty("vpp_modes_supported")
     ] = None
+
+
+class DERComparison(StrEnum):
+    """How a DERSettings value must relate to its equivalent DERCapability value"""
+
+    LTE = "<="
+    GTE = ">="
+
+
+@dataclass(frozen=True, slots=True)
+class DERValueEquivalent:
+    """Describes a DERSettings value that has an equivalent DERCapability value"""
+
+    setting_name: str  # Name in DERSettings - eg setMaxW
+    rating_name: str  # Name in DERCapability - eg rtgMaxW
+    value_property: str  # Property name on BOTH dtos.SiteDERSetting and dtos.SiteDERRating
+    multiplier_property: str  # Property name on BOTH dtos.SiteDERSetting and dtos.SiteDERRating
+    comparison: DERComparison  # Required relationship: setting {comparison} rating
+
+
+@dataclass(frozen=True, slots=True)
+class DERModesEquivalent:
+    """Describes a DERSettings "modes enabled" bitmask that has an equivalent DERCapability "modes supported" bitmask"""
+
+    setting_name: str  # Name in DERSettings - eg doeModesEnabled
+    rating_name: str  # Name in DERCapability - eg doeModesSupported
+    setting_property: str  # Property name on dtos.SiteDERSetting
+    rating_property: str  # Property name on dtos.SiteDERRating
+
+
+# setGradW and setMinWh have no DERCapability equivalent
+DER_VALUE_EQUIVALENTS: list[DERValueEquivalent] = [
+    DERValueEquivalent("setMaxW", "rtgMaxW", "max_w_value", "max_w_multiplier", DERComparison.LTE),
+    DERValueEquivalent("setMaxVA", "rtgMaxVA", "max_va_value", "max_va_multiplier", DERComparison.LTE),
+    DERValueEquivalent("setMaxVar", "rtgMaxVar", "max_var_value", "max_var_multiplier", DERComparison.LTE),
+    DERValueEquivalent(
+        "setMaxChargeRateW",
+        "rtgMaxChargeRateW",
+        "max_charge_rate_w_value",
+        "max_charge_rate_w_multiplier",
+        DERComparison.LTE,
+    ),
+    DERValueEquivalent(
+        "setMaxDischargeRateW",
+        "rtgMaxDischargeRateW",
+        "max_discharge_rate_w_value",
+        "max_discharge_rate_w_multiplier",
+        DERComparison.LTE,
+    ),
+    DERValueEquivalent("setMaxWh", "rtgMaxWh", "max_wh_value", "max_wh_multiplier", DERComparison.LTE),
+    # 2030.5 reverses these: setMaxVarNeg is a negative number and the min PF ratings are a lower bound.
+    DERValueEquivalent(
+        "setMaxVarNeg", "rtgMaxVarNeg", "max_var_neg_value", "max_var_neg_multiplier", DERComparison.GTE
+    ),
+    DERValueEquivalent(
+        "setMinPFOverExcited",
+        "rtgMinPFOverExcited",
+        "min_pf_over_excited_displacement",
+        "min_pf_over_excited_multiplier",
+        DERComparison.GTE,
+    ),
+    DERValueEquivalent(
+        "setMinPFUnderExcited",
+        "rtgMinPFUnderExcited",
+        "min_pf_under_excited_displacement",
+        "min_pf_under_excited_multiplier",
+        DERComparison.GTE,
+    ),
+]
+
+DER_MODES_EQUIVALENTS: list[DERModesEquivalent] = [
+    DERModesEquivalent("modesEnabled", "modesSupported", "modes_enabled", "modes_supported"),
+    DERModesEquivalent("doeModesEnabled", "doeModesSupported", "doe_modes_enabled", "doe_modes_supported"),
+    DERModesEquivalent("vppModesEnabled", "vppModesSupported", "vpp_modes_enabled", "vpp_modes_supported"),
+]
 
 
 class SoftChecker:
@@ -386,12 +464,65 @@ def do_field_exists_check(
         soft_checker.add(f"{field.alias} MUST be unset but is currently specified as: {actual_value}")
 
 
+def do_presence_matches_check(
+    soft_checker: SoftChecker, setting_name: str, setting: int | None, rating_name: str, rating: int | None
+) -> None:
+    """Checks that a DERSettings value and its DERCapability equivalent are either both set or both unset."""
+    if setting is not None and rating is None:
+        soft_checker.add(f"DERSetting.{setting_name} is set but DERCapability.{rating_name} is missing")
+    elif setting is None and rating is not None:
+        soft_checker.add(f"DERCapability.{rating_name} is set but DERSetting.{setting_name} is missing")
+
+
+def do_settings_within_capability_check(
+    soft_checker: SoftChecker, der_settings: dtos.SiteDERSetting, der_rating: dtos.SiteDERRating
+) -> None:
+    """Checks that every value in der_settings is within the limits of the equivalent value in der_rating (if there is
+    an equivalent). Values that are set in only one of der_settings / der_rating are failures.
+
+    soft_checker: Will report any failures into this object
+    der_settings: The settings to check
+    der_rating: The capability that der_settings must be within
+    """
+    for e in DER_VALUE_EQUIVALENTS:
+        raw_setting: int | None = getattr(der_settings, e.value_property)
+        raw_rating: int | None = getattr(der_rating, e.value_property)
+        do_presence_matches_check(soft_checker, e.setting_name, raw_setting, e.rating_name, raw_rating)
+        if raw_setting is None or raw_rating is None:
+            continue
+
+        # Settings and capability can be encoded with differing multipliers (a missing multiplier is equivalent to 0)
+        setting = Decimal(raw_setting).scaleb(getattr(der_settings, e.multiplier_property) or 0)
+        rating = Decimal(raw_rating).scaleb(getattr(der_rating, e.multiplier_property) or 0)
+        within_capability = setting <= rating if e.comparison == DERComparison.LTE else setting >= rating
+        if not within_capability:
+            soft_checker.add(
+                f"DERSetting.{e.setting_name} {setting:f} must be {e.comparison} "
+                f"DERCapability.{e.rating_name} {rating:f}"
+            )
+
+    for m in DER_MODES_EQUIVALENTS:
+        enabled: int | None = getattr(der_settings, m.setting_property)
+        supported: int | None = getattr(der_rating, m.rating_property)
+        do_presence_matches_check(soft_checker, m.setting_name, enabled, m.rating_name, supported)
+        if enabled is None or supported is None:
+            continue
+
+        unsupported = int(enabled) & ~int(supported)
+        if unsupported:
+            soft_checker.add(
+                f"DERSetting.{m.setting_name} {int(enabled):x} enables modes that aren't in "
+                f"DERCapability.{m.rating_name} {int(supported):x} (unsupported bits: {unsupported:x})"
+            )
+
+
 async def check_der_settings_contents(  # noqa: C901
     backend: RunnerBackend, resolved_parameters: dict[str, ResolvedParam]
 ) -> CheckResult:
     """Implements the der-settings-contents check
 
-    Returns pass if DERSettings has been submitted for the active site"""
+    Returns pass if DERSettings has been submitted for the active site, matches all specified parameters and is within
+    the limits of the DERCapability for the active site"""
 
     site = await backend.get_active_site()
     if site is None:
@@ -444,6 +575,13 @@ async def check_der_settings_contents(  # noqa: C901
         elif isinstance(raw_value, bool):
             # A set/unset check
             do_field_exists_check(soft_checker, der_settings, field, raw_value)
+
+    # Compare against the equivalent capability values
+    der_rating = await backend.get_der_capability(site.site_id)
+    if der_rating is None:
+        soft_checker.add(f"No DERCapability found for EndDevice {site.site_id} to compare with DERSetting")
+    else:
+        do_settings_within_capability_check(soft_checker, der_settings, der_rating)
 
     return soft_checker.finalize()
 
