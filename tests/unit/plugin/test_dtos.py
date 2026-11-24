@@ -1,6 +1,12 @@
 from dataclasses import fields
 
-from cactus_runner.app.check import ParamsDERCapabilityContents, ParamsDERSettingsContents, SiteReadingTypeProperty
+from cactus_runner.app.check import (
+    DER_MODES_EQUIVALENTS,
+    DER_VALUE_EQUIVALENTS,
+    ParamsDERCapabilityContents,
+    ParamsDERSettingsContents,
+    SiteReadingTypeProperty,
+)
 from cactus_runner.plugin import dtos
 
 
@@ -45,8 +51,8 @@ def test_site_der_setting_dto_has_no_extra_fields() -> None:
     dto_field_names = {f.name for f in fields(dtos.SiteDERSetting)}
     required = _fields_referenced_by_params(ParamsDERSettingsContents) | {"grad_w"}
 
-    # Required by status.py::get_active_runner_status currently
-    required = required.union(["max_discharge_rate_w_multiplier", "max_charge_rate_w_multiplier"])
+    # Required for comparing settings against capability
+    required = required.union(e.multiplier_property for e in DER_VALUE_EQUIVALENTS)
 
     extra = dto_field_names - required
     assert not extra, f"SiteDERSetting DTO has fields not required by ParamsDERSettingsContents: {extra}"
@@ -66,5 +72,26 @@ def test_site_der_rating_dto_has_no_extra_fields() -> None:
     dto_field_names = {f.name for f in fields(dtos.SiteDERRating)}
     required = _fields_referenced_by_params(ParamsDERCapabilityContents)
 
+    # Required for comparing settings against capability
+    required = required.union(e.multiplier_property for e in DER_VALUE_EQUIVALENTS)
+
     extra = dto_field_names - required
     assert not extra, f"SiteDERRating DTO has fields not required by ParamsDERCapabilityContents: {extra}"
+
+
+def test_der_dtos_cover_all_equivalents() -> None:
+    """Every property used to compare settings against capability must exist on the DTOs."""
+    setting_fields = {f.name for f in fields(dtos.SiteDERSetting)}
+    rating_fields = {f.name for f in fields(dtos.SiteDERRating)}
+
+    for e in DER_VALUE_EQUIVALENTS:
+        assert {e.value_property, e.multiplier_property} <= setting_fields
+        assert {e.value_property, e.multiplier_property} <= rating_fields
+    for m in DER_MODES_EQUIVALENTS:
+        assert m.setting_property in setting_fields
+        assert m.rating_property in rating_fields
+
+    # Every value in DERCapability has an equivalent setting - so every field should be covered
+    compared = {p for e in DER_VALUE_EQUIVALENTS for p in (e.value_property, e.multiplier_property)}
+    compared |= {m.rating_property for m in DER_MODES_EQUIVALENTS}
+    assert compared == rating_fields
