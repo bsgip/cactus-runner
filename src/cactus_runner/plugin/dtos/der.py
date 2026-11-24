@@ -38,16 +38,23 @@ class SiteDERSetting:
     modes_enabled: DERControlType | None
     doe_modes_enabled: DOESupportedMode | None
     max_w_value: int | None
+    max_w_multiplier: int | None
     max_va_value: int | None
+    max_va_multiplier: int | None
     max_var_value: int | None
+    max_var_multiplier: int | None
     max_var_neg_value: int | None
+    max_var_neg_multiplier: int | None
     max_charge_rate_w_value: int | None
     max_charge_rate_w_multiplier: int | None
     max_discharge_rate_w_value: int | None
     max_discharge_rate_w_multiplier: int | None
     max_wh_value: int | None
+    max_wh_multiplier: int | None
     min_pf_over_excited_displacement: int | None
+    min_pf_over_excited_multiplier: int | None
     min_pf_under_excited_displacement: int | None
+    min_pf_under_excited_multiplier: int | None
     # Placeholders for the storage extension
     min_wh_value: int | None
     vpp_modes_enabled: int | None
@@ -62,14 +69,23 @@ class SiteDERRating:
     modes_supported: DERControlType | None
     doe_modes_supported: DOESupportedMode | None
     max_w_value: int | None
+    max_w_multiplier: int | None
     max_va_value: int | None
+    max_va_multiplier: int | None
     max_var_value: int | None
+    max_var_multiplier: int | None
     max_var_neg_value: int | None
+    max_var_neg_multiplier: int | None
     max_charge_rate_w_value: int | None
+    max_charge_rate_w_multiplier: int | None
     max_discharge_rate_w_value: int | None
+    max_discharge_rate_w_multiplier: int | None
     max_wh_value: int | None
+    max_wh_multiplier: int | None
     min_pf_over_excited_displacement: int | None
+    min_pf_over_excited_multiplier: int | None
     min_pf_under_excited_displacement: int | None
+    min_pf_under_excited_multiplier: int | None
     # Placeholders for the storage extension
     vpp_modes_supported: int | None
 
