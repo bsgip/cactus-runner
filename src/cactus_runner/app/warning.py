@@ -1,5 +1,6 @@
 import logging
 import statistics
+from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime, timedelta
 
@@ -8,7 +9,7 @@ from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.archive.site_reading import ArchiveSiteReading, ArchiveSiteReadingType
 from envoy.server.model.site import SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.server.schema.sep2.types import UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, PhaseCode, RoleFlagsType, UomType
 from sqlalchemy import and_, func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,9 @@ ACTIVE_POWER_MAX_W_BUFFER = 1.25
 # Deliberately loose - a few dropped intervals are ok, only warn when a reading type is missing a lot of them
 MISSING_INTERVALS_MIN_FRACTION = 0.25  # More than this fraction of the span must be missing...
 MISSING_INTERVALS_MIN_COUNT = 5  # ...AND at least this many intervals (so one gap in a short test doesn't warn)
+
+# Allow for a test finishing while the client is part way through posting the latest reading for each phase
+VOLTAGE_PHASE_COUNT_TOLERANCE = 1
 
 
 def append_warnings(warnings: Iterable[WarningEntry], active_test_procedure: ActiveTestProcedure) -> None:
@@ -268,11 +272,73 @@ async def _analyse_duplicate_readings(session: AsyncSession) -> WarningEntry | N
         )
 
 
+async def _analyse_voltage_phase_count_mismatch(session: AsyncSession) -> WarningEntry | None:
+    """Flags if the number of voltage readings differs across phase codes by more than VOLTAGE_PHASE_COUNT_TOLERANCE.
+
+    Phases are only compared with other phases of the same site, roleFlags (i.e. site vs DER), dataQualifier and kind.
+    A phase that was registered but never received any readings has a count of 0. Reading types sharing the same phase
+    have their counts summed."""
+    rows = (
+        await session.execute(
+            select(
+                SiteReadingType.site_id,
+                SiteReadingType.role_flags,
+                SiteReadingType.data_qualifier,
+                SiteReadingType.kind,
+                SiteReadingType.phase,
+                func.count(SiteReading.site_reading_id),
+            )
+            .outerjoin(SiteReading, SiteReading.site_reading_type_id == SiteReadingType.site_reading_type_id)
+            .where(SiteReadingType.uom == UomType.VOLTAGE)
+            .group_by(
+                SiteReadingType.site_id,
+                SiteReadingType.role_flags,
+                SiteReadingType.data_qualifier,
+                SiteReadingType.kind,
+                SiteReadingType.phase,
+            )
+            .order_by(
+                SiteReadingType.site_id,
+                SiteReadingType.role_flags,
+                SiteReadingType.data_qualifier,
+                SiteReadingType.kind,
+                SiteReadingType.phase,
+            )
+        )
+    ).all()
+
+    counts_by_group: dict[tuple[int, int, int, int], dict[int, int]] = defaultdict(dict)
+    for site_id, role_flags, data_qualifier, kind, phase, count in rows:
+        counts_by_group[(site_id, role_flags, data_qualifier, kind)][phase] = count
+
+    mismatch_descriptions: list[str] = []
+    for (_, role_flags, data_qualifier, _), phase_counts in counts_by_group.items():
+        if max(phase_counts.values()) - min(phase_counts.values()) > VOLTAGE_PHASE_COUNT_TOLERANCE:
+            counts = ", ".join(f"{PhaseCode(p).name} ({p}): {count}" for p, count in phase_counts.items())
+            mismatch_descriptions.append(
+                f"- roleFlags 0x{RoleFlagsType(role_flags):02X}, "
+                f"dataQualifier {DataQualifierType(data_qualifier).name}: {counts}"
+            )
+
+    if mismatch_descriptions:
+        return WarningEntry(
+            type="readings.voltage-phase-count-mismatch",
+            description="Number of voltage readings differs across phases",
+            message=(
+                "The number of voltage readings received is not the same for every phase code. Each phase should "
+                "receive a reading for every interval (a difference of "
+                f"{VOLTAGE_PHASE_COUNT_TOLERANCE} reading is ok).\n" + "\n".join(mismatch_descriptions)
+            ),
+            timestamp=datetime.now(UTC),
+        )
+
+
 POST_TEST_ANALYSERS: list[PostTestAnalyser] = [
     _analyse_der_settings_varied,
     _analyse_reading_type_varied,
     _analyse_active_power_exceeds_max_w,
     _analyse_voltage_out_of_range,
+    _analyse_voltage_phase_count_mismatch,
     _analyse_missing_intervals,
     _analyse_duplicate_readings,
 ]

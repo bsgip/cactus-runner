@@ -9,9 +9,10 @@ from envoy.server.model.archive.site import ArchiveSiteDERSetting
 from envoy.server.model.archive.site_reading import ArchiveSiteReading, ArchiveSiteReadingType
 from envoy.server.model.site import Site, SiteDERSetting
 from envoy.server.model.site_reading import SiteReading, SiteReadingType
-from envoy_schema.server.schema.sep2.types import UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, PhaseCode, UomType
 from sqlalchemy import inspect
 
+from cactus_runner.app.envoy_common import ReadingLocation
 from cactus_runner.app.warning import (
     POST_TEST_ANALYSERS,
     _analyse_active_power_exceeds_max_w,
@@ -20,6 +21,7 @@ from cactus_runner.app.warning import (
     _analyse_missing_intervals,
     _analyse_reading_type_varied,
     _analyse_voltage_out_of_range,
+    _analyse_voltage_phase_count_mismatch,
     append_warnings,
     run_post_test_analysers,
 )
@@ -491,6 +493,136 @@ async def test_analyse_voltage_out_of_range_warns_and_counts_across_reading_type
 
 def test_analyse_voltage_out_of_range_is_registered():
     assert _analyse_voltage_out_of_range in POST_TEST_ANALYSERS
+
+
+SITE = ReadingLocation.SITE_READING
+DEVICE = ReadingLocation.DEVICE_READING
+AVG = DataQualifierType.AVERAGE
+MAX = DataQualifierType.MAXIMUM
+VOLTS = UomType.VOLTAGE
+AN, BN, ABC = PhaseCode.PHASE_AN_S1N, PhaseCode.PHASE_BN, PhaseCode.PHASE_ABC
+
+
+async def _create_phase_readings(
+    pg_base_config, reading_types: list[tuple[UomType, ReadingLocation, DataQualifierType, PhaseCode, int]]
+) -> None:
+    """Creates a SiteReadingType with the specified number of readings for each element in reading_types"""
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=101, aggregator_id=1, nmi_checksum=None)
+        session.add(site)
+        for i, (uom, location, data_qualifier, phase, count) in enumerate(reading_types):
+            srt = generate_class_instance(
+                SiteReadingType,
+                seed=1000 * (i + 1),
+                site=site,
+                aggregator_id=1,
+                uom=uom,
+                role_flags=location,
+                data_qualifier=data_qualifier,
+                kind=KindType.POWER,
+                phase=phase,
+            )
+            session.add(srt)
+            for j in range(count):
+                session.add(
+                    generate_class_instance(
+                        SiteReading,
+                        seed=1000 * (i + 1) + j,
+                        site_reading_type=srt,
+                        time_period_start=READINGS_T0 + timedelta(minutes=j),
+                        time_period_seconds=60,
+                    )
+                )
+        await session.commit()
+
+
+@pytest.mark.parametrize(
+    "reading_types",
+    [
+        pytest.param([], id="no-reading-types"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 5)], id="single-phase"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 0), (VOLTS, SITE, AVG, ABC, 0)], id="no-readings"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 5), (VOLTS, SITE, AVG, ABC, 5)], id="equal"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 4), (VOLTS, SITE, AVG, ABC, 5)], id="differ-by-1"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 0), (VOLTS, SITE, AVG, ABC, 1)], id="differ-by-1-from-zero"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 5), (VOLTS, DEVICE, AVG, ABC, 2)], id="site-vs-device-not-compared"),
+        pytest.param([(VOLTS, SITE, AVG, AN, 5), (VOLTS, SITE, MAX, ABC, 2)], id="qualifiers-not-compared"),
+        pytest.param(
+            [(UomType.REAL_POWER_WATT, SITE, AVG, AN, 5), (UomType.REAL_POWER_WATT, SITE, AVG, ABC, 2)],
+            id="not-voltage",
+        ),
+        pytest.param(
+            [(VOLTS, SITE, AVG, AN, 2), (VOLTS, SITE, AVG, AN, 3), (VOLTS, SITE, AVG, ABC, 5)],
+            id="same-phase-summed",
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_analyse_voltage_phase_count_mismatch_no_warning(pg_base_config, reading_types):
+    await _create_phase_readings(pg_base_config, reading_types)
+
+    async with generate_async_session(pg_base_config) as session:
+        assert await _analyse_voltage_phase_count_mismatch(session) is None
+
+
+@pytest.mark.parametrize(
+    "reading_types, expected_lines",
+    [
+        pytest.param(
+            [(VOLTS, SITE, AVG, AN, 3), (VOLTS, SITE, AVG, ABC, 5)],
+            ["- roleFlags 0x03, dataQualifier AVERAGE: PHASE_AN_S1N (129): 3, PHASE_ABC (224): 5"],
+            id="differ-by-2",
+        ),
+        pytest.param(
+            [(VOLTS, DEVICE, AVG, AN, 0), (VOLTS, DEVICE, AVG, ABC, 2)],
+            ["- roleFlags 0x49, dataQualifier AVERAGE: PHASE_AN_S1N (129): 0, PHASE_ABC (224): 2"],
+            id="phase-without-any-readings",
+        ),
+        pytest.param(
+            [(VOLTS, SITE, AVG, BN, 4), (VOLTS, SITE, AVG, AN, 3), (VOLTS, SITE, AVG, ABC, 5)],
+            ["- roleFlags 0x03, dataQualifier AVERAGE: PHASE_BN (65): 4, PHASE_AN_S1N (129): 3, PHASE_ABC (224): 5"],
+            id="tolerance-applies-to-largest-difference",
+        ),
+        pytest.param(
+            [
+                (VOLTS, SITE, AVG, AN, 5),
+                (VOLTS, SITE, AVG, ABC, 5),
+                (VOLTS, DEVICE, AVG, AN, 5),
+                (VOLTS, DEVICE, AVG, ABC, 1),
+            ],
+            ["- roleFlags 0x49, dataQualifier AVERAGE: PHASE_AN_S1N (129): 5, PHASE_ABC (224): 1"],
+            id="only-mismatching-location-reported",
+        ),
+        pytest.param(
+            [
+                (VOLTS, SITE, AVG, AN, 1),
+                (VOLTS, SITE, AVG, ABC, 5),
+                (VOLTS, DEVICE, AVG, AN, 5),
+                (VOLTS, DEVICE, AVG, ABC, 1),
+            ],
+            [
+                "- roleFlags 0x03, dataQualifier AVERAGE: PHASE_AN_S1N (129): 1, PHASE_ABC (224): 5",
+                "- roleFlags 0x49, dataQualifier AVERAGE: PHASE_AN_S1N (129): 5, PHASE_ABC (224): 1",
+            ],
+            id="both-locations",
+        ),
+    ],
+)
+@pytest.mark.anyio
+async def test_analyse_voltage_phase_count_mismatch_warns(pg_base_config, reading_types, expected_lines: list[str]):
+    await _create_phase_readings(pg_base_config, reading_types)
+
+    async with generate_async_session(pg_base_config) as session:
+        warning = await _analyse_voltage_phase_count_mismatch(session)
+
+    assert warning is not None
+    assert warning.type == "readings.voltage-phase-count-mismatch"
+    assert_nowish(warning.timestamp)
+    assert warning.message.splitlines()[1:] == expected_lines
+
+
+def test_analyse_voltage_phase_count_mismatch_is_registered():
+    assert _analyse_voltage_phase_count_mismatch in POST_TEST_ANALYSERS
 
 
 READINGS_T0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)

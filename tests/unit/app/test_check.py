@@ -45,6 +45,7 @@ from envoy_schema.server.schema.sep2.types import (
     DataQualifierType,
     DeviceCategory,
     KindType,
+    PhaseCode,
     UomType,
 )
 from sqlalchemy import select
@@ -72,6 +73,7 @@ from cactus_runner.app.check import (
     check_resource_requests,
     check_response_contents,
     check_subscription_contents,
+    check_voltage_phase_code,
     csip_aus_resource_to_match_uri,
     determine_check_results,
     do_check_latest_reading_level,
@@ -116,6 +118,7 @@ CHECK_TYPE_TO_HANDLER: dict[str, str | None] = {
     "readings-site-active-power": "check_readings_site_active_power",
     "readings-site-reactive-power": "check_readings_site_reactive_power",
     "readings-voltage": "check_readings_voltage",
+    "voltage-phase-code": "check_voltage_phase_code",
     "readings-der-active-power": "check_readings_der_active_power",
     "readings-der-reactive-power": "check_readings_der_reactive_power",
     "all-notifications-transmitted": "check_all_notifications_transmitted",
@@ -126,7 +129,6 @@ CHECK_TYPE_TO_HANDLER: dict[str, str | None] = {
     "all-polls-at-correct-time": "check_all_polls_at_correct_time",
     "resource-requests": "check_resource_requests",
     "end-device-count": "check_end_device_count",
-    "voltage-phase-code": None,  # To be added in a future PR
 }
 
 
@@ -2708,6 +2710,116 @@ async def test_check_readings_voltage(
     assert all(
         [ca.args[6] is DataQualifierType.AVERAGE for ca in mock_do_check_site_readings_and_params.call_args_list]
     )
+
+
+SITE = ReadingLocation.SITE_READING
+DEVICE = ReadingLocation.DEVICE_READING
+AN, BN, CN, ABC = PhaseCode.PHASE_AN_S1N, PhaseCode.PHASE_BN, PhaseCode.PHASE_CN_S2N, PhaseCode.PHASE_ABC
+
+
+@pytest.mark.parametrize(
+    "site_phases, device_phases, expected, expected_in_description",
+    [
+        # Single MMR
+        ([AN], [], True, ["site level", "129"]),
+        ([BN], [], True, ["65"]),
+        ([CN], [], True, ["33"]),
+        ([ABC], [], True, ["224"]),
+        ([], [AN], True, ["DER/device level", "129"]),
+        ([PhaseCode.NOT_APPLICABLE], [], False, ["site level", "phase 0"]),
+        ([PhaseCode.PHASE_A_S1], [], False, ["phase 128"]),
+        ([PhaseCode.PHASE_AB], [], False, ["phase 132"]),
+        # Multiple MMRs
+        ([AN, BN, CN, ABC], [], True, ["129, 65, 33, 224"]),
+        ([ABC, AN], [], True, []),
+        ([ABC, ABC], [], True, []),
+        ([AN, BN, CN], [], False, ["PHASE_ABC (224)"]),
+        ([AN, AN], [], False, ["PHASE_ABC (224)"]),
+        ([ABC, PhaseCode.NOT_APPLICABLE], [], False, ["phase 0"]),
+        # Site and device are assessed independently
+        ([AN, BN, CN, ABC], [AN], True, ["site level", "DER/device level"]),
+        ([AN], [BN], True, []),
+        ([ABC], [AN, BN], False, ["DER/device level"]),
+        ([AN, BN], [ABC], False, ["site level"]),
+        ([AN, BN], [PhaseCode.NOT_APPLICABLE], False, ["site level", "DER/device level"]),
+        # Nothing registered
+        ([], [], False, ["No site level or DER/device level"]),
+    ],
+)
+@pytest.mark.anyio
+async def test_check_voltage_phase_code(
+    site_phases: list[PhaseCode],
+    device_phases: list[PhaseCode],
+    expected: bool,
+    expected_in_description: list[str],
+):
+    site = generate_class_instance(dtos.Site, seed=1, site_id="1")
+    located_phases = [(SITE, p) for p in site_phases] + [(DEVICE, p) for p in device_phases]
+    mock_backend = mock.AsyncMock(spec=RunnerBackend)
+    mock_backend.get_active_site.return_value = site
+    mock_backend.get_site_reading_types.return_value = [
+        generate_class_instance(
+            dtos.SiteReadingType,
+            seed=100 * (i + 1),
+            site_id=site.site_id,
+            uom=UomType.VOLTAGE,
+            kind=KindType.POWER,
+            data_qualifier=DataQualifierType.AVERAGE,
+            role_flags=location,
+            phase=phase,
+        )
+        for i, (location, phase) in enumerate(located_phases)
+    ]
+
+    result = await check_voltage_phase_code(mock_backend)
+
+    assert_check_result(result, expected)
+    assert result.description is not None
+    for expected_text in expected_in_description:
+        assert expected_text in result.description
+    assert all(ca.kwargs == {"site_ids": ["1"]} for ca in mock_backend.get_site_reading_types.call_args_list)
+
+
+@pytest.mark.parametrize(
+    "ignored_values",
+    [
+        {"uom": UomType.REAL_POWER_WATT},
+        {"kind": KindType.ENERGY},
+        {"data_qualifier": DataQualifierType.MAXIMUM},
+        {"role_flags": 0},
+    ],
+)
+@pytest.mark.anyio
+async def test_check_voltage_phase_code_ignores_other_reading_types(ignored_values: dict[str, Any]):
+    """Only the average voltage readings at the site / device should be considered"""
+    valid_values: dict[str, Any] = {
+        "site_id": "1",
+        "uom": UomType.VOLTAGE,
+        "kind": KindType.POWER,
+        "data_qualifier": DataQualifierType.AVERAGE,
+        "role_flags": SITE,
+    }
+    valid = generate_class_instance(dtos.SiteReadingType, seed=101, phase=AN, **valid_values)
+    ignored = generate_class_instance(
+        dtos.SiteReadingType, seed=202, phase=PhaseCode.NOT_APPLICABLE, **(valid_values | ignored_values)
+    )
+    mock_backend = mock.AsyncMock(spec=RunnerBackend)
+    mock_backend.get_active_site.return_value = generate_class_instance(dtos.Site, seed=1, site_id="1")
+
+    mock_backend.get_site_reading_types.return_value = [valid, ignored]
+    assert_check_result(await check_voltage_phase_code(mock_backend), True)
+
+    mock_backend.get_site_reading_types.return_value = [ignored]
+    assert_check_result(await check_voltage_phase_code(mock_backend), False)
+
+
+@pytest.mark.anyio
+async def test_check_voltage_phase_code_no_active_site():
+    mock_backend = mock.AsyncMock(spec=RunnerBackend)
+    mock_backend.get_active_site.return_value = None
+
+    assert_check_result(await check_voltage_phase_code(mock_backend), False)
+    mock_backend.get_site_reading_types.assert_not_called()
 
 
 @pytest.mark.anyio
