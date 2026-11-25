@@ -24,7 +24,7 @@ from envoy.server.exception import InvalidMappingError
 from envoy.server.model.config.server import RuntimeServerConfig as RuntimeServerConfigDefaults
 from envoy_schema.server.schema import uri
 from envoy_schema.server.schema.sep2.response import ResponseType
-from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, UomType
+from envoy_schema.server.schema.sep2.types import DataQualifierType, KindType, PhaseCode, UomType
 
 from cactus_runner.app.envoy_common import (
     ReadingLocation,
@@ -43,6 +43,7 @@ from cactus_runner.models import (
 from cactus_runner.plugin import dtos
 from cactus_runner.plugin.backends.common import (
     RunnerBackend,
+    get_csip_aus_site_reading_types_active_site,
     get_site_reading_types_ordered,
     get_site_readings_ordered,
 )
@@ -255,6 +256,13 @@ class SoftChecker:
 def site_reading_time_end(site_reading: dtos.SiteReading) -> datetime:
     """Determines the end time for a site reading."""
     return site_reading.time_period_start + site_reading.time_period_duration
+
+
+def site_reading_matches_length(site_reading: dtos.SiteReading, reading_length_seconds: int | None) -> bool:
+    """True if site_reading has a duration of EXACTLY reading_length_seconds. None will match every reading."""
+    if reading_length_seconds is None:
+        return True
+    return site_reading.time_period_duration == timedelta(seconds=reading_length_seconds)
 
 
 def merge_checks(checks: list[CheckResult]) -> CheckResult:
@@ -731,6 +739,7 @@ async def do_check_readings_for_types(
     backend: RunnerBackend,
     site_reading_types: Sequence[dtos.SiteReadingType],
     minimum_count: int | None,
+    reading_length_seconds: int | None = None,
 ) -> CheckResult:
     """Checks the SiteReading table for a specified set of SiteReadingType ID's. Makes sure that all conditions
     are met. "Valid" is that at least ONE of the site_reading_types supplied meets the conditions
@@ -738,6 +747,7 @@ async def do_check_readings_for_types(
     session: DB session to query
     site_reading_types: list of SiteReadingType's to check readings
     minimum_count: If not None - ensure that every SiteReadingType has at least this many SiteReadings
+    reading_length_seconds: If not None - only SiteReadings with exactly this duration count towards minimum_count
 
     """
     if minimum_count is not None:
@@ -747,7 +757,14 @@ async def do_check_readings_for_types(
                 backend, srt_ids, start_time=active_test_procedure.started_at
             )  # Only consider readings from test start (if we've started)
             count_by_srt_id: dict[str, int] = {
-                srt_id: len([x for x in results if x.site_reading_type_id == srt_id]) for srt_id in srt_ids
+                srt_id: len(
+                    [
+                        x
+                        for x in results
+                        if x.site_reading_type_id == srt_id and site_reading_matches_length(x, reading_length_seconds)
+                    ]
+                )
+                for srt_id in srt_ids
             }
         else:
             count_by_srt_id = {}
@@ -774,19 +791,20 @@ async def do_check_readings_for_types(
         # just end up being a little less than perfect.
         total_mups = len(set(srt.group_id for srt in site_reading_types))
         total_mmrs = len(site_reading_types)
+        length_description = "" if reading_length_seconds is None else f" of length {reading_length_seconds}s"
 
         if highest_found_count >= minimum_count:
             return CheckResult(
                 True,
-                f"MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} has {highest_found_count} Readings.",  # noqa: E501
+                f"MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} has {highest_found_count} Readings{length_description}.",  # noqa: E501
             )
         else:
             return CheckResult(
                 False,
                 (
                     f"No MirrorMeterReading has sufficient readings. {total_mups} MirrorUsagePoint(s) and {total_mmrs} MirrorMeterReading(s) checked."  # noqa: E501
-                    f"Closest was MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} with {highest_found_count}/{minimum_count} readings."  # noqa: E501
-                    f"Total: {sum(count_by_srt_id.values())} readings were sent of correct uom, role flag, kind, and data qualifier for this test."  # noqa: E501
+                    f"Closest was MirrorMeterReading {highest_found_mrid} at /mup/{highest_found_group} with {highest_found_count}/{minimum_count} readings{length_description}."  # noqa: E501
+                    f"Total: {sum(count_by_srt_id.values())} readings{length_description} were sent of correct uom, role flag, kind, and data qualifier for this test."  # noqa: E501
                 ),
             )
 
@@ -799,6 +817,7 @@ async def do_check_levels_for_readings(
     min_level: float | None,
     max_level: float | None,
     window_period: timedelta | None = None,
+    reading_length_seconds: int | None = None,
 ) -> CheckResult:
     """Checks the SiteReadings presented by the backend for a specified set of SiteReadingType ID's.
 
@@ -818,6 +837,8 @@ async def do_check_levels_for_readings(
         max_level: If not None - ensure that all readings are below this
         window_period: If not None - restrict the check to readings within this trailing window of the latest
             received reading
+        reading_length_seconds: If not None - restrict the check to readings with exactly this duration. This does NOT
+            affect the placement of the trailing window (which is always relative to the latest reading of ANY length)
 
     Returns:
         CheckResult - True if all readings fall above and/or below limits else False
@@ -847,9 +868,12 @@ async def do_check_levels_for_readings(
         ]
         window_description = f"; for window size {window_period.total_seconds()}s."
 
+    readings = [rdg for rdg in readings if site_reading_matches_length(rdg, reading_length_seconds)]
+
     # No readings returned
     if not readings:
-        return CheckResult(False, "No readings found for level comparison")
+        length_description = "" if reading_length_seconds is None else f" of length {reading_length_seconds}s"
+        return CheckResult(False, f"No readings{length_description} found for level comparison")
 
     values = [rdg.value * (10 ** srt_pow10s_by_id[rdg.site_reading_type_id]) for rdg in readings]
     failure_msg = ""
@@ -873,6 +897,7 @@ async def do_check_latest_reading_level(
     site_reading_types: Sequence[dtos.SiteReadingType],
     min_level: float | None,
     max_level: float | None,
+    reading_length_seconds: int | None = None,
 ) -> CheckResult:
     """Checks that the LATEST SiteReading (by reading period end, i.e. time_period_start + time_period_seconds) for
     each of the supplied SiteReadingType's falls within the specified level.
@@ -886,15 +911,26 @@ async def do_check_latest_reading_level(
         site_reading_types: list of SiteReadingType's to check readings
         min_level: If not None - ensure the latest reading is above this
         max_level: If not None - ensure the latest reading is below this
+        reading_length_seconds: If not None - ensure the latest reading has exactly this duration. The latest reading
+            is found BEFORE considering length - i.e. an older reading with a matching length will NOT be used in place
+            of a more recent reading with some other length.
 
     Returns:
-        CheckResult - True if the latest reading for every type is above/below the supplied limits.
+        CheckResult - True if the latest reading for every type is above/below the supplied limits (and has the
+            supplied length).
     """
     failure_msg = ""
     for srt in site_reading_types:
         latest_reading = await backend.get_latest_site_reading([srt.site_reading_type_id], method="end_time")
         if latest_reading is None:
             return CheckResult(False, f"No readings found under MirrorMeterReading {srt.mrid}")
+        if not site_reading_matches_length(latest_reading, reading_length_seconds):
+            actual_length_seconds = int(latest_reading.time_period_duration.total_seconds())
+            return CheckResult(
+                False,
+                f"Latest reading has length {actual_length_seconds}s but expected {reading_length_seconds}s "
+                f"under MirrorMeterReading {srt.mrid}.",
+            )
         value = latest_reading.value * (10**srt.power_of_ten_multiplier)
 
         if min_level is not None and value < min_level:
@@ -923,6 +959,9 @@ async def do_check_reading_levels_for_types(
       Preconditions check on current device state). Mutually exclusive with window_seconds.
     - Otherwise, no window period means all readings for the test are checked, and a window period means only
       readings within that trailing window (relative to the latest reading) are checked.
+    - reading_length_seconds filters whichever of the above readings are being checked to those with that exact
+      duration. With latest_reading_only, the latest reading (of any length) MUST have that duration. It's purely a
+      filter - supplying it without latest_reading_only, window_seconds or a level won't run any level checks.
 
     Args:
         backend: utility server representation responsible for serving up state.
@@ -936,13 +975,18 @@ async def do_check_reading_levels_for_types(
     min_level = resolved_parameters.get("minimum_level")
     window_seconds = resolved_parameters.get("window_seconds")
     latest_reading_only = resolved_parameters.get("latest_reading_only", False)
+    reading_length_seconds = resolved_parameters.get("reading_length_seconds")
     if all(el is None for el in [max_level, min_level, window_seconds]) and not latest_reading_only:
         # Nothing to do, check passes
         return CheckResult(True, None)
     if latest_reading_only:
-        return await do_check_latest_reading_level(backend, site_reading_types, min_level, max_level)
+        return await do_check_latest_reading_level(
+            backend, site_reading_types, min_level, max_level, reading_length_seconds
+        )
     window_period = timedelta(seconds=window_seconds) if window_seconds else None
-    return await do_check_levels_for_readings(backend, site_reading_types, min_level, max_level, window_period)
+    return await do_check_levels_for_readings(
+        backend, site_reading_types, min_level, max_level, window_period, reading_length_seconds
+    )
 
 
 def timestamp_on_minute_boundary(d: datetime) -> bool:
@@ -1087,8 +1131,11 @@ async def do_check_site_readings_and_params(
         check_results.append(await do_check_readings_received_after_interval_end(backend, site_reading_types))
 
     minimum_count: int | None = resolved_parameters.get("minimum_count", None)
+    reading_length_seconds: int | None = resolved_parameters.get("reading_length_seconds", None)
     check_results.append(
-        await do_check_readings_for_types(active_test_procedure, backend, site_reading_types, minimum_count)
+        await do_check_readings_for_types(
+            active_test_procedure, backend, site_reading_types, minimum_count, reading_length_seconds
+        )
     )
     check_results.append(await do_check_reading_levels_for_types(backend, site_reading_types, resolved_parameters))
     check_results.append(await do_check_readings_on_minute_boundary(backend, site_reading_types))
@@ -1311,6 +1358,74 @@ async def check_readings_voltage(
 
     # At this point - we don't have valid site OR device data
     return merge_checks([site_check, device_check])
+
+
+# The only phase codes that a client should be using to report voltage
+VOLTAGE_PHASE_CODES: set[PhaseCode] = {
+    PhaseCode.PHASE_AN_S1N,
+    PhaseCode.PHASE_BN,
+    PhaseCode.PHASE_CN_S2N,
+    PhaseCode.PHASE_ABC,
+}
+
+
+def do_check_voltage_phase_codes(
+    site_reading_types: Sequence[dtos.SiteReadingType], reading_location: ReadingLocation
+) -> CheckResult:
+    """Checks the phase codes for all voltage MirrorMeterReadings at a single reading location. Will pass if there is:
+
+    a) A single MirrorMeterReading with a phase code in VOLTAGE_PHASE_CODES
+    b) Multiple MirrorMeterReadings, all with a phase code in VOLTAGE_PHASE_CODES and at least one being ABC"""
+    location_description = READING_LOCATION_DESCRIPTIONS.get(reading_location, reading_location.name)
+
+    unexpected = [srt for srt in site_reading_types if srt.phase not in VOLTAGE_PHASE_CODES]
+    if unexpected:
+        expected_codes = ", ".join(f"{p.name} ({p.value})" for p in sorted(VOLTAGE_PHASE_CODES))
+        unexpected_codes = ", ".join(f"{srt.mrid} has phase {int(srt.phase)}" for srt in unexpected)
+        return CheckResult(
+            False,
+            f"Found {len(unexpected)} {location_description} voltage MirrorMeterReading(s) with an unexpected phase "
+            f"code: {unexpected_codes}. Expected one of {expected_codes}.",
+        )
+
+    phase_codes = ", ".join(str(int(srt.phase)) for srt in site_reading_types)
+    if len(site_reading_types) > 1 and not any(srt.phase == PhaseCode.PHASE_ABC for srt in site_reading_types):
+        return CheckResult(
+            False,
+            f"Found {len(site_reading_types)} {location_description} voltage MirrorMeterReadings with phase codes "
+            f"{phase_codes} but none are {PhaseCode.PHASE_ABC.name} ({PhaseCode.PHASE_ABC.value}). This is required "
+            "when reporting voltage via multiple MirrorMeterReadings.",
+        )
+
+    return CheckResult(True, f"Found {location_description} voltage with valid phase code(s): {phase_codes}.")
+
+
+async def check_voltage_phase_code(backend: RunnerBackend) -> CheckResult:
+    """Implements the voltage-phase-code check.
+
+    SITE and DER voltage are assessed independently (eg a three phase site can have a single phase DER). At least one
+    must be registered and everything that's registered must be valid.
+
+    Will only consider the mandatory "Average" readings"""
+    if not await backend.get_active_site():
+        return CheckResult(False, "No active site found.")
+
+    location_checks: list[CheckResult] = []
+    for location in ReadingLocation:
+        site_reading_types = await get_csip_aus_site_reading_types_active_site(
+            backend, UomType.VOLTAGE, location, KindType.POWER, DataQualifierType.AVERAGE
+        )
+        if site_reading_types:
+            location_checks.append(do_check_voltage_phase_codes(site_reading_types, location))
+
+    if not location_checks:
+        return CheckResult(
+            False,
+            "No site level or DER/device level MirrorUsagePoint for the active EndDevice with "
+            f"{UomType.VOLTAGE.name} readings using DataQualifier {DataQualifierType.AVERAGE.name}.",
+        )
+
+    return merge_checks(location_checks)
 
 
 async def check_readings_der_active_power(
@@ -2110,6 +2225,9 @@ async def run_check(  # noqa: C901
 
             case "readings-voltage":
                 check_result = await check_readings_voltage(active_test_procedure, backend, resolved_parameters, pen)
+
+            case "voltage-phase-code":
+                check_result = await check_voltage_phase_code(backend)
 
             case "readings-der-active-power":
                 check_result = await check_readings_der_active_power(

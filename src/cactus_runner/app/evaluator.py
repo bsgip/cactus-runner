@@ -12,6 +12,7 @@ from cactus_test_definitions.variable_expressions import (
     OperationType,
 )
 
+from cactus_runner import CSIP_AUS_VERSION_URI
 from cactus_runner.app.resolvers import resolve_random_uri
 from cactus_runner.models import ActiveTestProcedure
 from cactus_runner.plugin.backends.resolver import (
@@ -56,6 +57,8 @@ async def resolve_variable(  # noqa: C901
                 return resolve_named_variable_now_day()
             case NamedVariableType.NOW_HOUR:
                 return resolve_named_variable_now_hour()
+            case NamedVariableType.VERSION_URI:
+                return CSIP_AUS_VERSION_URI
             case NamedVariableType.DERSETTING_SET_MAX_W:
                 return await resolver.resolve_named_variable_der_setting_max_w()
             case NamedVariableType.DERSETTING_SET_MAX_VA:
