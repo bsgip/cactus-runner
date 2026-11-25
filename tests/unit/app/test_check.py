@@ -129,7 +129,6 @@ CHECK_TYPE_TO_HANDLER: dict[str, str | None] = {
     "all-polls-at-correct-time": "check_all_polls_at_correct_time",
     "resource-requests": "check_resource_requests",
     "end-device-count": "check_end_device_count",
-    "voltage-phase-code": None,  # To be added in a future PR
 }
 
 
