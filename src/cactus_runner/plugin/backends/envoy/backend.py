@@ -271,7 +271,8 @@ class EnvoyBackend(RunnerBackend):
                 end_time_expr = SiteReading.time_period_start + SiteReading.time_period_seconds * text(
                     "interval '1 second'"
                 )
-                stmt = stmt.order_by(end_time_expr.desc())
+                # Readings of differing lengths can share an end time - the most recently received is the latest
+                stmt = stmt.order_by(end_time_expr.desc(), SiteReading.created_time.desc())
             case "created_time":
                 stmt = stmt.order_by(SiteReading.created_time.desc())
             case _:

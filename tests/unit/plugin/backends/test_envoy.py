@@ -1,5 +1,5 @@
 import inspect
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -373,3 +373,36 @@ async def test_get_archived_site_readings(pg_base_config, envoy_admin_client) ->
     assert [r.value for r in result] == [2]
     assert result[0].created_time == created_time
     assert result[0].archive_time is not None
+
+
+@pytest.mark.parametrize("first_received_seconds, last_received_seconds", [(60, 300), (300, 60)])
+@pytest.mark.anyio
+async def test_get_latest_site_reading_end_time_tie(
+    pg_base_config, envoy_admin_client, first_received_seconds: int, last_received_seconds: int
+) -> None:
+    """Readings of differing lengths can end at the same time - the most recently received should be the latest"""
+    end_time = datetime(2024, 1, 1, 0, 5, tzinfo=UTC)
+    async with generate_async_session(pg_base_config) as session:
+        site = generate_class_instance(Site, seed=1, nmi_checksum=None, aggregator_id=1)
+        srt = generate_class_instance(SiteReadingType, seed=2, aggregator_id=1, site_reading_type_id=1, site=site)
+        session.add_all([site, srt])
+        for i, length_seconds in enumerate([first_received_seconds, last_received_seconds]):
+            session.add(
+                generate_class_instance(
+                    SiteReading,
+                    seed=10 + i,
+                    site_reading_id=None,
+                    site_reading_type=srt,
+                    time_period_start=end_time - timedelta(seconds=length_seconds),
+                    time_period_seconds=length_seconds,
+                    created_time=end_time + timedelta(seconds=i),
+                )
+            )
+        await session.commit()
+
+    async with generate_async_session(pg_base_config) as session:
+        backend = EnvoyBackend(session_factory=lambda: session, admin_client=envoy_admin_client)
+        result = await backend.get_latest_site_reading(["1"], method="end_time")
+
+    assert result is not None
+    assert result.time_period_duration == timedelta(seconds=last_received_seconds)
